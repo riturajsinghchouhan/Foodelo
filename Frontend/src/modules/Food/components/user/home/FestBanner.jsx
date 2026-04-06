@@ -1,0 +1,212 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowRightCircle, Leaf, Flame, Sparkles } from 'lucide-react';
+import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png";
+
+// Images for different modes - Extended pool for rotation
+const images = {
+  nonVeg: [
+    "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=500&h=500&fit=crop", // Taco
+    "https://images.unsplash.com/photo-1544025162-d76694265947?w=500&h=500&fit=crop", // Platter
+    "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=500&fit=crop", // Burger
+    "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&h=500&fit=crop", // Grilled Chicken
+    "https://images.unsplash.com/photo-1529006557810-274b9b2fc783?w=500&h=500&fit=crop", // Kebabs
+  ],
+  veg: [
+    "https://images.unsplash.com/photo-1585238341267-1cfec2046a55?w=500&h=500&fit=crop", // Veg Taco
+    "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&h=500&fit=crop", // Salad/Platter
+    "https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=500&h=500&fit=crop", // Paneer/Veg
+    "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&h=500&fit=crop", // Healthy Bowl
+    "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&h=500&fit=crop", // Veg Pizza
+  ]
+};
+
+export default function FestBanner({ isVegMode }) {
+  const [imgIndex, setImgIndex] = useState(0);
+  const currentPool = isVegMode ? images.veg : images.nonVeg;
+  
+  // Dynamic rotation
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setImgIndex(prev => (prev + 1) % currentPool.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [currentPool.length]);
+
+  // Reset index when mode changes
+  useEffect(() => {
+    setImgIndex(0);
+  }, [isVegMode]);
+
+  // Get 3 images starting from current index
+  const displayImages = [
+    currentPool[(imgIndex) % currentPool.length],
+    currentPool[(imgIndex + 1) % currentPool.length],
+    currentPool[(imgIndex + 2) % currentPool.length]
+  ];
+
+  return (
+    <motion.div 
+      initial={false}
+      animate={{ background: isVegMode ? "linear-gradient(135deg, #00b09b 0%, #96c93d 100%)" : "linear-gradient(135deg, #3c0f3d 0%, #7e3866 100%)" }}
+      className="relative px-4 pt-6 pb-12 overflow-hidden min-h-[230px] sm:min-h-[290px] transition-all duration-700 shadow-inner"
+    >
+      {/* Dynamic Moving Logo / Mascot - Rebranded for Foodelo */}
+      <motion.div
+        animate={{ 
+          x: [0, 15, -15, 0],
+          y: [0, -8, 0],
+          rotate: [0, 5, -5, 0]
+        }}
+        transition={{ 
+          duration: 5, 
+          repeat: Infinity, 
+          ease: "easeInOut" 
+        }}
+        className="absolute top-4 right-6 w-16 h-16 sm:w-24 sm:h-24 z-20 overflow-visible"
+      >
+        <img 
+          src={quickSpicyLogo} 
+          alt="Foodelo Mascot" 
+          className="w-full h-full object-contain filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)] brightness-110 contrast-125"
+          style={{ mixBlendMode: 'multiply' }} // Assuming white bg, this helps
+          onError={(e) => {
+            e.target.src = "https://cdn-icons-png.flaticon.com/512/1046/1046751.png"; // Fallback cute cloche
+          }}
+        />
+        <div className="absolute -inset-2 bg-white/10 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+      </motion.div>
+
+      {/* Decorative Background Elements */}
+      <div className="absolute inset-0 opacity-15 pointer-events-none overflow-hidden">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
+          <motion.circle 
+            animate={{ scale: [1, 1.3, 1], opacity: [0.1, 0.3, 0.1] }}
+            transition={{ duration: 4, repeat: Infinity }}
+            cx="85%" cy="15%" r="15" stroke="white" strokeWidth="0.5" fill="none" 
+          />
+          <path d="M -10 30 Q 20 10 50 30 T 110 30" stroke="white" strokeWidth="0.3" fill="none" />
+          <path d="M -10 50 Q 20 30 50 50 T 110 50" stroke="white" strokeWidth="0.3" fill="none" />
+          <motion.circle 
+            animate={{ x: [-15, 15, -15], scale: [1, 1.1, 1] }}
+            transition={{ duration: 10, repeat: Infinity }}
+            cx="10%" cy="80%" r="20" stroke="white" strokeWidth="0.2" fill="none" 
+          />
+        </svg>
+      </div>
+
+      <div className="relative z-10 flex flex-col items-center text-center space-y-4">
+        {/* Mission Text at Top */}
+        <motion.div
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="flex items-center gap-2 bg-white/15 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/25 shadow-lg font-bold"
+        >
+          <Sparkles className="h-3 w-3 text-[#fff200] animate-pulse" />
+          <span className="text-[10px] sm:text-[12px] font-black text-white uppercase tracking-[0.25em] drop-shadow-sm">Foodelo Missions</span>
+          <Sparkles className="h-3 w-3 text-[#fff200] animate-pulse" />
+        </motion.div>
+
+        <motion.div
+          key={isVegMode ? 'veg-title' : 'nonveg-title'}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", damping: 10, stiffness: 100 }}
+        >
+          <h2 
+            className="text-3xl sm:text-4xl lg:text-6xl font-black text-[#fff200] italic tracking-tighter drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)] uppercase leading-none"
+            style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)' }}
+          >
+            {isVegMode ? 'VEGGIE DELIGHT' : 'FEAST BONANZA'}
+          </h2>
+        </motion.div>
+        
+        <motion.div 
+          animate={{ scale: [1, 1.08, 1] }}
+          transition={{ duration: 2, repeat: Infinity }}
+          className="flex items-center gap-2 px-6 py-2.5 bg-black/30 backdrop-blur-xl rounded-full border border-white/40 shadow-2xl group cursor-pointer active:scale-95 transition-all text-white"
+        >
+          {isVegMode ? <Leaf className="h-4 w-4 text-emerald-400 fill-emerald-400" /> : <Flame className="h-4 w-4 text-[#fff200] fill-[#fff200] animate-bounce" />}
+          <span className="text-base sm:text-xl font-black uppercase tracking-[0.15em] drop-shadow-2xl">
+            {isVegMode ? 'PURE VEG MAGIC' : 'UPTO 60% OFF NOW'}
+          </span>
+          <ArrowRightCircle className="h-6 w-6 text-[#fff200] drop-shadow-lg" />
+        </motion.div>
+
+        {/* Food Images Row - MAX SCALE */}
+        <div className="flex items-end justify-center gap-5 sm:gap-8 pt-10 relative w-full mb-2">
+          {/* Enhanced glow */}
+          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-56 h-12 blur-[45px] rounded-full transition-colors duration-700 ${isVegMode ? 'bg-emerald-500/40' : 'bg-yellow-400/40'}`} />
+          
+          <AnimatePresence mode="popLayout" initial={false}>
+            {/* Left Image (Enlarged) */}
+            <motion.div 
+              key={`img-left-${isVegMode}-${imgIndex}`}
+              className="w-20 h-20 sm:w-30 sm:h-30 z-10"
+              initial={{ x: -100, opacity: 0, rotate: -45, scale: 0.5 }}
+              animate={{ 
+                x: 0, 
+                opacity: 1, 
+                rotate: -15,
+                scale: 1,
+                y: [0, -12, 0]
+              }}
+              exit={{ x: -100, opacity: 0, rotate: -45, scale: 0.5 }}
+              transition={{ 
+                y: { duration: 3.5, repeat: Infinity, ease: "easeInOut" },
+                default: { duration: 0.8, type: "spring", damping: 15 }
+              }}
+            >
+              <img src={displayImages[0]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl rotate-12" />
+            </motion.div>
+
+            {/* Center Main Image (MAX SCALE) */}
+            <motion.div 
+              key={`img-center-${isVegMode}-${imgIndex}`}
+              className="w-32 h-32 sm:w-48 sm:h-48 z-30 -mb-4"
+              initial={{ y: 100, opacity: 0, scale: 0.5 }}
+              animate={{ 
+                y: 0, 
+                opacity: 1,
+                scale: 1,
+                rotate: [0, 5, -5, 0]
+              }}
+              exit={{ y: 50, opacity: 0, scale: 0.5 }}
+              transition={{ 
+                rotate: { duration: 6, repeat: Infinity, ease: "easeInOut" },
+                default: { duration: 0.8, type: "spring", damping: 12, stiffness: 100 }
+              }}
+            >
+              <div className="relative h-full w-full">
+                <div className={`absolute -inset-2.5 blur-3xl rounded-full animate-pulse transition-colors duration-700 ${isVegMode ? 'bg-white/40' : 'bg-yellow-400/40'}`} />
+                <img src={displayImages[1]} alt="food" className="relative w-full h-full object-cover rounded-[2.5rem] border-[4px] border-white shadow-[0_22px_55px_rgba(0,0,0,0.4)]" />
+              </div>
+            </motion.div>
+
+            {/* Right Image (Enlarged) */}
+            <motion.div 
+              key={`img-right-${isVegMode}-${imgIndex}`}
+              className="w-20 h-20 sm:w-30 sm:h-30 z-10"
+              initial={{ x: 100, opacity: 0, rotate: 45, scale: 0.5 }}
+              animate={{ 
+                x: 0, 
+                opacity: 1, 
+                rotate: 15,
+                scale: 1,
+                y: [0, -12, 0]
+              }}
+              exit={{ x: 100, opacity: 0, rotate: 45, scale: 0.5 }}
+              transition={{ 
+                y: { duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.4 },
+                default: { duration: 0.8, type: "spring", damping: 15 }
+              }}
+            >
+              <img src={displayImages[2]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl -rotate-12 bg-white" />
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
