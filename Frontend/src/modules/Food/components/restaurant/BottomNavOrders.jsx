@@ -8,7 +8,7 @@ import {
   Compass,
 } from "lucide-react"
 
-const getOrdersTabs = (basePath = "/restaurant") => [
+const getOrdersTabs = (basePath = "/food/restaurant") => [
   { id: "orders", label: "Orders", icon: FileText, route: `${basePath}` },
   { id: "inventory", label: "Inventory", icon: Package, route: `${basePath}/inventory` },
   { id: "feedback", label: "Feedback", icon: MessageSquare, route: `${basePath}/feedback` },
@@ -25,11 +25,11 @@ export default function BottomNavOrders() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
-  const basePath = pathname.startsWith("/food/restaurant")
+  const basePath = pathname.includes("/food/restaurant")
     ? "/food/restaurant"
-    : pathname.startsWith("/restaurant")
+    : pathname.includes("/restaurant")
     ? "/food/restaurant"
-    : "/restaurant"
+    : "/food/restaurant"
 
   const tabs = useMemo(() => getOrdersTabs(basePath), [basePath])
 

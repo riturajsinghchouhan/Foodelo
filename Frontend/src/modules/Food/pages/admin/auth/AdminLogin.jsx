@@ -1,247 +1,195 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
+import { motion, AnimatePresence } from "framer-motion"
 import { adminAPI } from "@food/api"
 import { setAuthData } from "@food/utils/auth"
-import { loadBusinessSettings } from "@food/utils/businessSettings"
-import { Button } from "@food/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@food/components/ui/card"
-import { Input } from "@food/components/ui/input"
-import { Label } from "@food/components/ui/label"
-import { Eye, EyeOff } from "lucide-react"
-import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
-const debugLog = (...args) => {}
-const debugWarn = (...args) => {}
-const debugError = (...args) => {}
-
+import { ShieldCheck, UserCog, Star, Heart, ArrowRight, Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { toast } from "sonner"
 
 export default function AdminLogin() {
   const navigate = useNavigate()
-  const location = useLocation()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [successMessage, setSuccessMessage] = useState("")
-  const [logoUrl, setLogoUrl] = useState(quickSpicyLogo)
-  const submittingRef = useRef(false)
+  const [loading, setLoading] = useState(false)
+  const submitting = useRef(false)
 
-  useEffect(() => {
-    const message = location.state?.message
-    if (message) {
-      setSuccessMessage(message)
-      window.history.replaceState({}, document.title, location.pathname)
-    }
-  }, [location.state?.message, location.pathname])
-
-  // Fetch business settings logo on mount
-  useEffect(() => {
-    const fetchLogo = async () => {
-      try {
-        const settings = await loadBusinessSettings()
-        if (settings?.logo?.url) {
-          setLogoUrl(settings.logo.url)
-        }
-      } catch (error) {
-        // Silently fail and use default logo
-        debugWarn("Failed to load business settings logo:", error)
-      }
-    }
-    fetchLogo()
-
-    // Listen for business settings updates
-    const handleSettingsUpdate = async () => {
-      // Force reload settings from backend
-      const settings = await loadBusinessSettings();
-      if (settings?.logo?.url) {
-        setLogoUrl(settings.logo.url);
-      }
-    };
-    window.addEventListener('businessSettingsUpdated', handleSettingsUpdate);
-    return () => window.removeEventListener('businessSettingsUpdated', handleSettingsUpdate);
-  }, [])
-
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault()
-    setError("")
-    setSuccessMessage("")
-    if (submittingRef.current) return
-
-    const trimmedEmail = email.trim()
-    if (!trimmedEmail) {
-      setError("Email is required")
+    if (!email || !password) {
+      toast.error("Please fill in all fields")
       return
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(trimmedEmail)) {
-      setError("Please enter a valid email address")
-      return
-    }
-    if (!password) {
-      setError("Password is required")
-      return
-    }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters")
-      return
-    }
-
-    submittingRef.current = true
-    setIsLoading(true)
+    if (submitting.current) return
+    submitting.current = true
+    setLoading(true)
 
     try {
-      const response = await adminAPI.login(trimmedEmail, password)
+      const response = await adminAPI.login(email.trim(), password)
       const data = response?.data?.data || response?.data || {}
-
+      
       const accessToken = data.accessToken
       const adminUser = data.user || data.admin
       const refreshToken = data.refreshToken ?? null
 
-      if (!accessToken || !adminUser) {
+      if (!accessToken || !adminUser || !refreshToken) {
         throw new Error("Invalid response from server")
       }
-      if (!refreshToken) {
-        throw new Error("Invalid response from server: missing refresh token")
-      }
+
       setAuthData("admin", accessToken, adminUser, refreshToken)
+      toast.success("Welcome, Administrator")
       navigate("/admin/food", { replace: true })
     } catch (err) {
-      const message =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Login failed. Please check your credentials."
-      setError(message)
+      const msg = err?.response?.data?.message || err?.message || "Login failed. Check your credentials."
+      toast.error(msg)
     } finally {
-      setIsLoading(false)
-      submittingRef.current = false
+      setLoading(false)
+      submitting.current = false
     }
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-neutral-50 via-gray-100 to-white relative">
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -left-24 -top-24 h-64 w-64 rounded-full bg-neutral-900/5 blur-3xl" />
-        <div className="absolute right-[-80px] bottom-[-80px] h-72 w-72 rounded-full bg-gray-700/5 blur-3xl" />
-      </div>
+    <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
+      {/* Decorative Background Elements */}
+      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-[#7e3866]/10 via-[#7e3866]/5 to-transparent pointer-events-none" />
+      <div className="absolute top-[-100px] right-[-100px] w-[500px] h-[500px] bg-[#7e3866]/5 rounded-full blur-[120px] pointer-events-none animate-pulse" />
+      <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-[#7e3866]/5 rounded-full blur-[120px] pointer-events-none" />
 
-      <div className="flex min-h-screen items-center justify-center px-4 py-12">
-        <Card className="w-full max-w-lg bg-white/90 backdrop-blur border-neutral-200 shadow-2xl">
-          <CardHeader className="pb-4">
-            <div className="flex w-full items-center gap-4 sm:gap-5">
-              <div className="flex h-14 w-28 shrink-0 items-center justify-center rounded-xl bg-gray-900/5 ring-1 ring-neutral-200">
-                <img
-                  src={logoUrl}
-                  alt="Logo"
-                  className="h-10 w-24 object-contain"
-                  loading="lazy"
-                  onError={(e) => {
-                    // Fallback to default logo if business logo fails to load
-                    if (e.target.src !== quickSpicyLogo) {
-                      e.target.src = quickSpicyLogo
-                    }
-                  }}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <CardTitle className="text-3xl leading-tight text-gray-900">Admin Login</CardTitle>
-                <CardDescription className="text-base text-gray-600">
-                  Sign in to access the admin dashboard.
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {successMessage && (
-                <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                  {successMessage}
-                </div>
-              )}
-              {error && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-base font-medium text-gray-900">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="admin@domain.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={isLoading}
-                  autoComplete="off"
-                  required
-                  className="h-12 text-base"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-base font-medium text-gray-900">Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={isLoading}
-                    autoComplete="new-password"
-                    required
-                    className="h-12 pr-12 text-base [&::-ms-reveal]:hidden [&::-webkit-password-reveal-button]:hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-gray-800"
-                    disabled={isLoading}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5" />
-                    ) : (
-                      <Eye className="h-5 w-5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Use your admin credentials to continue.</span>
-                <button
-                  type="button"
-                  onClick={() => navigate("/admin/forgot-password")}
-                  className="text-black font-medium hover:underline focus:outline-none focus:underline"
-                  disabled={isLoading}
-                >
-                  Forgot Password?
-                </button>
-              </div>
-
-              <Button
-                type="submit"
-                className="h-12 w-full bg-black text-white transition-colors hover:bg-neutral-900 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
-                disabled={isLoading}
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="w-full max-w-[440px]"
+        >
+          {/* Logo & Header */}
+          <div className="text-center mb-10">
+            <motion.div
+              initial={{ scale: 0, rotate: -45 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
+              className="w-24 h-24 bg-[#7e3866] rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-[0_20px_50px_rgba(126,56,102,0.3)] relative group"
+            >
+              <UserCog className="text-white w-12 h-12 group-hover:scale-110 transition-transform duration-500" />
+              <motion.div
+                animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+                transition={{ duration: 3, repeat: Infinity }}
+                className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center border-4 border-white dark:border-[#0a0a0a] shadow-lg"
               >
-                {isLoading ? "Logging in..." : "Login"}
-              </Button>
-            </form>
-          </CardContent>
+                <Star className="text-[#7e3866] w-3 h-3 fill-current" />
+              </motion.div>
+            </motion.div>
+            
+            <motion.h1
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              className="text-5xl font-black text-[#7e3866] tracking-tighter mb-2 font-['Outfit']"
+            >
+              Foodelo
+            </motion.h1>
+            <motion.p 
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               transition={{ delay: 0.5 }}
+               className="text-gray-400 dark:text-gray-500 font-bold text-xs uppercase tracking-[0.3em]"
+            >
+              ADMIN PANEL
+            </motion.p>
+          </div>
 
-          <CardFooter className="flex-col items-start gap-2 text-sm text-gray-500">
-            <span>Secure sign-in helps protect admin tools.</span>
-          </CardFooter>
-        </Card>
+          {/* Login Card */}
+          <div className="bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-2xl rounded-[3rem] p-8 sm:p-12 shadow-[0_40px_80px_-20px_rgba(126,56,102,0.2)] dark:shadow-none border border-white/20 dark:border-gray-800 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-[#7e3866]/20 to-transparent" />
+            
+            <div className="mb-10 text-center sm:text-left">
+              <h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2 font-['Outfit'] tracking-tight">
+                Admin Entry
+              </h2>
+              <div className="h-1 w-10 bg-[#7e3866] rounded-full mb-3 hidden sm:block" />
+              <p className="text-base text-gray-500 dark:text-gray-400 font-medium">
+                Authorized access only. Please sign in to continue.
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-[#7e3866] uppercase tracking-[0.2em] ml-1">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="email"
+                      required
+                      autoFocus
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="block w-full pl-12 pr-6 py-4 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white border-2 border-transparent focus:border-[#7e3866]/50 rounded-2xl outline-none transition-all placeholder:text-gray-300 font-bold"
+                      placeholder="admin@foodelo.com"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center px-1">
+                    <label className="text-[10px] font-black text-[#7e3866] uppercase tracking-[0.2em]">Password</label>
+                    <Link to="/admin/forgot-password" size="sm" className="text-[10px] font-bold text-gray-400 hover:text-[#7e3866] uppercase tracking-wider transition-colors">Forgot?</Link>
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="block w-full pl-12 pr-12 py-4 bg-gray-50 dark:bg-gray-900/50 text-gray-900 dark:text-white border-2 border-transparent focus:border-[#7e3866]/50 rounded-2xl outline-none transition-all placeholder:text-gray-300 font-bold"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4.5 bg-[#7e3866] hover:bg-[#6a2f56] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#7e3866]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group overflow-hidden relative"
+              >
+                {loading ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : (
+                  <>
+                    <span>Enter Dashboard</span>
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+                <motion.div 
+                  className="absolute inset-0 bg-white/20 translate-x-[-100%]"
+                  whileHover={{ translateX: "100%" }}
+                  transition={{ duration: 0.6 }}
+                />
+              </button>
+            </form>
+          </div>
+          
+          <div className="mt-12 flex justify-center items-center gap-6 opacity-30 grayscale hover:opacity-60 transition-opacity">
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Secure Access</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Heart className="w-4 h-4" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Admin Control</span>
+            </div>
+          </div>
+        </motion.div>
       </div>
     </div>
   )

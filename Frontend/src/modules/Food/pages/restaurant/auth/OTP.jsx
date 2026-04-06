@@ -1,33 +1,27 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, ShieldCheck, Timer, RefreshCw } from "lucide-react"
-import { Button } from "@food/components/ui/button"
+import { motion, AnimatePresence } from "framer-motion"
+import { ArrowLeft, ShieldCheck, Timer, RefreshCw, Store, CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { restaurantAPI } from "@food/api"
 import {
   setAuthData as setRestaurantAuthData,
   setRestaurantPendingPhone,
 } from "@food/utils/auth"
 import { checkOnboardingStatus, isRestaurantOnboardingComplete } from "@food/utils/onboardingUtils"
-import { useCompanyName } from "@food/hooks/useCompanyName"
-
-const debugLog = (...args) => {}
-const debugWarn = (...args) => {}
-const debugError = (...args) => {}
 
 export default function RestaurantOTP() {
-  const companyName = useCompanyName()
   const navigate = useNavigate()
   const [otp, setOtp] = useState(["", "", "", ""])
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
   const [resendTimer, setResendTimer] = useState(0)
   const [authData, setAuthData] = useState(null)
-  const [contactInfo, setContactInfo] = useState("") 
+  const [contactInfo, setContactInfo] = useState("")
   const [focusedIndex, setFocusedIndex] = useState(null)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
   const inputRefs = useRef([])
   const hasSubmittedRef = useRef(false)
-  const otpSectionRef = useRef(null)
+
+  const primaryColor = "#7e3866"
 
   useEffect(() => {
     const stored = sessionStorage.getItem("restaurantAuthData")
@@ -71,68 +65,18 @@ export default function RestaurantOTP() {
     }
   }, [])
 
-  useEffect(() => {
-    if (typeof window === "undefined") return
-
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    const updateKeyboardState = () => {
-      const keyboardHeight = Math.max(0, window.innerHeight - viewport.height)
-      setKeyboardOffset(keyboardHeight > 120 ? keyboardHeight : 0)
-    }
-
-    updateKeyboardState()
-    viewport.addEventListener("resize", updateKeyboardState)
-    viewport.addEventListener("scroll", updateKeyboardState)
-
-    return () => {
-      viewport.removeEventListener("resize", updateKeyboardState)
-      viewport.removeEventListener("scroll", updateKeyboardState)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (focusedIndex == null) return
-
-    const targetInput = inputRefs.current[focusedIndex]
-    if (!targetInput) return
-
-    const id = window.setTimeout(() => {
-      try {
-        targetInput.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-          inline: "nearest",
-        })
-        otpSectionRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-          inline: "nearest",
-        })
-      } catch {
-        // no-op
-      }
-    }, 120)
-
-    return () => window.clearTimeout(id)
-  }, [focusedIndex, keyboardOffset])
-
   const handleChange = (index, value) => {
-    if (value && !/^\d$/.test(value)) {
-      return
-    }
+    if (value && !/^\d$/.test(value)) return
 
     const newOtp = [...otp]
     newOtp[index] = value
     setOtp(newOtp)
-    setError("")
 
     if (value && index < 3) {
       inputRefs.current[index + 1]?.focus()
     }
 
-    if (newOtp.every((digit) => digit !== "") && newOtp.length === 4) {
+    if (newOtp.every((digit) => digit !== "")) {
       if (!hasSubmittedRef.current) {
         hasSubmittedRef.current = true
         handleVerify(newOtp.join(""))
@@ -142,75 +86,28 @@ export default function RestaurantOTP() {
 
   const handleKeyDown = (index, e) => {
     if (e.key === "Backspace") {
-      if (otp[index]) {
-        const newOtp = [...otp]
-        newOtp[index] = ""
-        setOtp(newOtp)
-      } else if (index > 0) {
+      if (!otp[index] && index > 0) {
         inputRefs.current[index - 1]?.focus()
         const newOtp = [...otp]
         newOtp[index - 1] = ""
         setOtp(newOtp)
       }
     }
-    if (e.key === "v" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      navigator.clipboard.readText().then((text) => {
-        const digits = text.replace(/\D/g, "").slice(0, 4).split("")
-        const newOtp = [...otp]
-        digits.forEach((digit, i) => {
-          if (i < 4) {
-            newOtp[i] = digit
-          }
-        })
-        setOtp(newOtp)
-        if (digits.length === 4) {
-          handleVerify(newOtp.join(""))
-        } else {
-          inputRefs.current[digits.length]?.focus()
-        }
-      })
-    }
-  }
-
-  const handlePaste = (index, e) => {
-    e.preventDefault()
-    const pastedData = e.clipboardData.getData("text")
-    const digits = pastedData.replace(/\D/g, "").slice(0, 4).split("")
-    const newOtp = [...otp]
-    digits.forEach((digit, i) => {
-      if (i < 4) {
-        newOtp[i] = digit
-      }
-    })
-    setOtp(newOtp)
-    if (digits.length === 4) {
-      handleVerify(newOtp.join(""))
-    } else {
-      inputRefs.current[digits.length]?.focus()
-    }
   }
 
   const handleVerify = async (otpValue = null) => {
     const code = otpValue || otp.join("")
 
-    if (hasSubmittedRef.current && !otpValue) {
-      return
-    }
-
     if (code.length !== 4) {
-      setError("Please enter the complete 4-digit code")
+      toast.error("Please enter the complete 4-digit code")
       hasSubmittedRef.current = false
       return
     }
 
     setIsLoading(true)
-    setError("")
 
     try {
-      if (!authData) {
-        throw new Error("Session expired. Please try logging in again.")
-      }
+      if (!authData) throw new Error("Session expired. Please login again.")
 
       const phone = authData.method === "phone" ? authData.phone : null
       const email = authData.method === "email" ? authData.email : null
@@ -219,61 +116,44 @@ export default function RestaurantOTP() {
       const response = await restaurantAPI.verifyOTP(phone, code, purpose, null, email)
       const data = response?.data?.data || response?.data
 
-      const needsRegistration = data?.needsRegistration === true
-      const normalizedPhone = data?.phone || phone
-
-      if (needsRegistration) {
-        setRestaurantPendingPhone(normalizedPhone)
+      if (data?.needsRegistration) {
+        setRestaurantPendingPhone(data.phone || phone)
         sessionStorage.removeItem("restaurantAuthData")
-        sessionStorage.removeItem("restaurantLoginPhone")
         navigate("/food/restaurant/onboarding", { replace: true })
         return
       }
 
       const accessToken = data?.accessToken
-      const refreshToken = data?.refreshToken ?? null
       const restaurant = data?.user ?? data?.restaurant
 
       if (accessToken && restaurant) {
-        setRestaurantAuthData("restaurant", accessToken, restaurant, refreshToken)
+        setRestaurantAuthData("restaurant", accessToken, restaurant, data?.refreshToken)
         window.dispatchEvent(new Event("restaurantAuthChanged"))
         sessionStorage.removeItem("restaurantAuthData")
-        sessionStorage.removeItem("restaurantLoginPhone")
+        toast.success("Verification successful!")
 
         setTimeout(async () => {
           if (authData?.isSignUp) {
             navigate("/food/restaurant/onboarding", { replace: true })
           } else {
-            try {
-              const onboardingComplete = isRestaurantOnboardingComplete(restaurant)
-              if (!onboardingComplete) {
-                const incompleteStep = await checkOnboardingStatus()
-                if (incompleteStep) {
-                  navigate(`/food/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
-                  return
-                }
+            const onboardingComplete = isRestaurantOnboardingComplete(restaurant)
+            if (!onboardingComplete) {
+              const incompleteStep = await checkOnboardingStatus()
+              if (incompleteStep) {
+                navigate(`/food/restaurant/onboarding?step=${incompleteStep}`, { replace: true })
+                return
               }
-              navigate("/food/restaurant", { replace: true })
-            } catch (err) {
-              navigate("/food/restaurant", { replace: true })
             }
+            navigate("/food/restaurant", { replace: true })
           }
-        }, 500)
+        }, 800)
       }
     } catch (err) {
-      const message =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Invalid OTP. Please try again."
-
+      const message = err?.response?.data?.message || "Invalid OTP. Please try again."
+      
       if (/pending approval/i.test(message)) {
         const pendingPhone = authData?.phone || authData?.email || contactInfo
-        if (pendingPhone) {
-          setRestaurantPendingPhone(pendingPhone)
-        }
-        sessionStorage.removeItem("restaurantAuthData")
-        sessionStorage.removeItem("restaurantLoginPhone")
+        setRestaurantPendingPhone(pendingPhone)
         navigate("/food/restaurant/pending-verification", {
           replace: true,
           state: { phone: pendingPhone || "" },
@@ -281,7 +161,7 @@ export default function RestaurantOTP() {
         return
       }
 
-      setError(message)
+      toast.error(message)
       setOtp(["", "", "", ""])
       hasSubmittedRef.current = false
       inputRefs.current[0]?.focus()
@@ -292,167 +172,124 @@ export default function RestaurantOTP() {
 
   const handleResend = async () => {
     if (resendTimer > 0) return
-
     setIsLoading(true)
-    setError("")
-
     try {
-      if (!authData) {
-        throw new Error("Session expired. Please go back and try again.")
-      }
-
       const purpose = authData.isSignUp ? "register" : "login"
-      const phone = authData.method === "phone" ? authData.phone : null
-      const email = authData.method === "email" ? authData.email : null
-
-      await restaurantAPI.sendOTP(phone, purpose, email)
+      await restaurantAPI.sendOTP(authData.phone, purpose, authData.email)
+      toast.success("New code sent!")
+      setResendTimer(60)
     } catch (err) {
-      const message =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Failed to resend OTP. Please try again."
-      setError(message)
+      toast.error(err?.response?.data?.message || "Failed to resend code")
+    } finally {
+      setIsLoading(false)
     }
-
-    setResendTimer(60)
-    const timer = setInterval(() => {
-      setResendTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
-    setIsLoading(false)
-    setOtp(["", "", "", ""])
-    inputRefs.current[0]?.focus()
   }
 
   const isOtpComplete = otp.every((digit) => digit !== "")
 
-  if (!authData) {
-    return null
-  }
+  if (!authData) return null
 
   return (
-    <div
-      className={`h-[100dvh] bg-white flex flex-col font-sans ${keyboardOffset > 0 ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden"}`}
-      style={keyboardOffset > 0 ? { paddingBottom: `${Math.min(keyboardOffset, 360)}px` } : undefined}
-    >
-      {/* Curved Header Background */}
-      <div className="relative h-[240px] sm:h-[300px] w-full bg-[#ff2b85] overflow-hidden">
-        {/* Abstract Circles like in the image */}
-        <div className="absolute -top-10 -left-10 w-48 h-48 rounded-full bg-white/10" />
-        <div className="absolute top-20 -right-10 w-64 h-64 rounded-full bg-white/10" />
-        <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full bg-white/5" />
-        
-        {/* The dominant curve */}
-        <div className="absolute bottom-0 w-full h-[100px] bg-white rounded-t-[100px] shadow-[0_-20px_40px_rgba(0,0,0,0.05)]" />
-        
-        {/* Back Button */}
-        <button
+    <div className="min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col relative overflow-hidden font-['Poppins']">
+      {/* Decorative Background Elements */}
+      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-[#7e3866]/10 via-[#7e3866]/5 to-transparent pointer-events-none" />
+      <div className="absolute top-[-100px] right-[-100px] w-[500px] h-[500px] bg-[#7e3866]/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-[#7e3866]/5 rounded-full blur-[120px] pointer-events-none" />
+      
+      {/* Header / Back */}
+      <div className="relative z-20 px-6 py-8 flex items-center">
+        <motion.button
+          whileHover={{ x: -4 }}
+          whileTap={{ scale: 0.9 }}
           onClick={() => navigate("/food/restaurant/login")}
-          className="absolute top-10 sm:top-12 left-6 sm:left-8 p-2.5 sm:p-3 bg-white shadow-xl rounded-full text-[#ff2b85] hover:scale-110 active:scale-95 transition-all"
+          className="p-3 bg-white dark:bg-[#1a1a1a] shadow-xl shadow-[#7e3866]/10 rounded-2xl text-[#7e3866] border border-[#7e3866]/5 outline-none"
         >
-          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
+          <ArrowLeft className="w-5 h-5" />
+        </motion.button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center px-4 sm:px-8 -mt-12 sm:-mt-16 z-10 overflow-hidden">
-        {/* Central Logo / Branding */}
-        <div className="w-28 h-28 sm:w-32 sm:h-32 bg-white rounded-full shadow-xl flex items-center justify-center border-4 border-slate-50 mb-4 sm:mb-6 overflow-hidden">
-          <div className="text-center">
-             <div className="w-16 h-16 bg-[#ef4f5f] rounded-2xl mx-auto flex items-center justify-center transform rotate-12 shadow-lg mb-1">
-                <ShieldCheck className="w-8 h-8 text-white -rotate-12" />
-             </div>
+      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-20 relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-[440px]"
+        >
+          {/* Icon & Title */}
+          <div className="text-center mb-12">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 15 }}
+              className="w-20 h-20 bg-[#7e3866] rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-[#7e3866]/30 relative"
+            >
+              <ShieldCheck className="text-white w-10 h-10" />
+            </motion.div>
+            
+            <h1 className="text-4xl font-black text-[#7e3866] font-['Outfit'] tracking-tight mb-3">
+              Verify Account
+            </h1>
+            <p className="text-gray-500 dark:text-gray-400 font-medium">
+              We've sent a 4-digit code to <br />
+              <span className="text-[#7e3866] font-bold">{contactInfo}</span>
+            </p>
           </div>
-        </div>
 
-        <div className="text-center space-y-1.5 sm:space-y-2 mb-6 sm:mb-10">
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight lowercase">
-            verify otp
-          </h2>
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest leading-relaxed">
-            Sent to <span className="text-[#ef4f5f] font-black">{contactInfo}</span>
-          </p>
-        </div>
-
-        <div className="w-full max-w-[400px] flex-1 flex flex-col justify-between animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="space-y-6">
-            <div ref={otpSectionRef} className="flex justify-center gap-4">
+          {/* OTP Input Card */}
+          <div className="bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-2xl rounded-[3rem] p-10 shadow-[0_40px_80px_-20px_rgba(126,56,102,0.2)] border border-white/20 dark:border-gray-800">
+            <div className="grid grid-cols-4 gap-4 mb-10">
               {otp.map((digit, index) => (
-                <input
-                  key={index}
-                  ref={(el) => (inputRefs.current[index] = el)}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleChange(index, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(index, e)}
-                  onPaste={(e) => handlePaste(index, e)}
-                  onFocus={() => setFocusedIndex(index)}
-                  onBlur={() => setFocusedIndex(null)}
-                  disabled={isLoading}
-                  className={`w-12 h-14 sm:w-14 sm:h-16 bg-slate-50 border-2 rounded-2xl text-center text-2xl font-black text-slate-900 focus:outline-none transition-all duration-300 ${
-                    error 
-                      ? "border-red-500 bg-red-50" 
-                      : focusedIndex === index 
-                        ? "border-[#ef4f5f] ring-4 ring-[#ef4f5f]/10 shadow-lg bg-white" 
-                        : "border-slate-100"
-                  }`}
-                />
+                <div key={index} className="relative group">
+                  <input
+                    ref={(el) => (inputRefs.current[index] = el)}
+                    type="tel"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleChange(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(index, e)}
+                    onFocus={() => setFocusedIndex(index)}
+                    onBlur={() => setFocusedIndex(null)}
+                    className={`w-full aspect-square bg-gray-50 dark:bg-gray-900/50 text-center text-3xl font-black text-[#7e3866] border-2 border-transparent rounded-2xl outline-none transition-all ${
+                      focusedIndex === index 
+                        ? "border-[#7e3866] bg-white scale-105 shadow-[0_10px_30px_rgba(126,56,102,0.1)]" 
+                        : "group-hover:border-gray-200 dark:group-hover:border-gray-700"
+                    }`}
+                  />
+                  <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full transition-all duration-300 ${focusedIndex === index ? "bg-[#7e3866] opacity-100" : "bg-gray-200 opacity-0"}`} />
+                </div>
               ))}
             </div>
 
-            {error && (
-              <p className="text-[#ef4f5f] text-xs font-bold text-center italic animate-pulse">
-                {error}
-              </p>
-            )}
+            <button
+              onClick={() => handleVerify()}
+              disabled={isLoading || !isOtpComplete}
+              className="w-full py-4.5 bg-[#7e3866] hover:bg-[#6a2f56] disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#7e3866]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mb-8"
+            >
+              {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Verify & Continue"}
+            </button>
 
-            <div className="space-y-3">
-              <Button
-                onClick={() => handleVerify()}
-                disabled={isLoading || !isOtpComplete}
-                className={`w-full h-14 sm:h-16 rounded-[32px] font-black text-base sm:text-lg tracking-widest uppercase shadow-lg transition-all duration-300 ${
-                  isOtpComplete && !isLoading
-                    ? "bg-[#ff2b85] hover:bg-[#e62678] text-white shadow-[#ff2b85]/20 transform active:scale-[0.98]"
-                    : "bg-slate-100 text-slate-300 cursor-not-allowed"
-                }`}
-              >
-                {isLoading ? "Verifying..." : "Verify Code"}
-              </Button>
-
-              <div className="flex flex-col items-center gap-4">
-                {resendTimer > 0 ? (
-                  <div className="flex items-center gap-2 text-slate-400 text-xs font-black tracking-widest uppercase">
-                    <Timer className="w-4 h-4 text-[#ef4f5f]" />
-                    RESEND IN <span className="text-[#ef4f5f]">{resendTimer}S</span>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleResend}
-                    disabled={isLoading}
-                    className="flex items-center gap-2 text-[#ef4f5f] font-black text-xs tracking-widest uppercase hover:underline"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    RESEND CODE
-                  </button>
-                )}
-              </div>
+            {/* Resend Logic */}
+            <div className="text-center">
+              {resendTimer > 0 ? (
+                <p className="text-sm text-gray-400 font-medium flex items-center justify-center gap-2 tracking-wide uppercase text-[10px] font-black">
+                  <Timer className="w-3.5 h-3.5 text-[#7e3866]" />
+                  Resend code in <span className="text-[#7e3866] font-bold">{resendTimer}s</span>
+                </p>
+              ) : (
+                <button
+                  onClick={handleResend}
+                  className="text-xs text-[#7e3866] font-black uppercase tracking-widest hover:underline underline-offset-4 flex items-center justify-center gap-2 mx-auto"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Resend OTP Code
+                </button>
+              )}
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="py-3 text-center">
-          <p className="text-[10px] font-black text-slate-300 tracking-[0.2em] uppercase">
-            SECURE VERIFICATION SYSTEM &bull; FOODELO
+          <p className="mt-12 text-[10px] font-black text-gray-300 dark:text-gray-600 text-center uppercase tracking-[0.3em]">
+            Secure Verification &bull; Foodelo Partner
           </p>
+        </motion.div>
       </div>
     </div>
   )

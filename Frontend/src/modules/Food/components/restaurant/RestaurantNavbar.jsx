@@ -266,7 +266,7 @@ export default function RestaurantNavbar({
   }, [restaurantData])
 
   const handleStatusClick = () => {
-    navigate("/restaurant/status")
+    navigate("/food/restaurant/status")
   }
 
   const handleSearchClick = () => {
@@ -283,11 +283,11 @@ export default function RestaurantNavbar({
   }
 
   const handleMenuClick = () => {
-    navigate("/restaurant/explore")
+    navigate("/food/restaurant/explore")
   }
 
   const handleNotificationsClick = () => {
-    navigate("/restaurant/notifications")
+    navigate("/food/restaurant/notifications")
   }
 
   // Show search input when search is active
