@@ -115,7 +115,7 @@ export default function UserRouter() {
               </ProtectedRoute>
             }
           />
-          <Route path="under-50" element={<Under250 />} />
+          <Route path="under-250" element={<Under250 />} />
           <Route path="categories" element={<Categories />} />
           <Route path="category/:category" element={<CategoryPage />} />
           <Route path="restaurants" element={<Restaurants />} />

@@ -23,9 +23,9 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 const RUPEE_SYMBOL = "\u20B9"
-const UNDER_50_FILTERS_STORAGE_KEY = "food-under-50-filters"
+const UNDER_250_FILTERS_STORAGE_KEY = "food-under-250-filters"
 
-const readUnder50Filters = () => {
+const readUnder250Filters = () => {
   if (typeof window === "undefined") {
     return {
       selectedSort: null,
@@ -35,7 +35,7 @@ const readUnder50Filters = () => {
   }
 
   try {
-    const raw = window.localStorage.getItem(UNDER_50_FILTERS_STORAGE_KEY)
+    const raw = window.localStorage.getItem(UNDER_250_FILTERS_STORAGE_KEY)
     if (!raw) {
       return {
         selectedSort: null,
@@ -60,8 +60,8 @@ const readUnder50Filters = () => {
 }
 
 
-export default function Under50() {
-  const initialFiltersRef = useRef(readUnder50Filters())
+export default function Under250() {
+  const initialFiltersRef = useRef(readUnder250Filters())
   const { location } = useLocation()
   const { zoneId, zoneStatus, isInService, isOutOfService } = useZone(location)
   const navigate = useNavigate()
@@ -89,7 +89,7 @@ export default function Under50() {
   const [bannerImages, setBannerImages] = useState([])
   const [loadingBanner, setLoadingBanner] = useState(true)
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
-  const [under50Restaurants, setUnder50Restaurants] = useState([])
+  const [under250Restaurants, setUnder250Restaurants] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [hasScrolledPastBanner, setHasScrolledPastBanner] = useState(false)
   const bannerShellRef = useRef(null)
@@ -114,7 +114,7 @@ export default function Under50() {
     setUnder30MinsFilter(false)
     setActiveCategory(null)
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem(UNDER_50_FILTERS_STORAGE_KEY)
+      window.localStorage.removeItem(UNDER_250_FILTERS_STORAGE_KEY)
     }
   }
 
@@ -156,7 +156,7 @@ export default function Under50() {
 
   // Sort and filter restaurants based on selected sort and filters
   const sortedAndFilteredRestaurants = useMemo(() => {
-    let filtered = under50Restaurants.map(r => ({ ...r, menuItems: [...(r.menuItems || [])] }))
+    let filtered = under250Restaurants.map(r => ({ ...r, menuItems: [...(r.menuItems || [])] }))
 
     // Apply category filter
     if (activeCategory) {
@@ -226,7 +226,7 @@ export default function Under50() {
     }
 
     return filtered
-  }, [under50Restaurants, selectedSort, under30MinsFilter, activeCategory, categories])
+  }, [under250Restaurants, selectedSort, under30MinsFilter, activeCategory, categories])
 
   // Fetch under-50 banner from public API
   useEffect(() => {
@@ -334,9 +334,9 @@ export default function Under50() {
     isBannerSwipingRef.current = false
   }, [bannerImages.length, resetBannerAutoSlide])
 
-  // Fetch restaurants with dishes under ?50 from backend
+  // Fetch restaurants with dishes under ₹250 from backend
   useEffect(() => {
-    const fetchRestaurantsUnder50 = async () => {
+    const fetchRestaurantsUnder250 = async () => {
       try {
         setLoadingRestaurants(true)
         const response = await restaurantAPI.getRestaurants(zoneId ? { zoneId } : {})
@@ -346,7 +346,7 @@ export default function Under50() {
         const userLat = Number(location?.latitude)
         const userLng = Number(location?.longitude)
 
-        const restaurantsWithUnder50Dishes = await Promise.all(
+        const restaurantsWithUnder250Dishes = await Promise.all(
           restaurantsRaw.map(async (restaurant, index) => {
             const restaurantId = restaurant?.restaurantId || restaurant?._id
             if (!restaurantId) return null
@@ -355,7 +355,7 @@ export default function Under50() {
               const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurantId)
               const menu = getMenuFromResponse(menuResponse)
               const menuItems = flattenMenuItems(menu)
-                .filter((item) => Number(item?.price || 0) <= 50 && item?.isAvailable !== false)
+                .filter((item) => Number(item?.price || 0) <= 250 && item?.isAvailable !== false)
                 .map((item) => {
                   const foodType = String(item?.foodType || "").toLowerCase()
                   const isVeg = foodType.includes("veg") && !foodType.includes("non")
@@ -428,16 +428,16 @@ export default function Under50() {
           })
         )
 
-        setUnder50Restaurants(restaurantsWithUnder50Dishes.filter(Boolean))
+        setUnder250Restaurants(restaurantsWithUnder250Dishes.filter(Boolean))
       } catch (error) {
-        debugError('Error fetching restaurants under 50:', error)
-        setUnder50Restaurants([])
+        debugError('Error fetching restaurants under 250:', error)
+        setUnder250Restaurants([])
       } finally {
         setLoadingRestaurants(false)
       }
     }
 
-    fetchRestaurantsUnder50()
+    fetchRestaurantsUnder250()
   }, [zoneId, isOutOfService, location?.latitude, location?.longitude])
 
   // Fetch categories from backend (no static fallback list)
@@ -473,7 +473,7 @@ export default function Under50() {
           setCategories(mappedCategories)
         }
       } catch (error) {
-        debugError("Error fetching under-50 categories:", error)
+        debugError("Error fetching under-250 categories:", error)
         if (!cancelled) setCategories([])
       }
     }
@@ -538,12 +538,12 @@ export default function Under50() {
     if (typeof window === "undefined") return
 
     if (!selectedSort && !activeCategory && !under30MinsFilter) {
-      window.localStorage.removeItem(UNDER_50_FILTERS_STORAGE_KEY)
+      window.localStorage.removeItem(UNDER_250_FILTERS_STORAGE_KEY)
       return
     }
 
     window.localStorage.setItem(
-      UNDER_50_FILTERS_STORAGE_KEY,
+      UNDER_250_FILTERS_STORAGE_KEY,
       JSON.stringify({
         selectedSort,
         activeCategory,
@@ -626,7 +626,7 @@ export default function Under50() {
     }))
 
     // Find restaurant name from the item or use provided parameter
-    const restaurant = restaurantName || item.restaurant || "Under 50"
+    const restaurant = restaurantName || item.restaurant || "Under 250"
 
     // Prepare cart item with all required properties
     const cartItem = {
@@ -753,7 +753,7 @@ export default function Under50() {
       if (navigator.share) {
         await navigator.share({
           title: item.name || "Dish",
-          text: `Check out ${item.name || "this dish"} from ${item.restaurant || "Under 50"}`,
+          text: `Check out ${item.name || "this dish"} from ${item.restaurant || "Under 250"}`,
           url: shareUrl,
         })
         return
@@ -773,7 +773,7 @@ export default function Under50() {
     const shareUrl = restaurantSlug
       ? `${window.location.origin}/user/restaurants/${restaurantSlug}${itemId ? `?dish=${encodeURIComponent(itemId)}` : ""}`
       : window.location.href
-    const shareText = `Check out ${selectedItem.name || "this dish"} from ${selectedItem.restaurant || "Under 50"}`
+    const shareText = `Check out ${selectedItem.name || "this dish"} from ${selectedItem.restaurant || "Under 250"}`
     const encodedUrl = encodeURIComponent(shareUrl)
     const encodedText = encodeURIComponent(`${shareText} ${shareUrl}`)
 
@@ -866,7 +866,7 @@ export default function Under50() {
                 <div key={`${bannerImage}-${index}`} className="relative h-full w-full shrink-0">
                   <OptimizedImage
                     src={bannerImage}
-                    alt={`Under 50 Banner ${index + 1}`}
+                    alt={`Under 250 Banner ${index + 1}`}
                     className="w-full h-full"
                     objectFit="cover"
                     priority={index === 0}
@@ -997,8 +997,8 @@ export default function Under50() {
         ) : sortedAndFilteredRestaurants.length === 0 ? (
           <div className="flex justify-center items-center py-12">
             <div className="text-gray-500 dark:text-gray-400">
-              {under50Restaurants.length === 0
-                ? `No restaurants with dishes under ${RUPEE_SYMBOL}50 found.`
+              {under250Restaurants.length === 0
+                ? `No restaurants with dishes under ${RUPEE_SYMBOL}250 found.`
                 : "No restaurants match the selected filters."}
             </div>
           </div>
@@ -1151,7 +1151,7 @@ export default function Under50() {
                     </div>
 
                     {/* View Full Menu Button */}
-                    <Link className="flex justify-center mt-2 md:mt-3 lg:mt-4" to={`/user/restaurants/${restaurantSlug}?under50=true`}>
+                    <Link className="flex justify-center mt-2 md:mt-3 lg:mt-4" to={`/user/restaurants/${restaurantSlug}?under250=true`}>
                       <Button
                         variant="outline"
                         className="w-min align-center text-center rounded-lg md:rounded-xl mx-auto bg-gray-50 dark:bg-[#1a1a1a] hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-white text-gray-700 border-gray-200 dark:border-gray-800 h-9 md:h-10 lg:h-11 px-4 md:px-6 lg:px-8 text-sm md:text-base lg:text-lg"
@@ -1376,7 +1376,7 @@ export default function Under50() {
 
                 {/* Description */}
                 <p className="text-sm md:text-base lg:text-lg text-gray-600 dark:text-gray-400 mb-4 md:mb-6 lg:mb-8 leading-relaxed">
-                  {selectedItem.description || `${selectedItem.name} from ${selectedItem.restaurant || 'Under 50'}`}
+                  {selectedItem.description || `${selectedItem.name} from ${selectedItem.restaurant || 'Under 250'}`}
                 </p>
 
                 {/* Highly Reordered Progress Bar */}
