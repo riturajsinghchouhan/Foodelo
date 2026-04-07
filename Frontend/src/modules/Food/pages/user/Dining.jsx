@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import { MapPin, Search, Mic, SlidersHorizontal, Star, X, ArrowDownUp, Timer, IndianRupee, Clock, Bookmark, UtensilsCrossed } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
@@ -70,7 +70,7 @@ const loadingRestaurantCards = Array.from({ length: 6 }, (_, index) => `restaura
 function DiningCategorySkeleton({ index }) {
   return (
     <motion.div
-      className={`relative h-[138px] overflow-hidden rounded-[18px] border border-[#efe2d3] bg-[linear-gradient(180deg,#fdfafc_0%,#f9f3f7_100%)] shadow-[0_1px_2px_rgba(60,15,61,0.05)] sm:h-[154px] md:h-[166px] ${shimmerClassName}`}
+      className={`relative h-[114px] sm:h-[148px] md:h-[160px] overflow-hidden rounded-[22px] border border-[#efe2d3] bg-[linear-gradient(180deg,#fdfafc_0%,#f9f3f7_100%)] shadow-[0_1px_2px_rgba(60,15,61,0.05)] ${shimmerClassName}`}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: index * 0.04 }}
@@ -138,9 +138,8 @@ export default function Dining() {
   const [selectedCuisine, setSelectedCuisine] = useState(null)
   const filterSectionRefs = useRef({})
   const rightContentRef = useRef(null)
-  const { openSearch, closeSearch, setSearchValue } = useSearchOverlay()
-  const { openLocationSelector } = useLocationSelector()
   const { location } = useLocationHook()
+  const { openSearch, closeSearch, setSearchValue } = useSearchOverlay()
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
 
   const [categories, setCategories] = useState([])
@@ -453,7 +452,7 @@ export default function Dining() {
   }, [heroSearch, openSearch, setSearchValue])
 
   return (
-    <AnimatedPage className="bg-white dark:bg-[#0a0a0a]" style={{ minHeight: '100vh', paddingBottom: '80px', overflow: 'visible' }}>
+    <AnimatedPage className="bg-white dark:bg-[#0a0a0a] min-h-screen relative pb-40">
       <style>{`
         @keyframes shimmer {
           100% {
@@ -461,10 +460,11 @@ export default function Dining() {
           }
         }
       `}</style>
-      {/* Sticky Header Wrapper */}
-      <div className="sticky top-0 z-40 w-full bg-white dark:bg-[#0a0a0a] shadow-sm md:hidden">
+      
+      {/* Premium Sticky Header - High Z-Index & Optimized Blur */}
+      <div className="sticky top-0 z-[100] w-full bg-white dark:bg-[#0a0a0a] supports-[backdrop-filter]:bg-white/90 backdrop-blur-xl shadow-sm md:hidden border-b border-gray-100 dark:border-gray-800 transition-all duration-300">
         {/* Navbar Section */}
-        <div className="relative z-20 pt-2 sm:pt-3 lg:pt-4">
+        <div className="relative z-20 py-2 px-2">
           <PageNavbar
             textColor="dark"
             zIndex={20}
@@ -474,43 +474,33 @@ export default function Dining() {
 
         {/* Search Bar Section */}
         <section
-          className="relative z-20 w-full py-3 sm:py-4 md:py-5"
+          className="relative z-10 w-full px-4 pb-3"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="relative z-20 w-full px-3 sm:px-6 lg:px-8">
-            {/* Search Bar Container */}
-            <div className="z-20">
-              {/* Enhanced Search Bar */}
-              <div className="w-full relative">
-                <div className="relative bg-white dark:bg-[#1a1a1a] rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 p-1 sm:p-1.5 transition-all duration-300 hover:shadow-xl">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <Search className="h-4 w-4 sm:h-4 sm:w-4 text-[#7e3866] flex-shrink-0 ml-2 sm:ml-3" strokeWidth={2.5} />
-                    <div className="flex-1 relative">
-                      <Input
-                        value={heroSearch}
-                        onChange={(e) => setHeroSearch(e.target.value)}
-                        onFocus={handleSearchFocus}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && heroSearch.trim()) {
-                            navigate(`/user/search?q=${encodeURIComponent(heroSearch.trim())}`)
-                            closeSearch()
-                            setHeroSearch("")
-                          }
-                        }}
-                        className="pl-0 pr-2 h-8 sm:h-9 w-full bg-transparent border-0 text-sm sm:text-base font-semibold text-gray-700 dark:text-white focus-visible:ring-0 focus-visible:ring-offset-0 rounded-full placeholder:font-semibold placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                        placeholder='Search "burger"'
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSearchFocus}
-                      className="flex-shrink-0 mr-2 sm:mr-3 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-                    >
-                      <Mic className="h-4 w-4 sm:h-4 sm:w-4 text-gray-500 dark:text-gray-400" strokeWidth={2.5} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+          {/* Enhanced Search Bar (Matching Home Style) */}
+          <div className="relative bg-gray-50 dark:bg-[#1a1a1a] rounded-xl border border-gray-200 dark:border-gray-800 p-2 flex items-center shadow-inner group">
+            <Search className="h-4 w-4 text-[#7e3866] ml-2 shrink-0" strokeWidth={2.5} />
+            <div className="flex-1 px-3">
+              <Input
+                value={heroSearch}
+                onChange={(e) => setHeroSearch(e.target.value)}
+                onFocus={handleSearchFocus}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && heroSearch.trim()) {
+                    navigate(`/food/user/search?q=${encodeURIComponent(heroSearch.trim())}`)
+                    closeSearch()
+                    setHeroSearch("")
+                  }
+                }}
+                className="h-6 w-full bg-transparent border-0 text-[13px] font-bold text-gray-700 dark:text-white focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-none placeholder:text-gray-400"
+                placeholder="Search restaurant, dish or cuisine..."
+              />
+            </div>
+            <div className="flex items-center gap-3 pr-2">
+              <div className="h-4 w-[1px] bg-gray-200 dark:bg-gray-700" />
+              <button className="flex items-center justify-center p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
+                <Mic className="h-4 w-4 text-[#7e3866]" strokeWidth={2.5} />
+              </button>
             </div>
           </div>
         </section>
@@ -518,14 +508,14 @@ export default function Dining() {
 
       {/* Banner Section */}
       <div
-        className="relative w-full px-3 sm:px-4 md:px-6 lg:px-8 pb-4 sm:pb-6 cursor-pointer"
+        className="relative w-full px-3 sm:px-4 md:px-6 lg:px-8 pb-3 sm:pb-5 cursor-pointer"
         onClick={() => navigate('/user/dining/restaurants')}
       >
         <motion.div
           initial={{ opacity: 0, y: 24, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="relative w-full h-[30vh] sm:h-[35vh] lg:h-[40vh] rounded-2xl overflow-hidden shadow-lg"
+          className="relative w-full h-[24vh] sm:h-[32vh] lg:h-[40vh] rounded-[22px] overflow-hidden shadow-lg"
         >
           {diningHeroBanners.length > 0 ? (
             <div
@@ -611,16 +601,16 @@ export default function Dining() {
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-6 sm:pt-8 md:pt-10 lg:pt-12 pb-6 md:pb-8 lg:pb-10">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-3 sm:pt-6 md:pt-8 lg:pt-10 pb-4 md:pb-6 lg:pb-8">
         {/* Categories Section */}
-        <div className="mb-6">
-          <div className="mb-4 sm:mb-5">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="h-px flex-1 bg-[#ece5dc]" />
-              <h3 className="font-['Poppins',_'Nunito_Sans',sans-serif] text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.38em] text-[#8f8478] text-center whitespace-nowrap">
+        <div className="mb-4">
+          <div className="mb-3 sm:mb-4">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="h-px flex-1 bg-[#ece5dc]/60" />
+              <h3 className="font-['Poppins',_'Nunito_Sans',sans-serif] text-[9px] sm:text-[11px] font-medium uppercase tracking-[0.25em] text-[#8f8478] text-center whitespace-nowrap">
                 What are you looking for?
               </h3>
-              <div className="h-px flex-1 bg-[#ece5dc]" />
+              <div className="h-px flex-1 bg-[#ece5dc]/60" />
             </div>
           </div>
 
@@ -635,35 +625,35 @@ export default function Dining() {
                 to={`/user/dining/${category.slug}`}
               >
                 <motion.div
-                  className="relative h-[138px] sm:h-[154px] md:h-[166px] overflow-hidden rounded-[18px] border border-[#e9e1d8] bg-white shadow-[0_1px_2px_rgba(35,24,12,0.05)] cursor-pointer group"
+                  className="relative h-[114px] sm:h-[148px] md:h-[160px] overflow-hidden rounded-[22px] border border-[#ece5dc] bg-[#fdfaf8] cursor-pointer group"
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
                   transition={{ duration: 0.4, delay: index * 0.05 }}
-                  whileHover={{ y: -2, boxShadow: "0 10px 24px -18px rgba(63, 38, 18, 0.24)" }}
+                  whileHover={{ y: -2, boxShadow: "0 8px 20px -12px rgba(63, 38, 18, 0.2)" }}
                 >
-                  <div className="absolute inset-x-0 top-0 z-10 px-3 pt-3 sm:px-4 sm:pt-4">
-                    <p className="font-['Poppins',_'Nunito_Sans',sans-serif] max-w-[74%] text-[13px] sm:text-[15px] md:text-[16px] font-semibold leading-[1.02] tracking-[-0.02em] text-[#2d2722]">
+                  <div className="h-full flex flex-col p-2.5 sm:p-3.5">
+                    <p className="font-['Poppins',_'Nunito_Sans',sans-serif] text-[12px] sm:text-[14px] md:text-[15px] font-bold leading-tight tracking-tight text-[#2d2722] mb-1">
                       {category.name}
                     </p>
-                  </div>
 
-                  <div className="absolute inset-x-0 bottom-0 h-[64%] overflow-hidden rounded-b-[18px]">
-                    {category.imageUrl ? (
-                      <OptimizedImage
-                        src={category.imageUrl}
-                        alt={category.name}
-                        className="w-full h-full transition-transform duration-500 group-hover:scale-[1.03]"
-                        objectFit="cover"
-                        sizes="(max-width: 640px) 31vw, (max-width: 768px) 180px, 220px"
-                        placeholder="blur"
-                        priority={index < 6}
-                      />
-                    ) : (
-                      <div className={`relative h-full w-full bg-[radial-gradient(circle_at_20%_20%,rgba(235,89,14,0.22),transparent_35%),linear-gradient(180deg,#fff7ee_0%,#fff1e1_100%)] ${shimmerClassName}`}>
-                        <div className="absolute inset-x-0 bottom-0 h-[70%] rounded-t-[60%] bg-white/55" />
-                      </div>
-                    )}
+                    <div className="flex-1 relative overflow-hidden rounded-xl bg-white/40">
+                      {category.imageUrl ? (
+                        <OptimizedImage
+                          src={category.imageUrl}
+                          alt={category.name}
+                          className="w-full h-full transition-transform duration-500 group-hover:scale-[1.05]"
+                          objectFit="contain"
+                          sizes="(max-width: 640px) 31vw, (max-width: 768px) 180px, 220px"
+                          placeholder="blur"
+                          priority={index < 6}
+                        />
+                      ) : (
+                        <div className={`relative h-full w-full bg-[radial-gradient(circle_at_20%_20%,rgba(235,89,14,0.15),transparent_35%),linear-gradient(180deg,#fff7ee_0%,#fff1e1_100%)] ${shimmerClassName}`}>
+                          <div className="absolute inset-x-0 bottom-0 h-[60%] rounded-t-[50%] bg-white/30" />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               </Link>
@@ -799,18 +789,20 @@ export default function Dining() {
                   style={{ perspective: 1000 }}
                 >
                   <motion.div
-                    className="h-full"
+                    className="h-full rounded-[22px]"
                     whileHover="hover"
                     initial="rest"
                     variants={{
                       rest: {
                         y: 0,
                         scale: 1,
+                        borderRadius: 22,
                         boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
                       },
                       hover: {
                         y: -12,
                         scale: 1.02,
+                        borderRadius: 22,
                         boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(34, 197, 94, 0.1)",
                         transition: {
                           type: "spring",
@@ -824,11 +816,11 @@ export default function Dining() {
                     <Link
                       to={diningDetailPath}
                       state={{ restaurant }}
-                      className="h-full flex"
+                      className="h-full flex rounded-[22px]"
                     >
-                      <Card className="overflow-hidden gap-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] shadow-md transition-all duration-500 py-0 rounded-2xl h-full flex flex-col w-full relative">
+                      <Card className="overflow-hidden gap-0 space-y-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] transition-all duration-500 py-0 rounded-[22px] h-full flex flex-col w-full relative">
                         {/* Image Section */}
-                        <div className="relative h-48 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-2xl flex-shrink-0">
+                        <div className="relative h-44 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full flex-shrink-0">
                           <motion.div
                             className="absolute inset-0"
                             variants={{
@@ -929,13 +921,14 @@ export default function Dining() {
 
                         {/* Content Section */}
                         <motion.div
+                          className="flex-1"
                           variants={{
                             rest: { y: 0 },
                             hover: { y: -4 }
                           }}
                           transition={{ duration: 0.4, ease: "easeOut" }}
                         >
-                          <CardContent className="p-3 sm:p-4 pt-3 sm:pt-4">
+                          <CardContent className="p-2.5 sm:p-4 pt-1.5 sm:pt-2 border-t-0">
                             {/* Restaurant Name & Rating */}
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div className="flex-1 min-w-0">
@@ -971,15 +964,6 @@ export default function Dining() {
                               <span className="font-medium">{restaurant.distance}</span>
                             </div>
 
-                            {/* Offer Badge */}
-                            {restaurant.offer && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#7e386615] px-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e3866]">
-                                  Off
-                                </span>
-                                <span className="text-gray-700 dark:text-gray-300 font-medium">{restaurant.offer}</span>
-                              </div>
-                            )}
                           </CardContent>
                         </motion.div>
                       </Card>
@@ -1029,18 +1013,20 @@ export default function Dining() {
                   style={{ perspective: 1000 }}
                 >
                   <motion.div
-                    className="h-full"
+                    className="h-full rounded-[22px]"
                     whileHover="hover"
                     initial="rest"
                     variants={{
                       rest: {
                         y: 0,
                         scale: 1,
+                        borderRadius: 22,
                         boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
                       },
                       hover: {
                         y: -12,
                         scale: 1.02,
+                        borderRadius: 22,
                         boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(34, 197, 94, 0.1)",
                         transition: {
                           type: "spring",
@@ -1054,11 +1040,11 @@ export default function Dining() {
                     <Link
                       to={diningDetailPath}
                       state={{ restaurant }}
-                      className="h-full flex"
+                      className="h-full flex rounded-[22px]"
                     >
-                      <Card className="overflow-hidden cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] shadow-md transition-all duration-500 py-0 rounded-2xl h-full flex flex-col w-full relative">
+                      <Card className="overflow-hidden gap-0 space-y-0 cursor-pointer border-0 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] transition-all duration-500 py-0 rounded-[22px] h-full flex flex-col w-full relative">
                         {/* Image Section */}
-                        <div className="relative h-48 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full overflow-hidden rounded-t-2xl flex-shrink-0">
+                        <div className="relative h-44 sm:h-56 md:h-60 lg:h-64 xl:h-72 w-full flex-shrink-0">
                           <motion.div
                             className="absolute inset-0"
                             variants={{
@@ -1141,38 +1127,48 @@ export default function Dining() {
                         </div>
 
                         {/* Content Section */}
-                        <CardContent className="p-3 sm:p-4 pt-3 sm:pt-4">
-                          {/* Restaurant Name & Rating */}
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div className="flex-1 min-w-0">
+                        <motion.div
+                          className="flex-1"
+                          variants={{
+                            rest: { y: 0 },
+                            hover: { y: -4 }
+                          }}
+                          transition={{ duration: 0.4, ease: "easeOut" }}
+                        >
+                          <CardContent className="p-2.5 sm:p-4 pt-1.5 sm:pt-2 border-t-0">
+                            {/* Restaurant Name & Rating Badge */}
+                            <div className="flex items-start justify-between gap-3 mb-2">
                               <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white line-clamp-1">
                                 {restaurant.name}
                               </h3>
+                              <div className="flex-shrink-0 bg-[#267e3e] text-white px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm">
+                                <span className="text-sm font-bold leading-none">{restaurant.rating || "0"}</span>
+                                <Star className="h-3 w-3 fill-white text-white" />
+                              </div>
                             </div>
-                            <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 rounded-lg flex items-center gap-1">
-                              <span className="text-sm font-bold">{restaurant.rating}</span>
-                              <Star className="h-3 w-3 fill-white text-white" />
-                            </div>
-                          </div>
 
-                          {/* Delivery Time & Distance */}
-                          <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 mb-2">
-                            <Clock className="h-4 w-4" strokeWidth={1.5} />
-                            <span className="font-medium">{restaurant.deliveryTime}</span>
-                            <span className="mx-1">|</span>
-                            <span className="font-medium">{restaurant.distance}</span>
-                          </div>
-
-                          {/* Offer Badge */}
-                          {restaurant.offer && (
-                            <div className="flex items-center gap-2 text-sm">
-                               <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#7e386615] px-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e3866]">
-                                 Off
-                               </span>
-                              <span className="text-gray-700 dark:text-gray-300 font-medium">{restaurant.offer}</span>
+                            {/* Meta Info Row (Time | Distance) */}
+                            <div className="flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 mb-2.5">
+                              <div className="flex items-center gap-1">
+                                <Clock className="h-4 w-4 text-gray-400" strokeWidth={2} />
+                                <span>{restaurant.deliveryTime}</span>
+                              </div>
+                              <span className="mx-0.5 text-gray-300">|</span>
+                              <div className="flex items-center gap-1">
+                                <MapPin className="h-3.5 w-3.5 text-gray-400" strokeWidth={2} />
+                                <span>{restaurant.distance || "Distance unavailable"}</span>
+                              </div>
                             </div>
-                          )}
-                        </CardContent>
+
+                            {/* Pre-book Table Promo (If applicable) */}
+                            <div className="flex items-center gap-2">
+                              <div className="bg-[#7e3866]/5 px-2 py-0.5 rounded-full border border-[#7e3866]/10 flex items-center">
+                                <span className="text-[10px] font-black text-[#7e3866] tracking-widest uppercase">OFF</span>
+                              </div>
+                              <span className="text-sm font-bold text-gray-600 dark:text-gray-400">Pre-book table</span>
+                            </div>
+                          </CardContent>
+                        </motion.div>
                       </Card>
                     </Link>
                   </motion.div>

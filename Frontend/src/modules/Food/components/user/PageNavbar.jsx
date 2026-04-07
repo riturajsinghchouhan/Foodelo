@@ -975,9 +975,9 @@ export default function PageNavbar({
     openLocationSelector()
   }
 
-  const textColorClass = textColor === "white" ? "text-white" : "text-black"
-  const iconFill = textColor === "white" ? "white" : "black"
-  const ringColor = textColor === "white" ? "ring-white/30" : "ring-gray-800/30"
+  const textColorClass = textColor === "white" ? "text-white" : "text-[#7e3866]"
+  const iconFill = textColor === "white" ? "white" : "#7e3866"
+  const ringColor = textColor === "white" ? "ring-white/30" : "ring-[#7e3866]/30"
 
   const zIndexClass = zIndex === 50 ? "z-50" : "z-20"
 
@@ -995,7 +995,7 @@ export default function PageNavbar({
               <img
                 src={logoUrl}
                 alt={companyName || "Company Logo"}
-                className="h-10 w-auto sm:h-12 md:h-14 object-contain scale-[1.8] sm:scale-[2] origin-left"
+                className="h-9 w-auto sm:h-12 md:h-14 object-contain scale-[1.6] sm:scale-[1.8] origin-left"
                 crossOrigin="anonymous"
                 onError={(e) => {
                   // Fallback to name if image fails
@@ -1010,7 +1010,7 @@ export default function PageNavbar({
               <img
                 src={quickSpicyLogo}
                 alt="Logo"
-                className="h-10 w-auto sm:h-12 md:h-14 object-contain scale-[1.8] sm:scale-[2] origin-left"
+                className="h-9 w-auto sm:h-12 md:h-14 object-contain scale-[1.6] sm:scale-[1.8] origin-left"
               />
             )}
           </Link>
@@ -1055,12 +1055,12 @@ export default function PageNavbar({
               className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 hover:opacity-80 transition-opacity"
               title="Wallet"
             >
-              <div className={`h-full w-full rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center`}>
-                <Wallet className={`h-4 w-4 sm:h-5 sm:w-5 ${textColor === "white" ? "text-black dark:text-white" : "text-gray-900 dark:text-white"}`} strokeWidth={2} />
+              <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
+                <Wallet className={`h-4.5 w-4.5 sm:h-5.5 sm:w-5.5 ${textColor === "white" ? "text-white" : "text-[#7e3866] dark:text-[#a14b84]"}`} strokeWidth={3} />
               </div>
             </Button>
           </Link>
-
+ 
           <Link to="/user/cart">
             <Button
               variant="ghost"
@@ -1068,17 +1068,17 @@ export default function PageNavbar({
               className="relative h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 hover:opacity-80 transition-opacity"
               title="Cart"
             >
-              <div className={`h-full w-full rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center`}>
-                <ShoppingCart className={`h-4 w-4 sm:h-5 sm:w-5 ${textColor === "white" ? "text-black dark:text-white" : "text-gray-900 dark:text-white"}`} strokeWidth={2} />
+              <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
+                <ShoppingCart className={`h-4.5 w-4.5 sm:h-5.5 sm:w-5.5 ${textColor === "white" ? "text-white" : "text-[#7e3866] dark:text-[#a14b84]"}`} strokeWidth={3} />
               </div>
               {cartCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#7e3866] rounded-full flex items-center justify-center ring-2 ring-white">
-                  <span className="text-[9px] font-bold text-white">{cartCount > 99 ? "99+" : cartCount}</span>
+                <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#7e3866] rounded-full flex items-center justify-center ring-2 ring-white">
+                  <span className="text-[10px] font-black text-white">{cartCount > 99 ? "99+" : cartCount}</span>
                 </span>
               )}
             </Button>
           </Link>
-
+ 
           {/* Profile - Only shown if showProfile is true */}
           {showProfile && (
             <Link to="/user/profile">
@@ -1088,8 +1088,8 @@ export default function PageNavbar({
                 className="h-8 w-8 sm:h-9 sm:w-9 rounded-full p-0 hover:opacity-80 transition-opacity"
                 title="Profile"
               >
-                <div className={`h-full w-full rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shadow-sm`}>
-                  <span className={`text-xs sm:text-sm font-extrabold ${textColor === "white" ? "text-black" : "text-gray-900"}`}>
+                <div className={`h-full w-full rounded-full bg-transparent flex items-center justify-center shadow-md border border-gray-100/50 dark:border-white/10`}>
+                  <span className={`text-sm sm:text-base font-black ${textColor === "white" ? "text-white" : "text-[#7e3866] dark:text-[#a14b84]"}`}>
                     A
                   </span>
                 </div>

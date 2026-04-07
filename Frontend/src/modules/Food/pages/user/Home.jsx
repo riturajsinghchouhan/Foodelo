@@ -409,6 +409,43 @@ export default function Home() {
   const [isSwitchingOffVegMode, setIsSwitchingOffVegMode] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0, triangleLeft: 0 });
   const vegModeToggleRef = useRef(null);
+  const [isStickyHeaderVisible, setIsStickyHeaderVisible] = useState(false);
+  const [showStickySearch, setShowStickySearch] = useState(false);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScrollHeader = () => {
+      const currentScrollY = window.scrollY;
+      const categoriesSection = document.getElementById("categories-section");
+      
+      if (!categoriesSection) return;
+      
+      const rect = categoriesSection.getBoundingClientRect();
+      const sectionBottom = rect.bottom + currentScrollY;
+      
+      // When to show/hide the sticky header
+      if (currentScrollY > sectionBottom) {
+        setIsStickyHeaderVisible(true);
+      } else {
+        setIsStickyHeaderVisible(false);
+      }
+      
+      // Track scroll direction for search bar visibility in sticky header
+      if (currentScrollY < lastScrollY.current) {
+        // Scrolling UP
+        setShowStickySearch(true);
+      } else {
+        // Scrolling DOWN
+        setShowStickySearch(false);
+      }
+      
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener("scroll", handleScrollHeader, { passive: true });
+    return () => window.removeEventListener("scroll", handleScrollHeader);
+  }, []);
+
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const [heroBannerImages, setHeroBannerImages] = useState([]);
   const [heroBannersData, setHeroBannersData] = useState([]); // Store full banner data with linked restaurants
@@ -2199,7 +2236,7 @@ export default function Home() {
         <div
           ref={heroShellRef}
           data-home-hero-shell="true"
-          className="relative w-full overflow-hidden aspect-[1.85/1] rounded-2xl shadow-sm group cursor-pointer bg-white"
+          className="relative w-full overflow-hidden aspect-[2.1/1] rounded-2xl shadow-sm group cursor-pointer bg-white"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -2260,20 +2297,7 @@ export default function Home() {
             aria-label={`Open hero banner ${currentBannerIndex + 1}`}
           />
 
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-1.5 bg-black/20 backdrop-blur-md rounded-full border border-white/10 z-30">
-            {heroBannerImages.map((_, index) => (
-              <button
-                key={index}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCurrentBannerIndex(index);
-                }}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
-                  currentBannerIndex === index ? "bg-white w-5" : "bg-white/40 w-1.5"
-                }`}
-              />
-            ))}
-          </div>
+          {/* Indicators removed as requested */}
         </div>
       </div>
     );
@@ -2487,6 +2511,7 @@ export default function Home() {
             placeholderIndex={placeholderIndex}
             placeholders={placeholders}
             vegMode={vegMode}
+            handleVegModeChange={handleVegModeChange}
           />
 
           <AnimatePresence mode="wait">
@@ -2502,18 +2527,42 @@ export default function Home() {
                 {/* Flavour Fest Banner */}
                 <FestBanner isVegMode={vegMode} />
 
-                {/* Promo Row */}
-                <div className="relative z-20 -mt-4">
-                  <PromoRow 
-                    handleVegModeChange={handleVegModeChange}
-                    navigate={navigate}
-                    isVegMode={vegMode}
-                    toggleRef={vegModeToggleRef}
-                  />
+                {/* NEW Quick Offer Section - Cleaner & Professional */}
+                <div className="px-4 pt-2.5 pb-1">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Link 
+                      to="/food/user/offers"
+                      className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 border border-rose-100 dark:border-rose-900/30 group active:scale-[0.98] transition-all"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-rose-400 tracking-widest uppercase mb-0.5">Min.</span>
+                        <span className="text-sm font-black text-rose-600 dark:text-rose-400">40% Off</span>
+                      </div>
+                      <div className="w-10 h-10 p-1.5 rounded-xl bg-white dark:bg-[#1a1a1a] shadow-sm group-hover:scale-110 transition-transform">
+                        <Tag className="w-full h-full text-rose-500" />
+                      </div>
+                    </Link>
+
+                    <Link 
+                      to="/food/user/under-250"
+                      className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-100 dark:border-amber-900/30 group active:scale-[0.98] transition-all"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-amber-500 tracking-widest uppercase mb-0.5">Budget</span>
+                        <span className="text-sm font-black text-amber-600 dark:text-amber-400">Under ₹250</span>
+                      </div>
+                      <div className="w-10 h-10 p-1.5 rounded-xl bg-white dark:bg-[#1a1a1a] shadow-sm group-hover:scale-110 transition-transform">
+                        <IndianRupee className="w-full h-full text-amber-500" />
+                      </div>
+                    </Link>
+                  </div>
                 </div>
 
-                {/* "What's on your mind today?" Section */}
-                <div className="px-4 py-6 space-y-6 bg-white dark:bg-[#0a0a0a]">
+                {/* "What's on your mind today?" Section - Now with Sticky Logic */}
+                <div 
+                  id="categories-section"
+                  className="px-4 py-2.5 space-y-3 bg-white dark:bg-[#0a0a0a]"
+                >
                   <div className="flex items-center gap-2 min-w-0">
                     <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white min-w-0 flex-shrink leading-tight">What's on your mind today?</h2>
                     <div className="h-[1px] bg-gray-100 dark:bg-gray-800 flex-1"></div>
@@ -2522,14 +2571,15 @@ export default function Home() {
                     </Link>
                   </div>
                   
-                  <div className="grid grid-cols-4 gap-y-8 gap-x-4">
-                    {displayCategories.slice(0, 8).map((category, index) => (
+                  {/* Categories Horizontal Slider */}
+                  <div className="flex overflow-x-auto gap-1.5 pb-2 scrollbar-hide -mx-4 px-4 mask-edge-fade">
+                    {displayCategories.map((category, index) => (
                       <Link 
                         key={category.id || index}
                         to={`/food/user/category/${category.slug}`}
-                        className="flex flex-col items-center gap-2 group"
+                        className="flex-shrink-0 flex flex-col items-center gap-2.5 group w-[92px]"
                       >
-                        <div className="relative w-full aspect-square rounded-full overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] group-active:scale-95 transition-all duration-300">
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shadow-md border-2 border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] group-active:scale-95 transition-all duration-300">
                           {/* Shining Glint Effect */}
                           <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
                             <motion.div 
@@ -2552,7 +2602,7 @@ export default function Home() {
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                           />
                         </div>
-                        <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 text-center leading-tight">
+                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 text-center leading-tight line-clamp-1 w-full px-0.5">
                           {category.name}
                         </span>
                       </Link>
@@ -2560,11 +2610,111 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Dynamic Sticky Header (Search + Slider + Filters) */}
+                <AnimatePresence>
+                  {isStickyHeaderVisible && (
+                    <motion.div
+                      initial={{ y: -200 }}
+                      animate={{ y: 0 }}
+                      exit={{ y: -200 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                      className="fixed top-0 left-0 right-0 z-[100] bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md shadow-lg border-b border-gray-100 dark:border-white/5 safe-top"
+                    >
+                      {/* Search Bar Row (appears when scrolling up) */}
+                      <AnimatePresence>
+                        {showStickySearch && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="px-4 pt-3 pb-1"
+                          >
+                            <div
+                              className="bg-white dark:bg-[#1a1a1a] rounded-xl flex items-center px-4 py-2 cursor-pointer border-2 border-[#7e3866]/30 dark:border-[#7e3866]/50 shadow-md"
+                              onClick={handleSearchFocus}
+                            >
+                              <Search className="h-4 w-4 text-[#7e3866] dark:text-[#a14b84] mr-3" strokeWidth={2.5} />
+                              <div className="flex-1 relative h-4 overflow-hidden">
+                                <span className="absolute inset-0 text-sm text-gray-400 font-medium">Search "biryani"</span>
+                              </div>
+                              <div className="h-4 w-[1px] bg-gray-200 dark:bg-white/10 mx-2" />
+                              <Mic className="h-4 w-4 text-[#7e3866] dark:text-[#a14b84]" />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Categories Slider (Increased Icon Size) */}
+                      <div className="flex overflow-x-auto gap-5 py-3 pb-2 scrollbar-hide px-4 mask-edge-fade">
+                        {displayCategories.map((category, index) => (
+                          <Link 
+                            key={`sticky-${category.id || index}`}
+                            to={`/food/user/category/${category.slug}`}
+                            className="flex-shrink-0 flex flex-col items-center gap-1.5 group w-[74px]"
+                          >
+                            <div className="w-18 h-18 rounded-full overflow-hidden border-2 border-gray-100 dark:border-white/10 shadow-md bg-white dark:bg-white/5 transition-transform group-active:scale-95">
+                              <OptimizedImage 
+                                src={category.image} 
+                                alt={category.name} 
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <span className="text-[9px] font-bold text-gray-700 dark:text-gray-300 text-center truncate w-full uppercase tracking-tighter">
+                              {category.name}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+
+                      {/* Integrated Filters Row */}
+                      <div className="px-4 pb-3">
+                        <div
+                          className="flex items-center gap-2 overflow-x-auto scrollbar-hide"
+                          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setIsFilterOpen(true)}
+                            className="h-8 px-3 rounded-full flex items-center gap-1.5 bg-white dark:bg-white/10 border border-gray-200 dark:border-white/5 shadow-sm whitespace-nowrap"
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5" />
+                            <span className="text-[10px] font-bold uppercase">Filters</span>
+                          </button>
+
+                          {[
+                            { id: "delivery-under-30", label: "Under 30 mins" },
+                            { id: "delivery-under-45", label: "Under 45 mins" },
+                            { id: "distance-under-1km", label: "Under 1km", icon: MapPin },
+                          ].map((filter) => {
+                            const Icon = filter.icon;
+                            const isActive = activeFilters.has(filter.id);
+                            return (
+                              <button
+                                key={filter.id}
+                                type="button"
+                                onClick={() => toggleFilter(filter.id)}
+                                className={`h-8 px-4 rounded-full flex items-center gap-2 whitespace-nowrap transition-all font-bold text-[10px] uppercase ${
+                                  isActive
+                                    ? "bg-[#7e3866] text-white"
+                                    : "bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 text-gray-600 dark:text-gray-400"
+                                }`}
+                              >
+                                {Icon && <Icon className="h-3 w-3" />}
+                                {filter.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Admin Hero Banners Section - Now below categories */}
                 {HeroBannerSection}
 
                 {/* Filters Sticky Sidebar Header */}
-                <section className="py-3 px-4 bg-white sticky top-[0px] z-[40] -mx-4 w-[calc(100%+2rem)] border-b border-gray-100 shadow-sm">
+                <section className="py-2.5 px-4 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md sticky top-0 z-[40] -mx-4 w-[calc(100%+2rem)] border-b border-gray-100 dark:border-white/5 shadow-sm transition-colors duration-300">
                   <div
                     className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-4"
                     style={{
@@ -2733,12 +2883,12 @@ export default function Home() {
                       to={item.href}
                       className="block w-full">
                       <div className="flex flex-col items-center gap-2.5 w-full group">
-                        <div className="relative w-full aspect-square rounded-[2rem] bg-white dark:bg-[#1a1a1a] flex items-center justify-center shadow-[0_8px_20px_-6px_rgba(0,0,0,0.12)] group-hover:shadow-[0_15px_30px_-8px_rgba(0,0,0,0.18)] transition-all duration-500 overflow-hidden p-4 border border-gray-100 dark:border-gray-800 group-hover:border-[#7e3866]/40">
+                        <div className="relative w-full aspect-square rounded-[1.5rem] bg-white dark:bg-[#1a1a1a] flex items-center justify-center shadow-[0_8px_20px_-6px_rgba(0,0,0,0.12)] group-hover:shadow-[0_15px_30px_-8px_rgba(0,0,0,0.18)] transition-all duration-500 overflow-hidden border border-gray-100 dark:border-gray-800 group-hover:border-[#7e3866]/40">
                           {/* Colorful Glow Background */}
-                          <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br ${index % 3 === 0 ? 'from-[#7e3866] to-rose-500' : index % 3 === 1 ? 'from-indigo-500 to-purple-500' : 'from-teal-500 to-emerald-500'}`} />
+                          <div className={`absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-500 bg-gradient-to-br ${index % 3 === 0 ? 'from-[#7e3866] to-rose-500' : index % 3 === 1 ? 'from-indigo-500 to-purple-500' : 'from-teal-500 to-emerald-500'} z-20 pointer-events-none`} />
                           
                           {/* Shine Effect */}
-                          <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
+                          <div className="absolute inset-0 z-30 pointer-events-none overflow-hidden">
                             <motion.div 
                               animate={{ x: ['-200%', '200%'] }}
                               transition={{ duration: 3, repeat: Infinity, repeatDelay: 5 + index * 0.5 }}
@@ -2749,9 +2899,9 @@ export default function Home() {
                           <OptimizedImage
                             src={item.image}
                             alt={item.label}
-                            className="w-full h-full object-contain relative z-10 transition-transform duration-500 group-hover:scale-110 drop-shadow-sm"
-                            width={112}
-                            height={112}
+                            className="w-full h-full object-cover relative z-10 transition-transform duration-500 group-hover:scale-110"
+                            width={200}
+                            height={200}
                           />
                         </div>
                         <span className="text-[10px] sm:text-[11px] font-bold text-gray-500 dark:text-gray-400 group-hover:text-[#7e3866] dark:group-hover:text-white transition-colors text-center tracking-tight leading-tight uppercase px-1">
@@ -3744,87 +3894,6 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* Loading Screen - Applying Veg Mode */}
-        {/* <AnimatePresence>
-        {isApplyingVegMode && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[10000] bg-white/95 backdrop-blur-md flex items-center justify-center"
-          >
-            <div className="flex flex-col items-center gap-6">
-              <div className="relative w-32 h-32 flex items-center justify-center">
-                {[...Array(8)].map((_, i) => {
-                  const baseSize = 112 // Starting size (w-28 = 112px)
-                  const maxSize = 600 // Maximum size to expand to
-                  return (
-                    <motion.div
-                      key={i}
-                      initial={{ 
-                        scale: 1,
-                        opacity: 0
-                      }}
-                      animate={{ 
-                        scale: maxSize / baseSize,
-                        opacity: [0, 0.4, 0.2, 0]
-                      }}
-                      transition={{
-                        duration: 2.5,
-                        repeat: Infinity,
-                        ease: "easeOut",
-                        delay: i * 0.3 // Stagger each circle by 0.3s so they appear one at a time
-                      }}
-                      className="absolute rounded-full border border-green-300"
-                      style={{
-                        width: baseSize,
-                        height: baseSize,
-                        left: '50%',
-                        top: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        transformOrigin: 'center center'
-                      }}
-                    />
-                  )
-                })}
-                
-                <motion.div
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 200,
-                    damping: 15,
-                    delay: 0.1
-                  }}
-                  className="relative z-10 w-28 h-28 rounded-full border-2 border-green-300 bg-white flex flex-col items-center justify-center shadow-sm"
-                >
-                  <motion.div
-                    className="flex flex-col items-center"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                  >
-                    <span className="text-green-700 font-bold text-xs leading-none">100%</span>
-                    <span className="text-green-700 font-bold text-xl leading-none mt-0.5">VEG</span>
-                  </motion.div>
-                </motion.div>
-              </div>
-              
-              <motion.p
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="text-gray-800 font-normal text-base text-center relative z-10"
-              >
-                Explore veg dishes from all restaurants
-              </motion.p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence> */}
-
         <AnimatePresence>
           {isApplyingVegMode && (
             <motion.div
@@ -3859,10 +3928,6 @@ export default function Home() {
                       style={{
                         width: baseSize,
                         height: baseSize,
-                        // left: "50%",
-                        // top: "50%",
-                        // transform: "translate(-50%, -50%)",
-                        // transformOrigin: "center center",
                       }}
                     />
                   );
@@ -3879,13 +3944,7 @@ export default function Home() {
                     delay: 0.1,
                   }}
                   className="absolute z-10 w-28 h-28 rounded-full border-2 border-green-600 dark:border-green-500 bg-white dark:bg-[#1a1a1a] flex flex-col items-center justify-center shadow-sm"
-                  style={
-                    {
-                      // left: "50%",
-                      // top: "50%",
-                      // transform: "translate(-50%, -50%)",
-                    }
-                  }>
+                  >
                   <motion.div
                     className="flex flex-col items-center"
                     initial={{ opacity: 0 }}

@@ -2786,18 +2786,23 @@ function RestaurantDetailsContent() {
         </div>
       )}
 
-      {/* Menu Button - Sticky at page bottom right (hidden when filter or menu sheet open) */}
       {!showFilterSheet && !showMenuSheet && !showMenuOptionsSheet && (
-        <div className="sticky dark:bg-[#1a1a1a] bottom-4 flex justify-end px-4 z-50 mt-auto">
+        <motion.div
+          drag
+          dragMomentum={false}
+          whileDrag={{ scale: 1.1, zIndex: 100 }}
+          whileHover={{ scale: 1.05 }}
+          className="fixed bottom-24 right-6 z-[60] pointer-events-auto sm:bottom-8 cursor-grab active:cursor-grabbing"
+        >
           <Button
-            className="bg-[#1a1a1a] dark:bg-[#7e3866] hover:bg-black dark:hover:bg-[#55254b] text-white flex items-center gap-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/10 dark:border-[#7e3866]/20 px-6 py-6 rounded-full font-bold transform transition-all duration-300 hover:scale-110 active:scale-95 group"
+            className="bg-[#7e3866] hover:bg-[#55254b] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(126,56,102,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold transform transition-all duration-300 active:scale-95 group"
             size="lg"
             onClick={() => setShowMenuSheet(true)}
           >
-            <Utensils className="h-5 w-5 text-[#7e3866] dark:text-white group-hover:rotate-12 transition-transform" />
-            <span className="tracking-wide">MENU</span>
+            <Utensils className="h-4 w-4 text-white group-hover:rotate-12 transition-transform" />
+            <span className="tracking-widest text-xs uppercase">Menu</span>
           </Button>
-        </div>
+        </motion.div>
       )}
 
       {/* Menu Categories Bottom Sheet - Rendered via Portal */}
@@ -2879,10 +2884,10 @@ function RestaurantDetailsContent() {
                   {/* Close Button */}
                   <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
                     <Button
-                      className="w-full bg-[#1a1a1a] dark:bg-[#7e3866] hover:bg-[#7e3866] dark:hover:bg-[#55254b] text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg"
+                      className="w-full bg-[#7e3866] hover:bg-[#55254b] text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg text-sm"
                       onClick={() => setShowMenuSheet(false)}
                     >
-                      <X className="h-5 w-5" />
+                      <X className="h-4 w-4" />
                       Close
                     </Button>
                   </div>
@@ -3780,10 +3785,10 @@ function RestaurantDetailsContent() {
                   {/* Close Button */}
                   <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
                     <Button
-                      className="w-full bg-[#1a1a1a] dark:bg-[#7e3866] hover:bg-[#7e3866] dark:hover:bg-[#55254b] text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg"
+                      className="w-full bg-[#7e3866] hover:bg-[#55254b] text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg text-sm"
                       onClick={() => setShowOffersSheet(false)}
                     >
-                      <X className="h-5 w-5" />
+                      <X className="h-4 w-4" />
                       Close
                     </Button>
                   </div>

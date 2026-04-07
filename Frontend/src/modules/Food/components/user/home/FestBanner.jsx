@@ -48,8 +48,7 @@ export default function FestBanner({ isVegMode }) {
   return (
     <motion.div 
       initial={false}
-      animate={{ background: isVegMode ? "linear-gradient(135deg, #00b09b 0%, #96c93d 100%)" : "linear-gradient(135deg, #3c0f3d 0%, #7e3866 100%)" }}
-      className="relative px-4 pt-6 pb-12 overflow-hidden min-h-[230px] sm:min-h-[290px] transition-all duration-700 shadow-inner"
+      className="relative px-4 pt-4 pb-8 overflow-hidden min-h-[180px] sm:min-h-[240px] transition-all duration-700 bg-transparent"
     >
       {/* Dynamic Moving Logo / Mascot - Rebranded for Foodelo */}
       <motion.div

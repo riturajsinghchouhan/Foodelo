@@ -858,6 +858,22 @@ export default function Under250() {
             onTouchMove={handleBannerTouchMove}
             onTouchEnd={handleBannerTouchEnd}
           >
+            {/* Shining Glint Effect */}
+            <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
+              <motion.div 
+                animate={{ 
+                  x: ['-200%', '200%'],
+                }}
+                transition={{ 
+                  duration: 3, 
+                  repeat: Infinity, 
+                  repeatDelay: 4,
+                  ease: "easeInOut"
+                }}
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg] w-[150%] h-full"
+              />
+            </div>
+
             <div
               className="flex h-full w-full transition-transform duration-500 ease-out"
               style={{ transform: `translateX(-${currentBannerIndex * 100}%)` }}
@@ -872,27 +888,12 @@ export default function Under250() {
                     priority={index === 0}
                     sizes="100vw"
                   />
+                  {/* Subtle Gradient Overlay for depth */}
+                  <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
                 </div>
               ))}
             </div>
-            {bannerImages.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/25 px-3 py-1.5 backdrop-blur-sm">
-                {bannerImages.map((_, index) => (
-                  <button
-                    key={`banner-dot-${index}`}
-                    type="button"
-                    aria-label={`Go to banner ${index + 1}`}
-                    onClick={() => {
-                      setCurrentBannerIndex(index)
-                      resetBannerAutoSlide()
-                    }}
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      currentBannerIndex === index ? "w-5 bg-white" : "w-2 bg-white/55"
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Indicators removed as requested */}
           </div>
         )}
         {bannerImages.length === 0 && !loadingBanner && (
@@ -1013,21 +1014,25 @@ export default function Under250() {
                     <h3 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-900 dark:text-white mb-1 md:mb-2">
                       {restaurant.name}
                     </h3>
-                    <div className="flex items-center gap-2 text-sm md:text-base lg:text-lg text-gray-500 dark:text-gray-400">
-                      <Clock className="h-4 w-4 md:h-5 md:w-5 lg:h-6 lg:w-6" strokeWidth={1.5} />
-                      <span className="font-medium">{restaurant.deliveryTime}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <div className="flex items-center gap-1 bg-green-800 text-white px-1 py-1 md:px-2 md:py-1.5 lg:px-3 lg:py-2 rounded-full">
-                      <div className="bg-white text-green-700 px-1 py-1 md:px-1.5 md:py-1.5 lg:px-2 lg:py-2 rounded-full">
-                        <Star className="h-3.5 w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 fill-green-800 text-green-800" />
+                    <div className="flex items-center gap-2 md:gap-4 mt-1.5 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-xs md:text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        <Clock className="h-3.5 w-3.5 md:h-4 md:w-4" strokeWidth={2.5} />
+                        <span>{restaurant.deliveryTime}</span>
                       </div>
-                      <span className="text-xs md:text-sm lg:text-base font-bold">{restaurant.rating}</span>
+                      <div className="w-[1px] h-3 bg-gray-200 dark:bg-gray-800 hidden xs:block"></div>
+                      <div className="flex items-center gap-1.5 text-xs md:text-sm font-semibold text-gray-500 dark:text-gray-400">
+                        <MapPin className="h-3.5 w-3.5 md:h-4 md:w-4" strokeWidth={2.5} />
+                        <span>{restaurant.distance}</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 bg-[#267e3e] text-white rounded-md">
+                        <Star className="h-3 w-3 md:h-3.5 md:w-3.5 fill-white text-white" />
+                        <span className="text-[10px] md:text-xs font-black">{restaurant.rating}</span>
+                      </div>
+                      <div className="h-4 w-[1px] bg-gray-200 dark:bg-gray-800"></div>
+                      <span className="text-[10px] md:text-xs font-bold text-gray-400 dark:text-gray-500">
+                        {restaurant.totalRatings > 0 ? `${restaurant.totalRatings >= 1000 ? `${(restaurant.totalRatings / 1000).toFixed(1)}K` : restaurant.totalRatings}+ Ratings` : 'New'}
+                      </span>
                     </div>
-                    <span className="text-xs md:text-sm lg:text-base text-gray-400 dark:text-gray-500 mt-0.5">
-                      {restaurant.totalRatings > 0 ? `By ${restaurant.totalRatings >= 1000 ? `${(restaurant.totalRatings / 1000).toFixed(1)}K+` : `${restaurant.totalRatings}+`}` : ''}
-                    </span>
                   </div>
                 </div>
 
