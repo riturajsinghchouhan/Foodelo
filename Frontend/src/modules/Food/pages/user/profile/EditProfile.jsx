@@ -336,7 +336,6 @@ export default function EditProfile() {
       const updateData = {
         name: formData.name,
         email: formData.email || undefined,
-        phone: formData.mobile || undefined,
         dateOfBirth: formData.dateOfBirth ? formData.dateOfBirth.format('YYYY-MM-DD') : undefined,
         anniversary: formData.anniversary ? formData.anniversary.format('YYYY-MM-DD') : undefined,
         gender: formData.gender || undefined,

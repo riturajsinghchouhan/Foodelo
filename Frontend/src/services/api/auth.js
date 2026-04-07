@@ -153,7 +153,16 @@ export function logout(refreshToken, fcmToken = null, platform = "web") {
     payload.platform = platform;
   }
 
+  clearMeCache();
   return apiClient.post(AUTH.LOGOUT, payload);
+}
+
+/** 
+ * Clear all local /me caches (resets on logout or new login) 
+ */
+export function clearMeCache() {
+  meCache.clear();
+  meInFlight.clear();
 }
 
 /**

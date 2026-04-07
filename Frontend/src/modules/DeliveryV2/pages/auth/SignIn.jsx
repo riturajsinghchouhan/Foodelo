@@ -5,6 +5,7 @@ import { ShieldCheck, Truck, Star, Heart, ArrowRight, Loader2 } from "lucide-rea
 import { toast } from "sonner"
 import { deliveryAPI } from "@food/api"
 import { clearModuleAuth } from "@food/utils/auth"
+import logoNew from "@/assets/logo.png"
 
 const DEFAULT_COUNTRY_CODE = "+91"
 
@@ -43,7 +44,7 @@ export default function DeliverySignIn() {
     try {
       clearModuleAuth("delivery")
       await deliveryAPI.sendOTP(fullPhone, "login")
-      
+
       const authData = {
         method: "phone",
         phone: fullPhone,
@@ -79,36 +80,25 @@ export default function DeliverySignIn() {
           className="w-full max-w-[440px]"
         >
           {/* Logo & Header */}
-          <div className="text-center mb-10">
+          <div className="text-center mb-8">
             <motion.div
-              initial={{ scale: 0, rotate: -45 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
-              className="w-24 h-24 bg-[#7e3866] rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-[0_20px_50px_rgba(126,56,102,0.3)] relative group"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 20 }}
+              className="relative inline-block mb-4"
             >
-              <Truck className="text-white w-12 h-12 group-hover:scale-110 transition-transform duration-500" />
-              <motion.div
-                animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
-                transition={{ duration: 3, repeat: Infinity }}
-                className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center border-4 border-white dark:border-[#0a0a0a] shadow-lg"
-              >
-                <Star className="text-[#7e3866] w-3 h-3 fill-current" />
-              </motion.div>
+              <img 
+                src={logoNew} 
+                alt="Foodelo Logo" 
+                className="w-32 h-32 md:w-36 md:h-36 object-contain mx-auto"
+              />
             </motion.div>
-            
-            <motion.h1
+
+            <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-              className="text-5xl font-black text-[#7e3866] tracking-tighter mb-2 font-['Outfit']"
-            >
-              Foodelo
-            </motion.h1>
-            <motion.p 
-               initial={{ opacity: 0 }}
-               animate={{ opacity: 1 }}
-               transition={{ delay: 0.5 }}
-               className="text-gray-400 dark:text-gray-500 font-bold text-xs uppercase tracking-[0.3em]"
+              transition={{ delay: 0.5 }}
+              className="text-gray-400 dark:text-gray-500 font-bold text-xs uppercase tracking-[0.3em]"
             >
               DELIVERY PARTNER
             </motion.p>
@@ -117,7 +107,7 @@ export default function DeliverySignIn() {
           {/* Login Card */}
           <div className="bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-2xl rounded-[3rem] p-8 sm:p-12 shadow-[0_40px_80px_-20px_rgba(126,56,102,0.2)] dark:shadow-none border border-white/20 dark:border-gray-800 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-[#7e3866]/20 to-transparent" />
-            
+
             <div className="mb-10 text-center sm:text-left">
               <h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2 font-['Outfit'] tracking-tight">
                 Partner Sign In
@@ -161,7 +151,7 @@ export default function DeliverySignIn() {
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </>
                 )}
-                <motion.div 
+                <motion.div
                   className="absolute inset-0 bg-white/20 translate-x-[-100%]"
                   whileHover={{ translateX: "100%" }}
                   transition={{ duration: 0.6 }}
@@ -177,7 +167,7 @@ export default function DeliverySignIn() {
               <Link to="/food/delivery/terms" className="text-gray-900 dark:text-white font-bold hover:text-[#7e3866] transition-colors">Terms and Conditions</Link>
             </p>
           </div>
-          
+
           <div className="mt-12 flex justify-center items-center gap-6 opacity-30 grayscale hover:opacity-60 transition-opacity">
             <div className="flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4" />
