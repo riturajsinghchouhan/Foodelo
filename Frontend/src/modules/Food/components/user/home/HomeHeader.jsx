@@ -99,13 +99,13 @@ export default function HomeHeader({
   };
 
   return (
-    <div className="relative pt-2 px-4 transition-all duration-700 overflow-hidden bg-transparent">
+    <div className="relative pt-2 pb-0 px-4 transition-all duration-700 overflow-hidden bg-transparent shadow-none">
       {/* Subtle Artistic Glows - Adds depth without being 'boring' */}
       <div className="absolute top-[-20%] right-[-10%] w-48 h-48 bg-[#7e3866]/5 blur-[80px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-20%] left-[-10%] w-48 h-48 bg-[#48c479]/5 blur-[80px] rounded-full pointer-events-none" />
 
       {/* Main Header Content */}
-      <div className="relative z-10 space-y-4">
+      <div className="relative z-10 space-y-2.5">
         {/* Row 1: Location, Toggle, and Notifications */}
         <div className="flex items-center justify-between gap-3">
           {/* Location Selector */}
@@ -113,15 +113,15 @@ export default function HomeHeader({
             className="flex items-center gap-2 cursor-pointer group min-w-0 flex-1"
             onClick={handleLocationClick}
           >
-            <div className="bg-white/20 p-1.5 rounded-lg shadow-sm group-active:scale-95 transition-all backdrop-blur-md">
-              <MapPin className="h-4 w-4 text-white fill-white" />
+            <div className="bg-white/10 p-1 rounded-lg group-active:scale-95 transition-all">
+              <MapPin className="h-3.5 w-3.5 text-white/90 fill-white/20" />
             </div>
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1">
-                <span className="text-[10px] font-black text-white/70 uppercase tracking-widest leading-none">Deliver to</span>
-                <ChevronDown className="h-3 w-3 text-white/70" />
+                <span className="text-[9px] font-black text-white/60 uppercase tracking-widest leading-none">Deliver to</span>
+                <ChevronDown className="h-2.5 w-2.5 text-white/60" />
               </div>
-              <span className="text-sm font-bold text-white truncate">
+              <span className="text-xs font-bold text-white truncate">
                 {location?.area || location?.city || savedAddressText || "Select Location"}
               </span>
             </div>
@@ -131,22 +131,21 @@ export default function HomeHeader({
           <div className="flex items-center gap-2.5">
             {/* Pure Veg Toggle */}
             <div 
-              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full border transition-all duration-300 shadow-md cursor-pointer ${vegMode ? 'border-white/50 bg-white/20 backdrop-blur-md' : 'border-white/20 bg-white/10'}`}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-full border transition-all duration-300 ${vegMode ? 'border-white/40 bg-white/10' : 'border-white/10 bg-white/5'}`}
               onClick={() => handleVegModeChange?.(!vegMode)}
             >
-              <div className={`w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center transition-colors ${vegMode ? 'border-white bg-white' : 'border-white/40'}`}>
-                {vegMode && <div className="w-1.5 h-1.5 rounded-full bg-[#00b09b]" />}
+              <div className={`w-3 h-3 rounded-sm border flex items-center justify-center transition-colors ${vegMode ? 'border-white bg-white' : 'border-white/30'}`}>
+                {vegMode && <div className="w-1 h-1 rounded-full bg-[#00b09b]" />}
               </div>
-              <span className={`text-[9px] font-black uppercase tracking-tight ${vegMode ? 'text-white' : 'text-white/80'}`}>Veg</span>
+              <span className={`text-[8px] font-black uppercase tracking-tight ${vegMode ? 'text-white' : 'text-white/60'}`}>Veg</span>
             </div>
  
-            {/* Notifications Popover */}
             <Popover>
               <PopoverTrigger asChild>
-                <div className="h-9 w-9 relative flex items-center justify-center rounded-full bg-white/10 border border-white/20 shadow-md cursor-pointer active:scale-90 transition-all backdrop-blur-md">
-                  <Bell className="h-5 w-5 text-white" />
+                <div className="h-8 w-8 relative flex items-center justify-center rounded-full bg-white/10 border border-white/10 cursor-pointer active:scale-90 transition-all">
+                  <Bell className="h-4 w-4 text-white/90" />
                   {unreadCount > 0 && (
-                    <span className={`absolute top-2 right-2 w-2 h-2 rounded-full border-2 animate-pulse ${vegMode ? 'bg-orange-400 border-[#00b09b]' : 'bg-orange-400 border-[#7e3866]'}`} />
+                    <span className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full border animate-pulse ${vegMode ? 'bg-orange-400 border-[#00b09b]' : 'bg-orange-400 border-[#7e3866]'}`} />
                   )}
                 </div>
               </PopoverTrigger>
@@ -194,31 +193,30 @@ export default function HomeHeader({
           </div>
         </div>
 
-        {/* Row 2: Search Bar */}
         <div
-          className="relative bg-white rounded-2xl flex items-center px-4 py-3 shadow-2xl border border-white/40 cursor-pointer active:scale-[0.98] transition-all duration-300 max-w-[92%] mx-auto"
+          className="relative bg-white rounded-xl flex items-center px-4 py-2 shadow-lg border border-black/5 cursor-pointer active:scale-[0.98] transition-all duration-300 max-w-[95%] mx-auto"
           onClick={handleSearchFocus}
         >
-          <Search className="h-4 w-4 text-[#7e3866] mr-3 shrink-0" strokeWidth={2.5} />
+          <Search className="h-3.5 w-3.5 text-[#7e3866] mr-2 shrink-0" strokeWidth={3} />
           
-          <div className="flex-1 overflow-hidden relative h-5">
+          <div className="flex-1 overflow-hidden relative h-4">
             <AnimatePresence mode="wait">
               <motion.span
                 key={placeholderIndex}
-                initial={{ y: 15, opacity: 0 }}
+                initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                exit={{ y: -15, opacity: 0 }}
+                exit={{ y: -10, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="absolute inset-0 text-sm font-bold text-gray-400 truncate flex items-center"
+                className="absolute inset-0 text-xs font-bold text-gray-400 truncate flex items-center"
               >
-                {placeholders?.[placeholderIndex] || 'Search "pizza"'}
+                {placeholders?.[placeholderIndex] || 'Search'}
               </motion.span>
             </AnimatePresence>
           </div>
 
-          <div className="flex items-center gap-3 pl-3">
-            <div className="h-4 w-[1px] bg-gray-200" />
-            <Mic className="h-4 w-4 text-[#7e3866]" />
+          <div className="flex items-center gap-2 pl-2">
+            <div className="h-3 w-[1px] bg-gray-100" />
+            <Mic className="h-3.5 w-3.5 text-[#7e3866]" />
           </div>
         </div>
       </div>

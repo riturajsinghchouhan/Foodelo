@@ -2501,18 +2501,23 @@ export default function Home() {
         `}</style>
         </div>
 
-        <div className="md:hidden relative overflow-x-clip">
-          <HomeHeader 
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            location={location}
-            handleLocationClick={handleLocationClick}
-            handleSearchFocus={handleSearchFocus}
-            placeholderIndex={placeholderIndex}
-            placeholders={placeholders}
-            vegMode={vegMode}
-            handleVegModeChange={handleVegModeChange}
-          />
+        <div className="md:hidden relative overflow-x-clip bg-white dark:bg-[#0a0a0a]">
+          {/* Brand Top Section (Dark) */}
+          <div className="bg-gradient-to-b from-[#3a142c] to-[#1a0a14] rounded-b-[2rem] shadow-lg mb-2">
+            <HomeHeader 
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              location={location}
+              handleLocationClick={handleLocationClick}
+              handleSearchFocus={handleSearchFocus}
+              placeholderIndex={placeholderIndex}
+              placeholders={placeholders}
+              vegMode={vegMode}
+              handleVegModeChange={handleVegModeChange}
+            />
+
+            {activeTab === "food" && <FestBanner isVegMode={vegMode} />}
+          </div>
 
           <AnimatePresence mode="wait">
             {activeTab === "food" ? (
@@ -2522,12 +2527,9 @@ export default function Home() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
-                className="bg-white dark:bg-[#0a0a0a]"
+                className="bg-transparent dark:bg-transparent"
               >
-                {/* Flavour Fest Banner */}
-                <FestBanner isVegMode={vegMode} />
-
-                {/* NEW Quick Offer Section - Cleaner & Professional */}
+                {/* NEW Quick Offer Section - Cleaner & Professional (On white bg now) */}
                 <div className="px-4 pt-2.5 pb-1">
                   <div className="grid grid-cols-2 gap-3">
                     <Link 

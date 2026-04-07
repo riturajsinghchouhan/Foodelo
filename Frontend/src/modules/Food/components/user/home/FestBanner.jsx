@@ -48,7 +48,7 @@ export default function FestBanner({ isVegMode }) {
   return (
     <motion.div 
       initial={false}
-      className="relative px-4 pt-4 pb-8 overflow-hidden min-h-[180px] sm:min-h-[240px] transition-all duration-700 bg-transparent"
+      className="relative px-4 pt-2 pb-4 overflow-hidden min-h-[140px] sm:min-h-[180px] transition-all duration-700 bg-transparent rounded-b-[2rem]"
     >
       {/* Dynamic Moving Logo / Mascot - Rebranded for Foodelo */}
       <motion.div
@@ -100,11 +100,11 @@ export default function FestBanner({ isVegMode }) {
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="flex items-center gap-2 bg-white/15 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/25 shadow-lg font-bold"
+          className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 shadow-sm font-bold"
         >
-          <Sparkles className="h-3 w-3 text-[#fff200] animate-pulse" />
-          <span className="text-[10px] sm:text-[12px] font-black text-white uppercase tracking-[0.25em] drop-shadow-sm">Foodelo Missions</span>
-          <Sparkles className="h-3 w-3 text-[#fff200] animate-pulse" />
+          <Sparkles className="h-2.5 w-2.5 text-[#fff200] animate-pulse" />
+          <span className="text-[9px] font-black text-white uppercase tracking-[0.2em]">Foodelo Missions</span>
+          <Sparkles className="h-2.5 w-2.5 text-[#fff200] animate-pulse" />
         </motion.div>
 
         <motion.div
@@ -114,23 +114,23 @@ export default function FestBanner({ isVegMode }) {
           transition={{ type: "spring", damping: 10, stiffness: 100 }}
         >
           <h2 
-            className="text-3xl sm:text-4xl lg:text-6xl font-black text-[#fff200] italic tracking-tighter drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)] uppercase leading-none"
-            style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)' }}
+            className="text-2xl sm:text-3xl font-black text-[#fff200] italic tracking-tighter drop-shadow-md uppercase leading-none"
+            style={{ WebkitTextStroke: '0.5px rgba(255,255,255,0.3)' }}
           >
             {isVegMode ? 'VEGGIE DELIGHT' : 'FEAST BONANZA'}
           </h2>
         </motion.div>
         
         <motion.div 
-          animate={{ scale: [1, 1.08, 1] }}
+          animate={{ scale: [1, 1.05, 1] }}
           transition={{ duration: 2, repeat: Infinity }}
-          className="flex items-center gap-2 px-6 py-2.5 bg-black/30 backdrop-blur-xl rounded-full border border-white/40 shadow-2xl group cursor-pointer active:scale-95 transition-all text-white"
+          className="flex items-center gap-2 px-4 py-1.5 bg-black/40 backdrop-blur-lg rounded-full border border-white/20 shadow-xl group cursor-pointer active:scale-95 transition-all text-white"
         >
-          {isVegMode ? <Leaf className="h-4 w-4 text-emerald-400 fill-emerald-400" /> : <Flame className="h-4 w-4 text-[#fff200] fill-[#fff200] animate-bounce" />}
-          <span className="text-base sm:text-xl font-black uppercase tracking-[0.15em] drop-shadow-2xl">
+          {isVegMode ? <Leaf className="h-3.5 w-3.5 text-emerald-400 fill-emerald-400" /> : <Flame className="h-3.5 w-3.5 text-[#fff200] fill-[#fff200] animate-bounce" />}
+          <span className="text-sm font-black uppercase tracking-[0.1em]">
             {isVegMode ? 'PURE VEG MAGIC' : 'UPTO 60% OFF NOW'}
           </span>
-          <ArrowRightCircle className="h-6 w-6 text-[#fff200] drop-shadow-lg" />
+          <ArrowRightCircle className="h-5 w-5 text-[#fff200] shadow-sm" />
         </motion.div>
 
         {/* Food Images Row - MAX SCALE */}
@@ -139,10 +139,10 @@ export default function FestBanner({ isVegMode }) {
           <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-56 h-12 blur-[45px] rounded-full transition-colors duration-700 ${isVegMode ? 'bg-emerald-500/40' : 'bg-yellow-400/40'}`} />
           
           <AnimatePresence mode="popLayout" initial={false}>
-            {/* Left Image (Enlarged) */}
+            {/* Left Image (Compact) */}
             <motion.div 
               key={`img-left-${isVegMode}-${imgIndex}`}
-              className="w-20 h-20 sm:w-30 sm:h-30 z-10"
+              className="w-16 h-16 sm:w-20 sm:h-20 z-10"
               initial={{ x: -100, opacity: 0, rotate: -45, scale: 0.5 }}
               animate={{ 
                 x: 0, 
@@ -163,7 +163,7 @@ export default function FestBanner({ isVegMode }) {
             {/* Center Main Image (MAX SCALE) */}
             <motion.div 
               key={`img-center-${isVegMode}-${imgIndex}`}
-              className="w-32 h-32 sm:w-48 sm:h-48 z-30 -mb-4"
+              className="w-24 h-24 sm:w-32 sm:h-32 z-30 -mb-2"
               initial={{ y: 100, opacity: 0, scale: 0.5 }}
               animate={{ 
                 y: 0, 
@@ -186,7 +186,7 @@ export default function FestBanner({ isVegMode }) {
             {/* Right Image (Enlarged) */}
             <motion.div 
               key={`img-right-${isVegMode}-${imgIndex}`}
-              className="w-20 h-20 sm:w-30 sm:h-30 z-10"
+              className="w-16 h-16 sm:w-20 sm:h-20 z-10"
               initial={{ x: 100, opacity: 0, rotate: 45, scale: 0.5 }}
               animate={{ 
                 x: 0, 
