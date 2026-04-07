@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+﻿import mongoose from 'mongoose';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
@@ -28,11 +28,12 @@ export async function calculateOrderPricing(userId, dto) {
     deliveryFeeRanges: [],
     freeDeliveryThreshold: 149,
     platformFee: 5,
+    packagingFee: 0,
     gstRate: 5,
   };
 
-  const packagingFee = 0;
-  const platformFee = Number(feeSettings.platformFee || 0);
+  const packagingFee = feeSettings.packagingFee != null ? Number(feeSettings.packagingFee) : 0;
+  const platformFee = feeSettings.platformFee != null ? Number(feeSettings.platformFee) : 0;
 
   const freeThreshold = Number(feeSettings.freeDeliveryThreshold || 0);
   let deliveryFee = 0;
@@ -78,7 +79,7 @@ export async function calculateOrderPricing(userId, dto) {
     }
   }
 
-  const gstRate = Number(feeSettings.gstRate || 0);
+  const gstRate = feeSettings.gstRate != null ? Number(feeSettings.gstRate) : 0;
   const tax =
     Number.isFinite(gstRate) && gstRate > 0
       ? Math.round(subtotal * (gstRate / 100))

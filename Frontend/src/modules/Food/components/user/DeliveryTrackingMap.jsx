@@ -55,13 +55,10 @@ const DeliveryTrackingMap = ({
   const socketRef = useRef(null);
   const interpStateRef = useRef({ lastPos: null, nextPos: null, startTime: 0 });
 
-  /*
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
     libraries: LIBRARIES,
   });
-  */
-  const isLoaded = false;
 
   const trackingIds = useMemo(() => {
     const ids = [orderId, ...(Array.isArray(orderTrackingIds) ? orderTrackingIds : [])]

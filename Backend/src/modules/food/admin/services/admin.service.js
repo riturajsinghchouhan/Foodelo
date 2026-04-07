@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+﻿import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
@@ -234,7 +234,7 @@ export async function globalSearch(query = '') {
         id: i._id,
         type: 'Product',
         title: i.name,
-        description: `Price: ₹${i.price}`,
+        description: `Price: â‚¹${i.price}`,
         path: `/admin/food/foods?productId=${i._id}`
     }));
 
@@ -250,7 +250,7 @@ export async function globalSearch(query = '') {
         id: a._id,
         type: 'Addon',
         title: a.name,
-        description: `Price: ₹${a.price}`,
+        description: `Price: â‚¹${a.price}`,
         path: `/admin/food/addons`
     }));
 
@@ -1725,6 +1725,9 @@ export async function upsertFeeSettings(body) {
         if (body.platformFee === null) $unset.platformFee = 1;
         else if (body.platformFee !== undefined) $set.platformFee = body.platformFee;
 
+        if (body.packagingFee === null) $unset.packagingFee = 1;
+        else if (body.packagingFee !== undefined) $set.packagingFee = body.packagingFee;
+
         if (body.gstRate === null) $unset.gstRate = 1;
         else if (body.gstRate !== undefined) $set.gstRate = body.gstRate;
 
@@ -1746,6 +1749,7 @@ export async function upsertFeeSettings(body) {
     if (body.deliveryFee !== undefined && body.deliveryFee !== null) payload.deliveryFee = body.deliveryFee;
     if (body.freeDeliveryThreshold !== undefined && body.freeDeliveryThreshold !== null) payload.freeDeliveryThreshold = body.freeDeliveryThreshold;
     if (body.platformFee !== undefined && body.platformFee !== null) payload.platformFee = body.platformFee;
+    if (body.packagingFee !== undefined && body.packagingFee !== null) payload.packagingFee = body.packagingFee;
     if (body.gstRate !== undefined && body.gstRate !== null) payload.gstRate = body.gstRate;
 
     const created = await FoodFeeSettings.create(payload);
@@ -2809,7 +2813,7 @@ export async function approveRestaurantAddon(addonId) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
-                    title: 'Addon Approved! âœ…',
+                    title: 'Addon Approved! Ã¢Å“â€¦',
                     body: `Your addon "${updated.published?.name || 'New Addon'}" has been approved and is now live.`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -2852,7 +2856,7 @@ export async function rejectRestaurantAddon(addonId, reason) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
-                    title: 'Addon Rejected âŒ',
+                    title: 'Addon Rejected Ã¢ÂÅ’',
                     body: `Your addon request for "${updated.draft?.name || 'New Addon'}" was rejected. Reason: ${rejectionReason}`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -3243,7 +3247,7 @@ export async function approveRestaurant(id) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
                 {
-                    title: 'Congratulations! ðŸŽ‰',
+                    title: 'Congratulations! Ã°Å¸Å½â€°',
                     body: `Your restaurant "${updated.restaurantName}" has been approved. You can now start receiving orders!`,
                     image: updated.profileImage || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -3280,7 +3284,7 @@ export async function rejectRestaurant(id, reason) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
                 {
-                    title: 'Update on Registration ðŸ“‹',
+                    title: 'Update on Registration Ã°Å¸â€œâ€¹',
                     body: `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -3375,7 +3379,7 @@ export async function createAdminOffer(body) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: doc.restaurantId }],
                 {
-                    title: 'New Campaign Invitation! ðŸ“¢',
+                    title: 'New Campaign Invitation! Ã°Å¸â€œÂ¢',
                     body: `You have been invited to join a new campaign: "${doc.couponCode}". Check it out now!`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -3727,7 +3731,7 @@ export async function addDeliveryPartnerBonus(body, adminUser) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: body.deliveryPartnerId },
             {
-                title: 'Bonus Credited! ðŸŽŠ',
+                title: 'Bonus Credited! Ã°Å¸Å½Å ',
                 body: `You have received a bonus of \u20B9${body.amount}. ${body.reference || 'Great job!'}`,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
@@ -4084,7 +4088,7 @@ export async function creditEarningAddonHistory(historyId, notes) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: doc.deliveryPartnerId },
             {
-                title: 'Incentive Credited! ðŸŽ¯',
+                title: 'Incentive Credited! Ã°Å¸Å½Â¯',
                 body: `Your incentive for "${doc.offerId?.title || 'Earning Addon'}" has been approved and moved to your pocket.`,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
@@ -4116,7 +4120,7 @@ export async function cancelEarningAddonHistory(historyId, reason) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: doc.deliveryPartnerId },
             {
-                title: 'Incentive Update ðŸ“‹',
+                title: 'Incentive Update Ã°Å¸â€œâ€¹',
                 body: `Your incentive request for "${doc.offerId?.title || 'Earning Addon'}" was not approved. Reason: ${doc.cancelReason || 'Ineligible'}`,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
@@ -4322,7 +4326,7 @@ export async function approveDeliveryPartner(id) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: partner._id },
             {
-                title: 'Welcome Aboard! ðŸš²',
+                title: 'Welcome Aboard! Ã°Å¸Å¡Â²',
                 body: `Your delivery partner application has been approved. You can now go online and start earning!`,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
@@ -4403,7 +4407,7 @@ export async function rejectDeliveryPartner(id, reason) {
             await notifyOwnerSafely(
                 { ownerType: 'DELIVERY_PARTNER', ownerId: updated._id },
                 {
-                    title: 'Onboarding Update ðŸ“‹',
+                    title: 'Onboarding Update Ã°Å¸â€œâ€¹',
                     body: `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {

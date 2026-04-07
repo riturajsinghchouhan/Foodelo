@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, Fragment } from "react"
+﻿import { useState, useEffect, useRef, useMemo, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { Link, useNavigate } from "react-router-dom"
 import { Plus, Minus, ArrowLeft, ChevronRight, Clock, MapPin, Phone, FileText, Utensils, Tag, Percent, Share2, ChevronUp, ChevronDown, X, Check, Settings, CreditCard, Wallet, Building2, Sparkles, Banknote, Zap, CheckCircle2, MessageCircle, Send, Mail, Copy } from "lucide-react"
@@ -221,6 +221,7 @@ export default function Cart() {
     deliveryFeeRanges: [],
     freeDeliveryThreshold: 149,
     platformFee: 5,
+    packagingFee: 0,
     gstRate: 5,
   })
 
@@ -950,11 +951,12 @@ export default function Cart() {
         const response = await adminAPI.getPublicFeeSettings()
         if (response.data.success && response.data.data.feeSettings) {
           setFeeSettings({
-            deliveryFee: response.data.data.feeSettings.deliveryFee || 25,
-            deliveryFeeRanges: response.data.data.feeSettings.deliveryFeeRanges || [],
-            freeDeliveryThreshold: response.data.data.feeSettings.freeDeliveryThreshold || 149,
-            platformFee: response.data.data.feeSettings.platformFee || 5,
-            gstRate: response.data.data.feeSettings.gstRate || 5,
+            deliveryFee: response.data.data.feeSettings.deliveryFee ?? 25,
+            deliveryFeeRanges: response.data.data.feeSettings.deliveryFeeRanges ?? [],
+            freeDeliveryThreshold: response.data.data.feeSettings.freeDeliveryThreshold ?? 149,
+            platformFee: response.data.data.feeSettings.platformFee ?? 5,
+            packagingFee: response.data.data.feeSettings.packagingFee ?? 0,
+            gstRate: response.data.data.feeSettings.gstRate ?? 5,
           })
         }
       } catch (error) {
@@ -1009,7 +1011,7 @@ export default function Cart() {
 
     return Number(feeSettings.deliveryFee || 0)
   })()
-  const deliveryFee = pricing?.deliveryFee || fallbackDeliveryFee
+  const deliveryFee = pricing != null ? (pricing.deliveryFee ?? 0) : fallbackDeliveryFee
   const deliveryFeeBreakdown = pricing?.deliveryFeeBreakdown || null
   const hasDistanceDeliveryBreakdown =
     deliveryFeeBreakdown?.source === "distance" &&
@@ -1017,10 +1019,11 @@ export default function Cart() {
   const deliveryFeeBreakdownText = hasDistanceDeliveryBreakdown
     ? `Distance ${Number(deliveryFeeBreakdown.distanceKm).toFixed(1)} km: ${RUPEE_SYMBOL}${Number(deliveryFeeBreakdown.basePayout || 0).toFixed(0)} base + ${Number(deliveryFeeBreakdown.extraDistanceKm || 0).toFixed(1)} km x ${RUPEE_SYMBOL}${Number(deliveryFeeBreakdown.commissionPerKm || 0).toFixed(0)}`
     : null
-  const platformFee = pricing?.platformFee || feeSettings.platformFee
-  const gstCharges = pricing?.tax || Math.round(subtotal * (feeSettings.gstRate / 100))
+  const platformFee = pricing != null ? (pricing.platformFee ?? 0) : (feeSettings.platformFee ?? 0)
+  const packagingFee = pricing != null ? (pricing.packagingFee ?? 0) : (feeSettings.packagingFee ?? 0)
+  const gstCharges = pricing != null ? (pricing.tax ?? 0) : Math.round(subtotal * ((feeSettings.gstRate ?? 0) / 100))
   const discount = pricing?.discount || (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
-  const totalBeforeDiscount = subtotal + deliveryFee + platformFee + gstCharges
+  const totalBeforeDiscount = subtotal + deliveryFee + platformFee + packagingFee + gstCharges
   const total = pricing?.total || (totalBeforeDiscount - discount)
   const savings = pricing?.savings ?? Math.max(0, totalBeforeDiscount - total)
   const selectedPaymentLabel =
@@ -2554,7 +2557,11 @@ export default function Cart() {
                       <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{platformFee.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">GST and Restaurant Charges</span>
+                      <span className="text-gray-600 dark:text-gray-400">Packaging Charges</span>
+                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{packagingFee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">GST</span>
                       <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{gstCharges.toFixed(2)}</span>
                     </div>
                     {discount > 0 && (

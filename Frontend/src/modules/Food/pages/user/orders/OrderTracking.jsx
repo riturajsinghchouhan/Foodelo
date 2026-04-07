@@ -1,5 +1,5 @@
 import { useParams, Link, useSearchParams } from "react-router-dom"
-import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import {
@@ -86,7 +86,7 @@ const AnimatedCheckmark = ({ delay = 0 }) => (
 )
 
 // Real Delivery Map Component with User Live Location
-const DeliveryMap = React.memo(({ orderId, order, isVisible, fallbackCustomerCoords = null, userLiveCoords = null, userLocationAccuracy = null, onEtaUpdate = null }) => {
+const DeliveryMap = memo(({ orderId, order, isVisible, fallbackCustomerCoords = null, userLiveCoords = null, userLocationAccuracy = null, onEtaUpdate = null }) => {
   const toPointFromGeoJSON = (coords) => {
     if (!Array.isArray(coords) || coords.length < 2) return null;
     const lng = Number(coords[0]);
@@ -1831,7 +1831,7 @@ export default function OrderTracking() {
               </div>
 
               <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Taxes & Charges (GST)</span>
+                <span className="text-gray-600">GST</span>
                 <span className="text-gray-900 font-medium">₹{Number(order?.gst || 0).toFixed(2)}</span>
               </div>
 
