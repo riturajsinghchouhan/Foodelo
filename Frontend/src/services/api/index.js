@@ -1240,8 +1240,22 @@ export const restaurantAPI = {
    * UI expects this to move order into "preparing" bucket.
    * Backend supports PATCH /food/restaurant/orders/:orderId/status with { orderStatus }.
    */
-  acceptOrder: (orderId, _prepTimeMins = null) =>
-    restaurantAPI.updateOrderStatus(orderId, { orderStatus: "preparing" }),
+  acceptOrder: async (orderId, _prepTimeMins = null) => {
+    try {
+      return await restaurantAPI.updateOrderStatus(orderId, {
+        orderStatus: "preparing",
+      });
+    } catch (error) {
+      const statusCode = Number(error?.response?.status || 0);
+      if (statusCode === 400) {
+        // Compatibility fallback: some backends treat "confirmed" as accept action.
+        return restaurantAPI.updateOrderStatus(orderId, {
+          orderStatus: "confirmed",
+        });
+      }
+      throw error;
+    }
+  },
   /**
    * Reject/cancel order by restaurant.
    * Backend orderStatus enum: cancelled_by_restaurant.

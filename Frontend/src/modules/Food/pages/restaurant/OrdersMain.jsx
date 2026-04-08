@@ -898,6 +898,17 @@ export default function OrdersMain() {
     return keys.some((k) => shownOrdersRef.current.has(k));
   };
 
+  const resolveOrderActionId = (orderLike) => {
+    const raw =
+      orderLike?.orderMongoId ||
+      orderLike?._id ||
+      orderLike?.orderId ||
+      orderLike?.order_id ||
+      orderLike?.id;
+    const value = raw == null ? "" : String(raw).trim();
+    return value || null;
+  };
+
   const getPopupOrderTotal = (orderLike) => {
     if (!orderLike) return 0;
 
@@ -1379,9 +1390,23 @@ export default function OrdersMain() {
     markOrderAsShown(orderToAccept);
 
     // Accept order via API if we have a real order
-    if (orderToAccept?.orderMongoId || orderToAccept?.orderId) {
+    let orderId = resolveOrderActionId(orderToAccept);
+    if (!orderId) {
       try {
-        const orderId = orderToAccept.orderMongoId || orderToAccept.orderId;
+        const latest = await restaurantAPI.getOrders({ page: 1, limit: 20 });
+        const orders = latest?.data?.data?.orders || [];
+        const target = orders.find((o) => {
+          const s = String(o?.status || o?.orderStatus || "").toLowerCase();
+          return s === "confirmed" || s === "created";
+        });
+        orderId = resolveOrderActionId(target);
+      } catch (_) {
+        // keep empty orderId and show existing error below
+      }
+    }
+
+    if (orderId) {
+      try {
         const response = await restaurantAPI.acceptOrder(orderId, prepTime);
         debugLog("? Order accepted:", orderId);
         toast.success("Order accepted successfully");
@@ -1407,6 +1432,11 @@ export default function OrdersMain() {
         setAcceptSwipeProgress(0);
         return;
       }
+    } else {
+      toast.error("Unable to accept this order: order id missing");
+      setIsAcceptingOrder(false);
+      setAcceptSwipeProgress(0);
+      return;
     }
 
     setShowNewOrderPopup(false);
@@ -2402,6 +2432,7 @@ export default function OrdersMain() {
                         onMouseUp={handleAcceptSwipeEnd}
                         onTouchEnd={handleAcceptSwipeEnd}
                         onTouchCancel={handleAcceptSwipeEnd}
+                        onClick={triggerSwipeAccept}
                         disabled={isAcceptingOrder}>
                         <span className="text-lg font-bold">›</span>
                       </motion.button>

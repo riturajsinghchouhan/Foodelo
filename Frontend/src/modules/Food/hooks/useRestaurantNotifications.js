@@ -592,10 +592,15 @@ export const useRestaurantNotifications = () => {
 
     // Listen for new order notifications
     socketRef.current.on('new_order', (orderData) => {
-      debugLog('?? New order received:', orderData);
-      setNewOrder(orderData);
+      const normalizedOrder = {
+        ...orderData,
+        orderMongoId: orderData?.orderMongoId || orderData?._id || orderData?.order_mongo_id,
+        orderId: orderData?.orderId || orderData?.order_id || orderData?._id,
+      };
+      debugLog('?? New order received:', normalizedOrder);
+      setNewOrder(normalizedOrder);
 
-      handleIncomingOrderAlert(orderData);
+      handleIncomingOrderAlert(normalizedOrder);
     });
 
     // Listen for sound notification event

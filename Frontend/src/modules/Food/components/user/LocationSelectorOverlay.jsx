@@ -14,8 +14,7 @@ const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
 // Enable Maps if API Key is available, otherwise fallback to coordinates-only mode
-// const MAPS_ENABLED = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-const MAPS_ENABLED = false
+const MAPS_ENABLED = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 
 
 // Google Maps implementation - Leaflet components removed

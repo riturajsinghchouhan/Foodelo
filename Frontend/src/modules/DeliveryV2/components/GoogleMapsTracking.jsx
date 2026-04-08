@@ -97,16 +97,12 @@ export default function GoogleMapsTracking({
     }
   }, [routeInfo, onRouteInfoUpdate]);
 
-  /*
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: apiKey || '',
     // Do not load `places` — it pulls Geocoding-related code paths; Directions is in core Maps JS.
-    libraries: [],
+    libraries: ['geometry'],
   })
-  */
-  const isLoaded = false;
-  const loadError = null;
 
   // Combine storeLocation with sellerLocations
   const allSellers = storeLocation ? [storeLocation, ...sellerLocations] : sellerLocations;

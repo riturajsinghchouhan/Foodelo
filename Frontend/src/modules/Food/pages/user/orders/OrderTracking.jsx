@@ -211,6 +211,32 @@ const SectionItem = ({ icon: Icon, iconNode, title, subtitle, onClick, showArrow
   </motion.button>
 )
 
+class MapErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error) {
+    debugError('OrderTracking map render failed:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="relative min-h-[450px] bg-gray-100 rounded-2xl border border-gray-200 flex items-center justify-center">
+          <p className="text-sm text-gray-600">Live map unavailable right now</p>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 const getRestaurantCoordsFromOrder = (apiOrder, fallback = null) => {
   if (
     apiOrder?.restaurantId?.location?.coordinates &&
@@ -1355,15 +1381,17 @@ export default function OrderTracking() {
 
       {/* Map Section */}
       {!isDeliveredOrder && orderStatus !== 'cancelled' && (
-        <DeliveryMap
-          orderId={orderId}
-          order={order}
-          isVisible={order !== null}
-          fallbackCustomerCoords={fallbackCustomerCoords}
-          userLiveCoords={userLiveCoords}
-          userLocationAccuracy={userLiveLocation?.accuracy ?? null}
-          onEtaUpdate={handleEtaUpdate}
-        />
+        <MapErrorBoundary>
+          <DeliveryMap
+            orderId={orderId}
+            order={order}
+            isVisible={order !== null}
+            fallbackCustomerCoords={fallbackCustomerCoords}
+            userLiveCoords={userLiveCoords}
+            userLocationAccuracy={userLiveLocation?.accuracy ?? null}
+            onEtaUpdate={handleEtaUpdate}
+          />
+        </MapErrorBoundary>
       )}
 
       {/* Scrollable Content */}
