@@ -271,7 +271,7 @@ export default function DiningExplore50() {
           </div>
 
           {/* Popular Restaurants Around You Section */}
-          <div className="mb-6 mt-8 sm:mt-12">
+          <div className="mb-4 mt-2 sm:mt-4">
             <div className="mb-6">
               <div className="flex items-center justify-center mb-2">
                 <h3 className="px-3 text-sm font-semibold text-gray-500 uppercase tracking-wide text-center">
@@ -283,7 +283,7 @@ export default function DiningExplore50() {
             {/* Filters */}
             <section className="py-1 mb-4">
               <div
-                className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1"
+                className="relative z-10 flex items-center gap-1.5 sm:gap-2 overflow-x-auto overflow-y-visible scrollbar-hide py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                 style={{
                   scrollbarWidth: "none",
                   msOverflowStyle: "none",
@@ -293,7 +293,7 @@ export default function DiningExplore50() {
                 <Button
                   variant="outline"
                   onClick={() => setIsFilterOpen(true)}
-                  className="h-7 sm:h-8 px-2 sm:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all bg-white border border-gray-200 hover:bg-gray-50 text-gray-700"
+                  className="h-7 sm:h-8 px-2 sm:px-3 rounded-full flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all bg-white border border-gray-200 hover:bg-gray-50 text-gray-700"
                 >
                   <SlidersHorizontal className="h-3 w-3 sm:h-4 sm:w-4" />
                   <span className="text-xs sm:text-sm font-bold text-black">Filters</span>
@@ -316,7 +316,7 @@ export default function DiningExplore50() {
                       key={filter.id}
                       variant="outline"
                       onClick={() => toggleFilter(filter.id)}
-                      className={`h-7 sm:h-8 px-2 sm:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 transition-all font-medium ${isActive
+                      className={`h-7 sm:h-8 px-2 sm:px-3 rounded-full flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 transition-all font-medium ${isActive
                         ? 'bg-[#7e3866] text-white border-[#7e3866] hover:bg-[#55254b]'
                         : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-600'
                         }`}

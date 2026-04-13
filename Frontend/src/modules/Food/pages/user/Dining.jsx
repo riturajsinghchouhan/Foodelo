@@ -8,6 +8,7 @@ import { Card, CardContent } from "@food/components/ui/card"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { useSearchOverlay, useLocationSelector } from "@food/components/user/UserLayout"
 import { useLocation as useLocationHook } from "@food/hooks/useLocation"
+import { useZone } from "@food/hooks/useZone"
 import { useProfile } from "@food/context/ProfileContext"
 import { diningAPI } from "@food/api"
 import PageNavbar from "@food/components/user/PageNavbar"
@@ -139,6 +140,7 @@ export default function Dining() {
   const filterSectionRefs = useRef({})
   const rightContentRef = useRef(null)
   const { location } = useLocationHook()
+  const { zoneId } = useZone(location)
   const { openSearch, closeSearch, setSearchValue } = useSearchOverlay()
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
 
@@ -154,14 +156,48 @@ export default function Dining() {
   const touchEndYRef = useRef(0)
   const isBannerSwipingRef = useRef(false)
 
+  const resolveLocationForDining = useCallback(() => {
+    const fromHook = location || {}
+    const cityFromHook = String(fromHook?.city || "").trim()
+    const hasValidHookCity = cityFromHook && cityFromHook.toLowerCase() !== "current location"
+
+    if (hasValidHookCity) {
+      return fromHook
+    }
+
+    try {
+      const raw = localStorage.getItem("userLocation")
+      if (!raw) return fromHook
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === "object" ? { ...fromHook, ...parsed } : fromHook
+    } catch {
+      return fromHook
+    }
+  }, [location])
+
   useEffect(() => {
     const fetchDiningData = async () => {
       try {
         setLoading(true)
+
+        const activeLocation = resolveLocationForDining()
+        const lat = Number(activeLocation?.latitude)
+        const lng = Number(activeLocation?.longitude)
+        const cityRaw = String(activeLocation?.city || "").trim()
+        const city = cityRaw && cityRaw.toLowerCase() !== "current location" ? cityRaw : ""
+
+        const restaurantParams = {}
+        if (city) restaurantParams.city = city
+        if (zoneId) restaurantParams.zoneId = zoneId
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          restaurantParams.lat = lat
+          restaurantParams.lng = lng
+        }
+
         const [bannerResponse, cats, rests] = await Promise.all([
           diningAPI.getHeroBanners().catch(() => ({ data: { success: false, data: { banners: [] } } })),
           diningAPI.getCategories(),
-          diningAPI.getRestaurants(location?.city ? { city: location.city } : {}),
+          diningAPI.getRestaurants(restaurantParams),
         ])
 
         const heroBanners = Array.isArray(bannerResponse?.data?.data?.banners)
@@ -193,7 +229,7 @@ export default function Dining() {
       }
     }
     fetchDiningData()
-  }, [location?.city])
+  }, [resolveLocationForDining, zoneId])
 
   const safeCategories = useMemo(() => {
     return (Array.isArray(categories) ? categories : [])
@@ -662,7 +698,7 @@ export default function Dining() {
         </div>
 
         {/* Popular Restaurants Around You Section */}
-        <div className="mb-6 mt-8 sm:mt-12">
+          <div className="mb-4 mt-2 sm:mt-4">
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4 px-1">
               <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight">
@@ -689,7 +725,7 @@ export default function Dining() {
           ) : (
             <section className="py-1 mb-4">
               <div
-                className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1"
+                className="relative z-10 flex items-center gap-1.5 sm:gap-2 overflow-x-auto overflow-y-visible scrollbar-hide py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                 style={{
                   scrollbarWidth: "none",
                   msOverflowStyle: "none",
@@ -699,7 +735,7 @@ export default function Dining() {
                 <Button
                   variant="outline"
                   onClick={() => setIsFilterOpen(true)}
-                  className="h-7 sm:h-8 px-2 sm:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  className="h-7 sm:h-8 px-2 sm:px-3 rounded-full flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 font-medium transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
                 >
                   <SlidersHorizontal className="h-3 w-3 sm:h-4 sm:w-4" />
                   <span className="text-xs sm:text-sm font-bold text-black dark:text-white">Filters</span>
@@ -722,7 +758,7 @@ export default function Dining() {
                       key={filter.id}
                       variant="outline"
                       onClick={() => toggleFilter(filter.id)}
-                      className={`h-7 sm:h-8 px-2 sm:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 transition-all font-medium ${isActive
+                      className={`h-7 sm:h-8 px-2 sm:px-3 rounded-full flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 transition-all font-medium ${isActive
                         ? 'bg-[#7e3866] text-white border border-[#7e3866] hover:bg-[#55254b]'
                         : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300'
                         }`}

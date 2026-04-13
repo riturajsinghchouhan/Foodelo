@@ -1184,7 +1184,8 @@ function RestaurantDetailsContent() {
       description: item.description,
       originalPrice: item.originalPrice,
       isVeg: item.isVeg !== false, // Add isVeg property
-      preparationTime: item.preparationTime // Add preparationTime property
+      preparationTime: item.preparationTime, // Add preparationTime property
+      priceOnOtherPlatforms: item.priceOnOtherPlatforms || null // Include platform pricing for savings display
     }
 
     // Get source position for animation from event target

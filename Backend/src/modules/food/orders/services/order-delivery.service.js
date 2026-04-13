@@ -3,6 +3,8 @@ import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
+import { FoodDeliveryCashDeposit } from '../../delivery/models/foodDeliveryCashDeposit.model.js';
+import { FoodDeliveryCashLimit } from '../../admin/models/deliveryCashLimit.model.js';
 import {
   ValidationError,
   ForbiddenError,
@@ -30,6 +32,68 @@ import {
   sanitizeOrderForExternal,
   isStatusAdvance,
 } from './order.helpers.js';
+
+async function getPartnerCashCapacity(deliveryPartnerId) {
+  const partnerObjectId = new mongoose.Types.ObjectId(deliveryPartnerId);
+  const limitDoc = await FoodDeliveryCashLimit.findOne({ isActive: true })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const totalCashLimit = Number(limitDoc?.deliveryCashLimit || 0);
+  // If limit is not configured, don't block assignments globally.
+  if (!Number.isFinite(totalCashLimit) || totalCashLimit <= 0) {
+    return {
+      totalCashLimit: 0,
+      cashInHand: 0,
+      availableCashLimit: Number.MAX_SAFE_INTEGER,
+      hasCapacity: true,
+    };
+  }
+
+  const [cashAgg, depositsAgg] = await Promise.all([
+    FoodOrder.aggregate([
+      {
+        $match: {
+          'dispatch.deliveryPartnerId': partnerObjectId,
+          orderStatus: 'delivered',
+          'payment.method': 'cash',
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          grossCashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } },
+        },
+      },
+    ]),
+    FoodDeliveryCashDeposit.aggregate([
+      {
+        $match: {
+          deliveryPartnerId: partnerObjectId,
+          status: 'Completed',
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          depositedCash: { $sum: { $ifNull: ['$amount', 0] } },
+        },
+      },
+    ]),
+  ]);
+
+  const grossCashCollected = Number(cashAgg?.[0]?.grossCashCollected || 0);
+  const depositedCash = Number(depositsAgg?.[0]?.depositedCash || 0);
+  const cashInHand = Math.max(0, grossCashCollected - depositedCash);
+  const availableCashLimit = Math.max(0, totalCashLimit - cashInHand);
+
+  return {
+    totalCashLimit,
+    cashInHand,
+    availableCashLimit,
+    hasCapacity: availableCashLimit > 0,
+  };
+}
 
 function emitOrderUpdate(order, deliveryPartnerId) {
   try {
@@ -211,25 +275,31 @@ export async function getCurrentTripDelivery(deliveryPartnerId) {
 
 export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   const { page, limit, skip } = buildPaginationOptions(query);
-  const filter = {
-    $or: [
-      {
-        'dispatch.status': 'unassigned',
-        orderStatus: { $in: ['created', 'confirmed', 'preparing', 'ready_for_pickup'] },
-      },
-      {
-        'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(deliveryPartnerId),
-        orderStatus: {
-          $nin: [
-            'delivered',
-            'cancelled_by_user',
-            'cancelled_by_restaurant',
-            'cancelled_by_admin',
-          ],
-        },
-      },
-    ],
+  const partnerCapacity = await getPartnerCashCapacity(deliveryPartnerId);
+
+  const activeOwnOrderFilter = {
+    'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(deliveryPartnerId),
+    orderStatus: {
+      $nin: [
+        'delivered',
+        'cancelled_by_user',
+        'cancelled_by_restaurant',
+        'cancelled_by_admin',
+      ],
+    },
   };
+
+  const filter = partnerCapacity.hasCapacity
+    ? {
+        $or: [
+          {
+            'dispatch.status': 'unassigned',
+            orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_pickup'] },
+          },
+          activeOwnOrderFilter,
+        ],
+      }
+    : activeOwnOrderFilter;
 
   const [docs, total] = await Promise.all([
     FoodOrder.find(filter)
@@ -271,9 +341,14 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError('Order id required');
 
+  const partnerCapacity = await getPartnerCashCapacity(deliveryPartnerId);
+  if (!partnerCapacity.hasCapacity) {
+    throw new ValidationError('Cash limit reached. Settle your cash-in-hand before accepting new orders.');
+  }
+
   const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
   const now = new Date();
-  const acceptedStatuses = ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
+  const acceptedStatuses = ['confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
   const cancellableStatuses = [
     'cancelled_by_user',
     'cancelled_by_restaurant',

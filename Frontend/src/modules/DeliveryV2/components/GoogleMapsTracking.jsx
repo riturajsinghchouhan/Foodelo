@@ -46,6 +46,8 @@ const getDeliveryIconUrl = () => {
   }
 }
 
+const MAP_LIBRARIES = ['geometry']
+
 const mapContainerStyle = {
   width: '100%',
   height: '22rem'
@@ -101,7 +103,7 @@ export default function GoogleMapsTracking({
     id: 'google-map-script',
     googleMapsApiKey: apiKey || '',
     // Do not load `places` — it pulls Geocoding-related code paths; Directions is in core Maps JS.
-    libraries: ['geometry'],
+    libraries: MAP_LIBRARIES,
   })
 
   // Combine storeLocation with sellerLocations

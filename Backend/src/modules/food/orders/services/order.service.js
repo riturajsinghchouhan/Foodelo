@@ -368,11 +368,19 @@ export async function createOrder(userId, dto) {
     }
   }
 
+  const dispatchableStatuses = [
+    "confirmed",
+    "preparing",
+    "ready_for_pickup",
+    "ready",
+    "picked_up",
+  ];
   if (
     dispatchMode === "auto" &&
     (isCash ||
       order.payment.status === "paid" ||
-      order.payment.status === "cod_pending")
+      order.payment.status === "cod_pending") &&
+    dispatchableStatuses.includes(order.orderStatus)
   ) {
     try {
       await tryAutoAssign(order._id);
@@ -441,7 +449,14 @@ export async function verifyPayment(userId, dto) {
   });
 
   const settings = await getDispatchSettings();
-  if (settings.dispatchMode === "auto") {
+  const dispatchableStatuses = [
+    "confirmed",
+    "preparing",
+    "ready_for_pickup",
+    "ready",
+    "picked_up",
+  ];
+  if (settings.dispatchMode === "auto" && dispatchableStatuses.includes(order.orderStatus)) {
     try {
       await tryAutoAssign(order._id);
     } catch {}

@@ -340,6 +340,7 @@ export async function listDiningRestaurantsPublic(query = {}) {
     const filter = { isEnabled: true };
     const categoryValue = String(query.category || '').trim();
     const cityValue = String(query.city || '').trim();
+    const zoneIdValue = String(query.zoneId || '').trim();
 
     if (categoryValue) {
         const category = await FoodDiningCategory.findOne({
@@ -354,18 +355,31 @@ export async function listDiningRestaurantsPublic(query = {}) {
         filter.categoryIds = category._id;
     }
 
+    const restaurantMatch = {};
+    const restaurantAndConditions = [];
+
+    if (cityValue) {
+        restaurantAndConditions.push({
+            $or: [
+                { city: { $regex: cityValue, $options: 'i' } },
+                { 'location.city': { $regex: cityValue, $options: 'i' } }
+            ]
+        });
+    }
+
+    if (zoneIdValue && mongoose.Types.ObjectId.isValid(zoneIdValue)) {
+        restaurantAndConditions.push({ zoneId: new mongoose.Types.ObjectId(zoneIdValue) });
+    }
+
+    if (restaurantAndConditions.length > 0) {
+        restaurantMatch.$and = restaurantAndConditions;
+    }
+
     const diningDocs = await FoodDiningRestaurant.find(filter)
         .populate({
             path: 'restaurantId',
-            select: 'restaurantName restaurantNameNormalized ownerName ownerPhone profileImage coverImages menuImages cuisines location area city status rating diningSettings estimatedDeliveryTime estimatedDeliveryTimeMinutes featuredDish featuredPrice offer openingTime closingTime openDays isAcceptingOrders costForTwo',
-            match: cityValue
-                ? {
-                    $or: [
-                        { city: { $regex: cityValue, $options: 'i' } },
-                        { 'location.city': { $regex: cityValue, $options: 'i' } }
-                    ]
-                }
-                : {}
+            select: 'restaurantName restaurantNameNormalized ownerName ownerPhone profileImage coverImages menuImages cuisines location area city zoneId status rating diningSettings estimatedDeliveryTime estimatedDeliveryTimeMinutes featuredDish featuredPrice offer openingTime closingTime openDays isAcceptingOrders costForTwo',
+            match: restaurantMatch
         })
         .populate('categoryIds', 'name slug imageUrl')
         .lean();

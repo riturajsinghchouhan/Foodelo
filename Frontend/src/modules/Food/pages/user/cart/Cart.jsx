@@ -165,6 +165,10 @@ export default function Cart() {
   const [scheduledDate, setScheduledDate] = useState("")
   const [scheduledTime, setScheduledTime] = useState("")
   const [orderProgress, setOrderProgress] = useState(0)
+  const [showSavingsCongrats, setShowSavingsCongrats] = useState(false)
+  const [congratsSavingsAmount, setCongratssSavingsAmount] = useState(0)
+  const [congratsSavingsPercentage, setCongratssSavingsPercentage] = useState(0)
+  const [congratsSavingsItems, setCongratssSavingsItems] = useState([])
   const [showOrderSuccess, setShowOrderSuccess] = useState(false)
   const [placedOrderId, setPlacedOrderId] = useState(null)
   const [selectedAddressId, setSelectedAddressId] = useState(null)
@@ -198,6 +202,25 @@ export default function Cart() {
     orderSuccessAudioRef.current.play().catch((error) => {
       debugWarn("Order success sound blocked by browser:", error?.message || error)
     })
+  }, [showOrderSuccess])
+
+  // Auto-transition from savings congratulations to order success after 3 seconds
+  useEffect(() => {
+    if (!showSavingsCongrats) return
+    const timer = setTimeout(() => {
+      setShowSavingsCongrats(false)
+      setShowOrderSuccess(true)
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [showSavingsCongrats])
+
+  // Cleanup savings data when showing order success
+  useEffect(() => {
+    if (showOrderSuccess) {
+      setCongratssSavingsAmount(0)
+      setCongratssSavingsPercentage(0)
+      setCongratssSavingsItems([])
+    }
   }, [showOrderSuccess])
 
   // Restaurant and pricing state
@@ -496,7 +519,7 @@ export default function Cart() {
 
   // Lock body scroll and scroll to top when any full-screen modal opens
   useEffect(() => {
-    if (showPlacingOrder || showOrderSuccess) {
+    if (showPlacingOrder || showOrderSuccess || showSavingsCongrats) {
       // Lock body scroll
       document.body.style.overflow = 'hidden'
       document.body.style.position = 'fixed'
@@ -524,7 +547,7 @@ export default function Cart() {
       document.body.style.width = ''
       document.body.style.top = ''
     }
-  }, [showPlacingOrder, showOrderSuccess])
+  }, [showPlacingOrder, showOrderSuccess, showSavingsCongrats])
 
   // Fetch restaurant data when cart has items
   useEffect(() => {
@@ -1026,6 +1049,49 @@ export default function Cart() {
   const totalBeforeDiscount = subtotal + deliveryFee + platformFee + packagingFee + gstCharges
   const total = pricing?.total || (totalBeforeDiscount - discount)
   const savings = pricing?.savings ?? Math.max(0, totalBeforeDiscount - total)
+  
+  // Calculate platform pricing comparison savings
+  const platformPricingSavings = useMemo(() => {
+    let totalPlatformPrice = 0
+    let totalFoodelloPrice = 0
+    let comparison = []
+    let hasAnyPlatformPrice = false
+
+    cart.forEach(item => {
+      debugLog('Cart item:', item.name, 'priceOnOtherPlatforms:', item.priceOnOtherPlatforms, 'price:', item.price)
+      if (item.priceOnOtherPlatforms && item.priceOnOtherPlatforms > 0) {
+        hasAnyPlatformPrice = true
+        const itemQuantity = item.quantity || 1
+        const platformPrice = (item.priceOnOtherPlatforms || 0) * itemQuantity
+        const foodelloPrice = (item.price || 0) * itemQuantity
+        const itemSavings = Math.max(0, platformPrice - foodelloPrice)
+
+        totalPlatformPrice += platformPrice
+        totalFoodelloPrice += foodelloPrice
+
+        comparison.push({
+          name: item.name,
+          foodelloPrice: (item.price || 0),
+          platformPrice: item.priceOnOtherPlatforms,
+          savings: itemSavings,
+          quantity: itemQuantity
+        })
+      }
+    })
+
+    const totalSavings = Math.max(0, totalPlatformPrice - totalFoodelloPrice)
+    const savingsPercentage = totalPlatformPrice > 0 ? ((totalSavings / totalPlatformPrice) * 100).toFixed(1) : 0
+
+    debugLog('Platform pricing savings:', { hasPlatformPricing: hasAnyPlatformPrice, totalSavings, savingsPercentage })
+
+    return {
+      hasPlatformPricing: hasAnyPlatformPrice,
+      totalPlatformPrice,
+      totalSavings,
+      savingsPercentage,
+      items: comparison
+    }
+  }, [cart])
   const selectedPaymentLabel =
     selectedPaymentMethod === "wallet"
       ? "Wallet"
@@ -1676,7 +1742,14 @@ export default function Cart() {
       if (selectedPaymentMethod === "cash") {
         toast.success("Order placed with Cash on Delivery")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
-        setShowOrderSuccess(true)
+        if (platformPricingSavings.totalSavings > 0) {
+          setCongratssSavingsAmount(platformPricingSavings.totalSavings)
+          setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
+          setCongratssSavingsItems(platformPricingSavings.items)
+          setShowSavingsCongrats(true)
+        } else {
+          setShowOrderSuccess(true)
+        }
         window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
         clearCart()
         setNote("")
@@ -1694,7 +1767,14 @@ export default function Cart() {
       if (selectedPaymentMethod === "wallet") {
         toast.success("Order placed with Wallet payment")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
-        setShowOrderSuccess(true)
+        if (platformPricingSavings.totalSavings > 0) {
+          setCongratssSavingsAmount(platformPricingSavings.totalSavings)
+          setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
+          setCongratssSavingsItems(platformPricingSavings.items)
+          setShowSavingsCongrats(true)
+        } else {
+          setShowOrderSuccess(true)
+        }
         window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
         clearCart()
         setNote("")
@@ -1793,7 +1873,14 @@ export default function Cart() {
                 paymentId: verifyResponse.data.data?.payment?.paymentId
               })
               setPlacedOrderId(order._id || order.orderId)
-              setShowOrderSuccess(true)
+              if (platformPricingSavings.totalSavings > 0) {
+                setCongratssSavingsAmount(platformPricingSavings.totalSavings)
+                setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
+                setCongratssSavingsItems(platformPricingSavings.items)
+                setShowSavingsCongrats(true)
+              } else {
+                setShowOrderSuccess(true)
+              }
               window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
               clearCart()
               setIsPlacingOrder(false)
@@ -1879,11 +1966,15 @@ export default function Cart() {
 
   const handleGoToOrders = () => {
     setShowOrderSuccess(false)
+    setShowSavingsCongrats(false)
+    setCongratssSavingsAmount(0)
+    setCongratssSavingsPercentage(0)
+    setCongratssSavingsItems([])
     navigate(`/user/orders/${placedOrderId}?confirmed=true`)
   }
 
   // Empty cart state - but don't show if order success or placing order modal is active
-  if (cart.length === 0 && !showOrderSuccess && !showPlacingOrder) {
+  if (cart.length === 0 && !showOrderSuccess && !showPlacingOrder && !showSavingsCongrats) {
     return (
       <AnimatedPage className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a]">
         <div className="bg-white dark:bg-[#1a1a1a] border-b dark:border-gray-800 sticky top-0 z-10">
@@ -2516,18 +2607,15 @@ export default function Cart() {
                     <FileText className="h-5 w-5 text-gray-500 dark:text-gray-400" />
                     <div className="text-left">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <span className="text-base text-gray-800 dark:text-gray-200 font-semibold tracking-wide">Total Bill</span>
-                        {savings > 0 ? (
-                          <>
-                            <span className="text-base text-gray-400 dark:text-gray-500 line-through font-medium">{RUPEE_SYMBOL}{totalBeforeDiscount.toFixed(2)}</span>
-                            <span className="text-base font-bold text-gray-900 dark:text-white">{RUPEE_SYMBOL}{total.toFixed(2)}</span>
-                            <span className="text-[11px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded text-center ml-1 font-semibold border border-blue-200 dark:border-blue-800">
-                              You saved {RUPEE_SYMBOL}{savings.toFixed(0)}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-base font-bold text-gray-900 dark:text-white">{RUPEE_SYMBOL}{total.toFixed(2)}</span>
+                        <span className="text-base text-gray-800 dark:text-gray-200 font-semibold tracking-wide">To Pay</span>
+                        {platformPricingSavings.hasPlatformPricing && (
+                          <span className="text-base text-gray-400 dark:text-gray-500 line-through font-medium">
+                            {RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPrice.toFixed(2)}
+                          </span>
                         )}
+                        <span className="text-base font-bold text-gray-900 dark:text-white">
+                          {RUPEE_SYMBOL}{total.toFixed(2)}
+                        </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Incl. taxes and charges</p>
                     </div>
@@ -2541,6 +2629,7 @@ export default function Cart() {
                       <span className="text-gray-600 dark:text-gray-400">Item Total</span>
                       <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{subtotal.toFixed(2)}</span>
                     </div>
+
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">Delivery Fee</span>
                        <span className={deliveryFee === 0 ? "text-[#7e3866] font-medium" : "text-gray-800 dark:text-gray-200 font-medium"}>
@@ -2570,10 +2659,38 @@ export default function Cart() {
                          <span>-{RUPEE_SYMBOL}{discount.toFixed(2)}</span>
                        </div>
                     )}
-                    <div className="flex justify-between text-base font-bold pt-3 mt-1 border-t border-gray-100 dark:border-gray-800 text-gray-900 dark:text-white">
-                      <span>To Pay</span>
-                      <span>{RUPEE_SYMBOL}{total.toFixed(2)}</span>
-                    </div>
+
+                    {/* Platform Pricing Comparison - Bottom */}
+                    {platformPricingSavings.hasPlatformPricing && (
+                      <div className="rounded-lg bg-gradient-to-r from-[#7e3866]/5 to-[#7e3866]/10 dark:from-[#7e3866]/10 dark:to-[#7e3866]/15 border border-[#7e3866]/20 p-3 space-y-2 mt-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-[#7e3866]" />
+                            <span className="font-semibold text-[#7e3866]">Price on Other Platforms</span>
+                          </div>
+                          <span className="text-gray-700 dark:text-gray-300 font-medium">{RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPrice.toFixed(2)}</span>
+                        </div>
+                        {platformPricingSavings.items.length > 0 && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 border-t border-[#7e3866]/10 pt-2">
+                            {platformPricingSavings.items.slice(0, 2).map((item, idx) => (
+                              <div key={idx} className="flex justify-between">
+                                <span>{item.name} x{item.quantity}</span>
+                                <span className="font-medium text-[#7e3866]">-{RUPEE_SYMBOL}{item.savings.toFixed(0)}</span>
+                              </div>
+                            ))}
+                            {platformPricingSavings.items.length > 2 && (
+                              <div className="text-center font-semibold text-[#7e3866]">
+                                +{platformPricingSavings.items.length - 2} more items
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between text-xs font-bold text-white bg-[#7e3866] rounded px-2 py-1.5 -mx-3 -mb-3">
+                          <span>You save</span>
+                          <span>{RUPEE_SYMBOL}{platformPricingSavings.totalSavings.toFixed(0)} ({platformPricingSavings.savingsPercentage}%)</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2743,6 +2860,75 @@ export default function Cart() {
             </div>
           )}
 
+          {/* Savings Congratulations Page */}
+          {showSavingsCongrats && (
+            <div
+              className="fixed inset-0 z-[70] bg-gradient-to-br from-green-50 to-emerald-50 dark:from-[#0a1a0a] dark:to-[#0a2a0a] flex flex-col items-center justify-center h-screen w-screen overflow-hidden"
+              style={{ animation: 'fadeIn 0.3s ease-out' }}
+            >
+              {/* Confetti Animation */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {[...Array(40)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-2 h-2 rounded-full"
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                      top: `-10%`,
+                      backgroundColor: ['#22c55e', '#10b981', '#34d399', '#6ee7b7'][Math.floor(Math.random() * 4)],
+                      animation: `confettiFall ${2.5 + Math.random() * 1.5}s linear ${Math.random() * 1}s infinite`,
+                      transform: `rotate(${Math.random() * 360}deg)`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Content */}
+              <div className="relative z-10 flex flex-col items-center px-6 py-12">
+                {/* Trophy/Congrats Icon */}
+                <div
+                  className="mb-8"
+                  style={{ animation: 'bounce 0.8s ease-in-out infinite' }}
+                >
+                  <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full flex items-center justify-center shadow-2xl shadow-yellow-300/60 dark:shadow-yellow-900/40">
+                    <span className="text-5xl">🎉</span>
+                  </div>
+                </div>
+
+                {/* Congratulations Text */}
+                <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4 text-center">
+                  Congratulations!
+                </h1>
+
+                {/* Savings Amount */}
+                <div className="text-center">
+                  <p className="text-gray-600 dark:text-gray-300 text-lg mb-2">You saved</p>
+                  <div className="text-5xl md:text-6xl font-bold text-green-600 dark:text-green-400 mb-4">
+                    {RUPEE_SYMBOL}{congratsSavingsAmount.toFixed(0)}
+                  </div>
+                  <p className="text-gray-600 dark:text-gray-400 text-base">
+                    {congratsSavingsPercentage}% cheaper than other platforms
+                  </p>
+                </div>
+
+                {/* Items breakdown */}
+                {congratsSavingsItems.length > 0 && (
+                  <div className="mt-8 max-w-sm bg-white dark:bg-[#1a1a1a] rounded-lg p-4 border border-green-200 dark:border-green-900/50">
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 text-center">Savings on your items:</p>
+                    <div className="space-y-2">
+                      {congratsSavingsItems.slice(0, 3).map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">{item.name}</span>
+                          <span className="font-semibold text-green-600 dark:text-green-400">-{RUPEE_SYMBOL}{item.savings.toFixed(0)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Order Success Celebration Page */}
           {showOrderSuccess && (
             <div
@@ -2840,6 +3026,32 @@ export default function Cart() {
                   <h3 className="text-3xl font-bold text-[#7e3866] dark:text-[#a65d8a] mb-2">Order Placed!</h3>
                   <p className="text-gray-600 dark:text-gray-300">Your delicious food is on its way</p>
                 </div>
+
+                {/* Platform Pricing Savings Celebration */}
+                {platformPricingSavings.hasPlatformPricing && platformPricingSavings.totalSavings > 0 && (
+                  <motion.div
+                    className="mt-8 w-full max-w-sm bg-gradient-to-br from-[#7e3866]/10 to-[#7e3866]/5 dark:from-[#7e3866]/20 dark:to-[#7e3866]/10 border border-[#7e3866]/30 rounded-2xl p-4"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.6, delay: 1.0 }}
+                  >
+                    <div className="flex items-center justify-center gap-2 mb-3">
+                      <Sparkles className="h-5 w-5 text-[#7e3866]" />
+                      <span className="font-bold text-[#7e3866]">You Saved on this Order</span>
+                    </div>
+                    <div className="text-center space-y-1">
+                      <div className="text-4xl font-black text-[#7e3866]">
+                        {RUPEE_SYMBOL}{platformPricingSavings.totalSavings.toFixed(0)}
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {platformPricingSavings.savingsPercentage}% cheaper than other platforms
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                        By ordering with us instead of Swiggy, Zomato, & others
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
 
                 {/* Action Button */}
                  <button

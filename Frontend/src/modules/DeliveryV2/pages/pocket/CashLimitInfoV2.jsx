@@ -29,14 +29,24 @@ export const CashLimitInfoV2 = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const profileRes = await deliveryAPI.getProfile();
-        const profile = profileRes?.data?.data?.profile || {};
-        
-        const totalLimit = profile.totalCashLimit || 0;
-        const cashInHand = profile.cashInHand || 0;
-        const deductions = profile.deductions || 0;
-        const withdrawals = profile.totalWithdrawn || 0;
-        const available = profile.availableCashLimit || 0;
+            const [walletRes, limitRes] = await Promise.all([
+               deliveryAPI.getWallet(),
+               deliveryAPI.getCashLimit().catch(() => null),
+            ]);
+
+            const wallet = walletRes?.data?.data?.wallet || {};
+            const limitSettings = limitRes?.data?.data || {};
+
+            const totalLimit = Number(
+               wallet.totalCashLimit ?? limitSettings.deliveryCashLimit ?? 0,
+            ) || 0;
+            const cashInHand = Number(wallet.cashInHand) || 0;
+            const deductions = Number(wallet.deductions) || 0;
+            const withdrawals = Number(wallet.totalWithdrawn) || 0;
+            const availableRaw = Number(wallet.availableCashLimit);
+            const available = Number.isFinite(availableRaw)
+               ? availableRaw
+               : Math.max(0, totalLimit - cashInHand - deductions);
 
         setWalletState({
            totalCashLimit: totalLimit,

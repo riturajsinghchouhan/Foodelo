@@ -12,6 +12,7 @@ import { FaLocationDot } from "react-icons/fa6"
 import { AnimatePresence, motion } from "framer-motion"
 import quickSpicyLogo from "@food/assets/quicky-spicy-logo.png"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
+import api from "@food/api"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -29,6 +30,7 @@ export default function DesktopNavbar({ showLogo = true }) {
     const [logoUrl, setLogoUrl] = useState(null)
     const [companyName, setCompanyName] = useState(null)
     const [hasScrolledPastBanner, setHasScrolledPastBanner] = useState(false)
+    const [under250PriceLimit, setUnder250PriceLimit] = useState(250)
     const navRef = useRef(null)
     const cartCount = getCartCount()
 
@@ -140,6 +142,23 @@ export default function DesktopNavbar({ showLogo = true }) {
             window.removeEventListener("resize", handleScroll)
         }
     }, [isBannerRoute])
+
+    // Fetch landing settings to get dynamic price limit
+    useEffect(() => {
+        let cancelled = false
+        api.get('/food/landing/settings/public')
+            .then((res) => {
+                if (cancelled) return
+                const settings = res?.data?.data
+                if (settings && typeof settings.under250PriceLimit === 'number') {
+                    setUnder250PriceLimit(settings.under250PriceLimit)
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setUnder250PriceLimit(250)
+            })
+        return () => { cancelled = true }
+    }, [])
 
     return (
         <nav
@@ -327,7 +346,7 @@ export default function DesktopNavbar({ showLogo = true }) {
                                     : "text-gray-600 dark:text-gray-400 hover:text-[#7e3866]"
                                     }`}
                             >
-                                <span className="text-sm font-bold tracking-wide uppercase">Under 250</span>
+                                <span className="text-sm font-bold tracking-wide uppercase">Under ₹{under250PriceLimit}</span>
                                 {isUnder250 && (
                                     <motion.div
                                         layoutId="navIndicator"

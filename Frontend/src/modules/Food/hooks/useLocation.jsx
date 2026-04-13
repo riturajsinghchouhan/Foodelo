@@ -1537,6 +1537,11 @@ export function useLocation() {
     setError(null)
 
     try {
+      try {
+        localStorage.setItem("deliveryAddressMode", "current")
+        window.dispatchEvent(new CustomEvent("deliveryAddressModeUpdated"))
+      } catch {}
+
       // Clear cached location to force fresh fetch
       localStorage.removeItem("userLocation")
       debugLog("??? Cleared cached location from localStorage")

@@ -129,27 +129,30 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         0
     );
 
-    // Block only pending withdrawals from available balance.
-    // Approved/rejected requests are processed records and should not keep locking payout.
-    const pendingWithdrawalsAgg = await FoodRestaurantWithdrawal.aggregate([
+    // Deduct all effective withdrawals from available balance.
+    // Both pending and approved reduce withdrawable amount; rejected should not.
+    const effectiveWithdrawalsAgg = await FoodRestaurantWithdrawal.aggregate([
         {
             $match: {
                 restaurantId: rid,
                 $expr: {
-                    $eq: [{ $toLower: { $trim: { input: '$status' } } }, 'pending']
+                    $in: [
+                        { $toLower: { $trim: { input: '$status' } } },
+                        ['pending', 'approved']
+                    ]
                 }
             }
         },
         { $group: { _id: null, total: { $sum: '$amount' } } }
     ]);
-    const totalPendingWithdrawals = Number(pendingWithdrawalsAgg?.[0]?.total || 0);
-    const availableBalance = Math.max(0, globalEstimatedPayout - totalPendingWithdrawals);
+    const totalEffectiveWithdrawals = Number(effectiveWithdrawalsAgg?.[0]?.total || 0);
+    const availableBalance = Math.max(0, globalEstimatedPayout - totalEffectiveWithdrawals);
 
     const currentCycle = {
         start: { ...nowWindow.startMeta },
         end: { ...nowWindow.endMeta },
         totalEarnings: currentCycleEstimatedPayout, // We still show current cycle earnings label
-        totalWithdrawn: totalPendingWithdrawals,
+        totalWithdrawn: totalEffectiveWithdrawals,
         estimatedPayout: availableBalance, // This is what UI shows as "Estimated Payout" (Available Balance)
         totalOrders: currentCycleOrders.length,
         payoutDate: null,

@@ -60,7 +60,7 @@ export default function LandingPageManagement() {
   const diningBannersFileInputRef = useRef(null)
 
   // Settings
-  const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [] })
+  const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250 })
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [recommendedSearchQuery, setRecommendedSearchQuery] = useState("")
@@ -1033,13 +1033,14 @@ export default function LandingPageManagement() {
         const nextSettings = response.data.data.settings || {}
         setSettings({
           exploreMoreHeading: nextSettings.exploreMoreHeading || "Explore More",
-          recommendedRestaurantIds: Array.isArray(nextSettings.recommendedRestaurantIds) ? nextSettings.recommendedRestaurantIds : []
+          recommendedRestaurantIds: Array.isArray(nextSettings.recommendedRestaurantIds) ? nextSettings.recommendedRestaurantIds : [],
+          under250PriceLimit: Number(nextSettings.under250PriceLimit) || 250
         })
       }
     } catch (err) {
       // Silently handle 401/404 errors - endpoints may not exist yet, use default settings
       if (err.response?.status === 401 || err.response?.status === 404) {
-        setSettings({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [] }) // Use default settings
+        setSettings({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250 }) // Use default settings
         setError(null) // Clear any previous error
       } else {
         // Filter out token-related errors
@@ -1058,7 +1059,8 @@ export default function LandingPageManagement() {
       setSuccess(null)
       const response = await api.patch('/food/hero-banners/landing/settings', {
         exploreMoreHeading: settings.exploreMoreHeading,
-        recommendedRestaurantIds: Array.isArray(settings.recommendedRestaurantIds) ? settings.recommendedRestaurantIds : []
+        recommendedRestaurantIds: Array.isArray(settings.recommendedRestaurantIds) ? settings.recommendedRestaurantIds : [],
+        under250PriceLimit: Number(settings.under250PriceLimit) || 250
       }, getAuthConfig())
       if (response.data.success) {
         const savedSettings = response.data.data?.settings || {}
@@ -1067,7 +1069,8 @@ export default function LandingPageManagement() {
           exploreMoreHeading: savedSettings.exploreMoreHeading || prev.exploreMoreHeading,
           recommendedRestaurantIds: Array.isArray(savedSettings.recommendedRestaurantIds)
             ? savedSettings.recommendedRestaurantIds
-            : prev.recommendedRestaurantIds
+            : prev.recommendedRestaurantIds,
+          under250PriceLimit: Number(savedSettings.under250PriceLimit) || prev.under250PriceLimit
         }))
         setSuccess('Settings saved successfully!')
         setTimeout(() => setSuccess(null), 3000)
@@ -1677,6 +1680,21 @@ export default function LandingPageManagement() {
                       className="mt-2"
                       placeholder="Explore More"
                     />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="under-250-price">Under Price Limit (₹)</Label>
+                    <Input
+                      id="under-250-price"
+                      type="number"
+                      min="1"
+                      max="10000"
+                      value={settings.under250PriceLimit || 250}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, under250PriceLimit: Math.max(1, Number(e.target.value)) }))}
+                      className="mt-2"
+                      placeholder="250"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Button will show "Under ₹{settings.under250PriceLimit || 250}" on user home page</p>
                   </div>
 
                   <div>

@@ -105,6 +105,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   const [simProgress, setSimProgress] = useState(0); // 0 to 1 between points
   const [activePolyline, setActivePolyline] = useState(null);
   const mapRef = useRef(null);
+  const simInitializedRef = useRef(false);
 
   const isLoggingOut = useRef(false);
   const handleLogout = useCallback(() => {
@@ -234,14 +235,73 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     { title: "Insurance", subtitle: "Policy & claim help", icon: <AlertTriangle className="text-green-600" />, phone: emergencyNumbers.insurance },
   ];
 
-  // Reset simulation when path, order or mode changes
+  // Reset simulation when trip phase/order/mode changes.
+  // Do not reset on each route refresh, otherwise marker appears frozen.
   useEffect(() => {
     if (isSimMode) {
       console.log('[SimAuto] Resetting simulation playhead...');
       setSimIndex(0);
       setSimProgress(0);
+      simInitializedRef.current = false;
+    } else {
+      simInitializedRef.current = false;
     }
-  }, [simPath, tripStatus, isSimMode]);
+  }, [tripStatus, isSimMode, activeOrder?._id]);
+
+  // Ensure simulation starts from the first route point once route is ready.
+  useEffect(() => {
+    if (!isSimMode || simInitializedRef.current || simPath.length < 2) return;
+    const start = simPath[0];
+    if (
+      start &&
+      Number.isFinite(Number(start.lat)) &&
+      Number.isFinite(Number(start.lng))
+    ) {
+      setRiderLocation({ lat: Number(start.lat), lng: Number(start.lng), heading: 0 });
+      simInitializedRef.current = true;
+    }
+  }, [isSimMode, simPath, setRiderLocation]);
+
+  // Fallback path for simulation when Directions API doesn't return a usable path.
+  useEffect(() => {
+    if (!isSimMode || simPath.length > 1 || !activeOrder) return;
+
+    const parsePoint = (raw) => {
+      if (!raw) return null;
+      const lat = Number(raw.lat ?? raw.latitude);
+      const lng = Number(raw.lng ?? raw.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return { lat, lng };
+    };
+
+    const rider = useDeliveryStore.getState().riderLocation;
+    const riderPoint = parsePoint(rider);
+    const targetPoint =
+      tripStatus === 'PICKED_UP' || tripStatus === 'REACHED_DROP'
+        ? parsePoint(activeOrder.customerLocation)
+        : parsePoint(activeOrder.restaurantLocation);
+
+    if (!riderPoint || !targetPoint) return;
+
+    const distance = getHaversineDistance(
+      riderPoint.lat,
+      riderPoint.lng,
+      targetPoint.lat,
+      targetPoint.lng,
+    );
+    if (!Number.isFinite(distance) || distance < 10) return;
+
+    const steps = 60;
+    const fallbackPath = Array.from({ length: steps + 1 }, (_, i) => {
+      const t = i / steps;
+      return {
+        lat: riderPoint.lat + (targetPoint.lat - riderPoint.lat) * t,
+        lng: riderPoint.lng + (targetPoint.lng - riderPoint.lng) * t,
+      };
+    });
+
+    setSimPath(fallbackPath);
+  }, [isSimMode, simPath, activeOrder, tripStatus]);
 
   // Auto-restore modal when status or content changes
 
@@ -286,6 +346,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
           const syncedOrder = {
             ...serverData,
+            orderId: serverData.orderId || serverData.order_id || serverData._id,
             restaurantLocation: resLoc,
             customerLocation: cusLoc
           };
@@ -480,7 +541,10 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           null;
 
         if (!cancelled && currentPayload && (currentPayload._id || currentPayload.orderId)) {
-          setActiveOrder(currentPayload);
+          setActiveOrder({
+            ...currentPayload,
+            orderId: currentPayload.orderId || currentPayload.order_id || currentPayload._id,
+          });
           return;
         }
 
@@ -709,19 +773,42 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                   onClick={() => {
                     const nextSimState = !isSimMode;
                     setIsSimMode(nextSimState);
-                    
+
                     if (nextSimState) {
                       toast.warning('Simulation Mode Active');
-                      // Initialize position if null
-                      if (!useDeliveryStore.getState().riderLocation && activeOrder) {
-                        const target = activeOrder.restaurantLocation || activeOrder.customerLocation;
-                        if (target) {
-                          setRiderLocation({ 
-                            lat: parseFloat(target.lat || target.latitude) + 0.001, 
-                            lng: parseFloat(target.lng || target.longitude) + 0.001, 
-                            heading: 0 
-                          });
-                        }
+
+                      const parsePoint = (raw) => {
+                        if (!raw) return null;
+                        const lat = Number(raw.lat ?? raw.latitude);
+                        const lng = Number(raw.lng ?? raw.longitude);
+                        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                        return { lat, lng };
+                      };
+
+                      const target =
+                        tripStatus === 'PICKED_UP' || tripStatus === 'REACHED_DROP'
+                          ? parsePoint(activeOrder?.customerLocation)
+                          : parsePoint(activeOrder?.restaurantLocation);
+
+                      const currentRider = useDeliveryStore.getState().riderLocation;
+                      const riderPoint = parsePoint(currentRider) || (target
+                        ? { lat: target.lat + 0.001, lng: target.lng + 0.001 }
+                        : null);
+
+                      if (riderPoint) {
+                        setRiderLocation({ lat: riderPoint.lat, lng: riderPoint.lng, heading: 0 });
+                      }
+
+                      if (riderPoint && target && (!simPath || simPath.length < 2)) {
+                        const steps = 60;
+                        const fallbackPath = Array.from({ length: steps + 1 }, (_, i) => {
+                          const t = i / steps;
+                          return {
+                            lat: riderPoint.lat + (target.lat - riderPoint.lat) * t,
+                            lng: riderPoint.lng + (target.lng - riderPoint.lng) * t,
+                          };
+                        });
+                        setSimPath(fallbackPath);
                       }
                     }
                   }}

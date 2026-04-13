@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import { FoodOrder, FoodSettings } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
+import { FoodDeliveryCashDeposit } from '../../delivery/models/foodDeliveryCashDeposit.model.js';
+import { FoodDeliveryCashLimit } from '../../admin/models/deliveryCashLimit.model.js';
 import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
 import { logger } from '../../../../utils/logger.js';
 import { config } from '../../../../config/env.js';
@@ -14,6 +16,73 @@ import {
   notifyOwnerSafely,
   notifyOwnersSafely,
 } from './order.helpers.js';
+
+async function filterPartnersByCashLimit(partners = []) {
+  if (!Array.isArray(partners) || partners.length === 0) return [];
+
+  const limitDoc = await FoodDeliveryCashLimit.findOne({ isActive: true })
+    .sort({ createdAt: -1 })
+    .lean();
+  const totalCashLimit = Number(limitDoc?.deliveryCashLimit || 0);
+
+  // Treat missing/non-positive setting as "no cap" to avoid blocking all dispatch.
+  if (!Number.isFinite(totalCashLimit) || totalCashLimit <= 0) return partners;
+
+  const partnerIds = partners
+    .map((p) => p?.partnerId || p?._id)
+    .filter(Boolean)
+    .map((id) => new mongoose.Types.ObjectId(String(id)));
+
+  if (partnerIds.length === 0) return [];
+
+  const [cashAgg, depositsAgg] = await Promise.all([
+    FoodOrder.aggregate([
+      {
+        $match: {
+          'dispatch.deliveryPartnerId': { $in: partnerIds },
+          orderStatus: 'delivered',
+          'payment.method': 'cash',
+        },
+      },
+      {
+        $group: {
+          _id: '$dispatch.deliveryPartnerId',
+          grossCashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } },
+        },
+      },
+    ]),
+    FoodDeliveryCashDeposit.aggregate([
+      {
+        $match: {
+          deliveryPartnerId: { $in: partnerIds },
+          status: 'Completed',
+        },
+      },
+      {
+        $group: {
+          _id: '$deliveryPartnerId',
+          depositedCash: { $sum: { $ifNull: ['$amount', 0] } },
+        },
+      },
+    ]),
+  ]);
+
+  const grossCashByPartner = new Map(
+    (cashAgg || []).map((row) => [String(row._id), Number(row.grossCashCollected || 0)]),
+  );
+  const depositedByPartner = new Map(
+    (depositsAgg || []).map((row) => [String(row._id), Number(row.depositedCash || 0)]),
+  );
+
+  return partners.filter((p) => {
+    const partnerId = String(p?.partnerId || p?._id || '');
+    if (!partnerId) return false;
+    const grossCash = grossCashByPartner.get(partnerId) || 0;
+    const depositedCash = depositedByPartner.get(partnerId) || 0;
+    const cashInHand = Math.max(0, grossCash - depositedCash);
+    return cashInHand < totalCashLimit;
+  });
+}
 
 async function listNearbyOnlineDeliveryPartners(
   restaurantId,
@@ -33,9 +102,13 @@ async function listNearbyOnlineDeliveryPartners(
       .limit(Math.max(1, limit))
       .lean();
 
+    const cashEligiblePartners = await filterPartnersByCashLimit(
+      partners.map((p) => ({ partnerId: p._id, ...p })),
+    );
+
     return {
       restaurant: null,
-      partners: partners.map((p) => ({ partnerId: p._id, distanceKm: null })),
+      partners: cashEligiblePartners.map((p) => ({ partnerId: p.partnerId || p._id, distanceKm: null })),
     };
   }
 
@@ -90,7 +163,9 @@ async function listNearbyOnlineDeliveryPartners(
     ? picked.filter(p => p.status === 'approved')
     : picked;
 
-  return { partners: final };
+  const cashEligibleFinal = await filterPartnersByCashLimit(final);
+
+  return { partners: cashEligibleFinal };
 }
 
 export async function getDispatchSettings() {
@@ -116,9 +191,18 @@ export async function tryAutoAssign(orderId, options = {}) {
   const attempt = options.attempt || 1;
   const lockTimeout = 55000; // 55 seconds lock interval
 
+  const dispatchableStatuses = new Set([
+    'confirmed',
+    'preparing',
+    'ready_for_pickup',
+    'ready',
+    'picked_up',
+  ]);
+
   const order = await FoodOrder.findOneAndUpdate(
     {
       _id: new mongoose.Types.ObjectId(orderId),
+      orderStatus: { $in: Array.from(dispatchableStatuses) },
       $or: [
         { 'dispatch.status': 'unassigned' },
         {
@@ -136,7 +220,7 @@ export async function tryAutoAssign(orderId, options = {}) {
   ).populate(['restaurantId', 'userId']);
 
   if (!order) {
-    logger.info(`tryAutoAssign: Skip for ${orderId} (already dispatching, accepted, or multi-attempt lock active).`);
+    logger.info(`tryAutoAssign: Skip for ${orderId} (not dispatchable, already dispatching, accepted, or multi-attempt lock active).`);
     return null;
   }
 

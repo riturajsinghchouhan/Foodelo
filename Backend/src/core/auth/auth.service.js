@@ -24,6 +24,74 @@ const ROLES = {
   ADMIN: "ADMIN",
 };
 
+const toSafeImageUrl = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") return value.url || value.secure_url || "";
+  return "";
+};
+
+const sanitizeUserForAuthResponse = (userDoc = {}) => {
+  const id = userDoc?._id?.toString?.() || userDoc?.id?.toString?.() || userDoc?._id || userDoc?.id || null;
+  return {
+    id,
+    _id: id,
+    name: userDoc?.name || "",
+    phone: userDoc?.phone || "",
+    email: userDoc?.email || "",
+    role: userDoc?.role || ROLES.USER,
+    isVerified: Boolean(userDoc?.isVerified),
+    isActive: userDoc?.isActive !== false,
+    profileImage: toSafeImageUrl(userDoc?.profileImage),
+    gender: userDoc?.gender || null,
+    referralCode: userDoc?.referralCode || "",
+    refCode: userDoc?.referralCode || "",
+    referralCount: Number(userDoc?.referralCount || 0),
+    walletAmount: Number(userDoc?.walletAmount || 0),
+  };
+};
+
+const sanitizeRestaurantForAuthResponse = (restaurantDoc = {}) => {
+  const id =
+    restaurantDoc?._id?.toString?.() ||
+    restaurantDoc?.id?.toString?.() ||
+    restaurantDoc?._id ||
+    restaurantDoc?.id ||
+    null;
+
+  return {
+    id,
+    _id: id,
+    name: restaurantDoc?.restaurantName || restaurantDoc?.name || "",
+    restaurantName: restaurantDoc?.restaurantName || "",
+    phone: restaurantDoc?.ownerPhone || restaurantDoc?.primaryContactNumber || "",
+    email: restaurantDoc?.ownerEmail || "",
+    status: restaurantDoc?.status || "",
+    profileImage: toSafeImageUrl(restaurantDoc?.profileImage),
+  };
+};
+
+const sanitizeDeliveryForAuthResponse = (deliveryDoc = {}) => {
+  const id =
+    deliveryDoc?._id?.toString?.() ||
+    deliveryDoc?.id?.toString?.() ||
+    deliveryDoc?._id ||
+    deliveryDoc?.id ||
+    null;
+
+  return {
+    id,
+    _id: id,
+    name: deliveryDoc?.name || "",
+    phone: deliveryDoc?.phone || "",
+    email: deliveryDoc?.email || "",
+    status: deliveryDoc?.status || "",
+    profileImage: toSafeImageUrl(deliveryDoc?.profilePhoto),
+    walletAmount: Number(deliveryDoc?.walletAmount || 0),
+    refCode: deliveryDoc?.referralCode || "",
+  };
+};
+
 export const requestUserOtp = async (phone) => {
   if (!phone) {
     throw new ValidationError("Phone is required");
@@ -209,7 +277,13 @@ export const verifyUserOtpAndLogin = async (
     expiresAt,
   });
 
-  return { accessToken, refreshToken, user, isNewUser };
+  return {
+    token: accessToken,
+    accessToken,
+    refreshToken,
+    user: sanitizeUserForAuthResponse(user),
+    isNewUser,
+  };
 };
 
 export const adminLogin = async (email, password) => {
@@ -331,9 +405,10 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   });
 
   return {
+    token: accessToken,
     accessToken,
     refreshToken,
-    user: restaurant,
+    user: sanitizeRestaurantForAuthResponse(restaurant?.toObject?.() || restaurant),
     needsRegistration: false,
   };
 };
@@ -429,9 +504,12 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
   });
 
   return {
+    token: accessToken,
     accessToken,
     refreshToken,
-    user: deliveryPartner,
+    user: sanitizeDeliveryForAuthResponse(
+      deliveryPartner?.toObject?.() || deliveryPartner,
+    ),
     needsRegistration: false,
   };
 };

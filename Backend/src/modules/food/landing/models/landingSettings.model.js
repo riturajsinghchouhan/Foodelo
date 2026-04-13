@@ -34,6 +34,12 @@ const foodLandingSettingsSchema = new mongoose.Schema(
         showGourmet: {
             type: Boolean,
             default: true
+        },
+        under250PriceLimit: {
+            type: Number,
+            default: 250,
+            min: 1,
+            max: 10000
         }
     },
     {

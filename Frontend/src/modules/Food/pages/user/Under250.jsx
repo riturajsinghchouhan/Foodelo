@@ -92,6 +92,7 @@ export default function Under250() {
   const [under250Restaurants, setUnder250Restaurants] = useState([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [hasScrolledPastBanner, setHasScrolledPastBanner] = useState(false)
+  const [under250PriceLimit, setUnder250PriceLimit] = useState(250)
   const bannerShellRef = useRef(null)
   const stickyHeaderRef = useRef(null)
   const autoSlideIntervalRef = useRef(null)
@@ -251,6 +252,24 @@ export default function Under250() {
     return () => { cancelled = true }
   }, [])
 
+  // Fetch landing settings to get dynamic price limit
+  useEffect(() => {
+    let cancelled = false
+    api.get('/food/landing/settings/public')
+      .then((res) => {
+        if (cancelled) return
+        const settings = res?.data?.data
+        if (settings && typeof settings.under250PriceLimit === 'number') {
+          setUnder250PriceLimit(settings.under250PriceLimit)
+        }
+      })
+      .catch(() => {
+        // Default to 250 if fetch fails
+        setUnder250PriceLimit(250)
+      })
+    return () => { cancelled = true }
+  }, [])
+
   useEffect(() => {
     setCurrentBannerIndex((prev) => {
       if (bannerImages.length === 0) return 0
@@ -355,7 +374,7 @@ export default function Under250() {
               const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurantId)
               const menu = getMenuFromResponse(menuResponse)
               const menuItems = flattenMenuItems(menu)
-                .filter((item) => Number(item?.price || 0) <= 250 && item?.isAvailable !== false)
+                .filter((item) => Number(item?.price || 0) <= under250PriceLimit && item?.isAvailable !== false)
                 .map((item) => {
                   const foodType = String(item?.foodType || "").toLowerCase()
                   const isVeg = foodType.includes("veg") && !foodType.includes("non")
@@ -438,7 +457,7 @@ export default function Under250() {
     }
 
     fetchRestaurantsUnder250()
-  }, [zoneId, isOutOfService, location?.latitude, location?.longitude])
+  }, [zoneId, isOutOfService, location?.latitude, location?.longitude, under250PriceLimit])
 
   // Fetch categories from backend (no static fallback list)
   useEffect(() => {
@@ -637,6 +656,7 @@ export default function Under250() {
       restaurant: restaurant,
       description: item.description || "",
       originalPrice: item.originalPrice || item.price,
+      priceOnOtherPlatforms: item.priceOnOtherPlatforms || null, // Include platform pricing for savings display
     }
 
     // Get source position for animation from event target
@@ -999,7 +1019,7 @@ export default function Under250() {
           <div className="flex justify-center items-center py-12">
             <div className="text-gray-500 dark:text-gray-400">
               {under250Restaurants.length === 0
-                ? `No restaurants with dishes under ${RUPEE_SYMBOL}250 found.`
+                ? `No restaurants with dishes under ${RUPEE_SYMBOL}${under250PriceLimit} found.`
                 : "No restaurants match the selected filters."}
             </div>
           </div>

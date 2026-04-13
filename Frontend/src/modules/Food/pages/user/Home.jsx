@@ -455,6 +455,7 @@ export default function Home() {
   const [landingExploreMore, setLandingExploreMore] = useState([]);
   const [exploreMoreHeading, setExploreMoreHeading] = useState("Explore More");
   const [recommendedRestaurantIds, setRecommendedRestaurantIds] = useState([]);
+  const [under250PriceLimit, setUnder250PriceLimit] = useState(250);
   const [
     recommendedRestaurantsFromSettings,
     setRecommendedRestaurantsFromSettings,
@@ -935,6 +936,7 @@ export default function Home() {
         const settings = settingsRes?.data?.data || {};
         setExploreMoreHeading(settings.exploreMoreHeading || "Explore More");
         setRecommendedRestaurantIds(settings.recommendedRestaurantIds || []);
+        setUnder250PriceLimit(Number(settings.under250PriceLimit) || 250);
         setRecommendedRestaurantsFromSettings(
           settings.recommendedRestaurants || [],
         );
@@ -1294,6 +1296,60 @@ export default function Home() {
     return null;
   }, [defaultSavedAddress]);
 
+  const effectiveLocation = useMemo(() => {
+    let deliveryAddressMode = "saved";
+    try {
+      deliveryAddressMode =
+        localStorage.getItem("deliveryAddressMode") || "saved";
+    } catch {
+      deliveryAddressMode = "saved";
+    }
+
+    if (deliveryAddressMode === "current") {
+      return location;
+    }
+
+    if (
+      defaultSavedAddressLocation &&
+      Number.isFinite(defaultSavedAddressLocation.latitude) &&
+      Number.isFinite(defaultSavedAddressLocation.longitude)
+    ) {
+      const resolvedAddress = formatSavedAddress(defaultSavedAddress);
+      return {
+        ...(location || {}),
+        latitude: defaultSavedAddressLocation.latitude,
+        longitude: defaultSavedAddressLocation.longitude,
+        area:
+          defaultSavedAddress?.additionalDetails ||
+          defaultSavedAddress?.street ||
+          defaultSavedAddress?.area ||
+          location?.area ||
+          "",
+        city: defaultSavedAddress?.city || location?.city || "",
+        state: defaultSavedAddress?.state || location?.state || "",
+        address:
+          resolvedAddress ||
+          defaultSavedAddress?.address ||
+          location?.address ||
+          "",
+        formattedAddress:
+          resolvedAddress ||
+          defaultSavedAddress?.formattedAddress ||
+          location?.formattedAddress ||
+          "",
+      };
+    }
+
+    return location;
+  }, [
+    defaultSavedAddress,
+    defaultSavedAddressLocation,
+    formatSavedAddress,
+    location,
+  ]);
+
+  const { zoneId: effectiveZoneId } = useZone(effectiveLocation);
+
   const {
     isOutOfService: isSavedAddressOutOfService,
     loading: savedAddressZoneLoading,
@@ -1380,11 +1436,11 @@ export default function Home() {
 
         // Always send user coordinates when available so backend can compute distance/sort.
         if (
-          Number.isFinite(location?.latitude) &&
-          Number.isFinite(location?.longitude)
+          Number.isFinite(effectiveLocation?.latitude) &&
+          Number.isFinite(effectiveLocation?.longitude)
         ) {
-          params.lat = location.latitude;
-          params.lng = location.longitude;
+          params.lat = effectiveLocation.latitude;
+          params.lng = effectiveLocation.longitude;
         }
 
         // Sort by
@@ -1439,12 +1495,21 @@ export default function Home() {
           params.trusted = "true";
         }
 
-        // IMPORTANT:
-        // Do NOT send zoneId here by default.
-        // Backend treats zoneId as a hard filter (only restaurants in that zone / polygon),
-        // but homepage UX is "show all restaurants; optionally style out-of-zone".
-        // If in future you add an explicit "Show only my zone" toggle, then pass params.zoneId.
-        // Note: We show all restaurants regardless of zone, but apply grayscale styling if user is out of service
+        if (effectiveZoneId) {
+          params.zoneId = effectiveZoneId;
+        }
+
+        const normalizedUserCity = String(effectiveLocation?.city || "")
+          .trim()
+          .toLowerCase();
+        const hasUsableUserCity =
+          normalizedUserCity &&
+          normalizedUserCity !== "current location" &&
+          normalizedUserCity !== "unknown city" &&
+          normalizedUserCity !== "select location";
+        if (hasUsableUserCity) {
+          params.city = String(effectiveLocation.city).trim();
+        }
 
         debugLog("Fetching restaurants with params:", params);
         const response = await restaurantAPI.getRestaurants(params);
@@ -1484,11 +1549,41 @@ export default function Home() {
           };
 
           // Get user coordinates
-          const userLat = location?.latitude;
-          const userLng = location?.longitude;
+          const userLat = effectiveLocation?.latitude;
+          const userLng = effectiveLocation?.longitude;
 
           // Transform API data to match expected format
-          const transformedRestaurants = restaurantsArray
+          const normalizeCityValue = (value) =>
+            String(value || "")
+              .trim()
+              .split(",")[0]
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, "")
+              .replace(/\s+/g, " ")
+              .trim();
+
+          const strictCityRestaurants = restaurantsArray.filter((restaurant) => {
+            if (!hasUsableUserCity) return true;
+
+            const cityCandidates = [
+              restaurant?.city,
+              restaurant?.location?.city,
+              restaurant?.address?.city,
+              restaurant?.onboarding?.step1?.city,
+              restaurant?.onboarding?.step1?.location?.city,
+            ];
+
+            const restaurantCity = cityCandidates
+              .map((candidate) => normalizeCityValue(candidate))
+              .find(Boolean);
+
+            if (!restaurantCity) return false;
+
+            const userCity = normalizeCityValue(effectiveLocation?.city);
+            return restaurantCity === userCity;
+          });
+
+          const transformedRestaurants = strictCityRestaurants
             .filter((restaurant) => {
               const name = (restaurant.restaurantName || restaurant.name || "").toLowerCase()
               return true
@@ -1743,7 +1838,13 @@ export default function Home() {
         }
       }
     },
-    [extractImages, buildRestaurantImageCandidates, location?.latitude, location?.longitude],
+    [
+      extractImages,
+      buildRestaurantImageCandidates,
+      effectiveLocation?.latitude,
+      effectiveLocation?.longitude,
+      effectiveZoneId,
+    ],
   );
 
   const applyFiltersAndRefetch = useCallback(
@@ -1779,7 +1880,7 @@ export default function Home() {
 
   // Recalculate distances when user location updates
   useEffect(() => {
-    if (!location?.latitude || !location?.longitude) return;
+    if (!effectiveLocation?.latitude || !effectiveLocation?.longitude) return;
 
     setRestaurantsData((prevData) => {
       if (!prevData || prevData.length === 0) return prevData;
@@ -1798,8 +1899,8 @@ export default function Home() {
         return R * c; // Distance in kilometers
       };
 
-      const userLat = location.latitude;
-      const userLng = location.longitude;
+      const userLat = effectiveLocation.latitude;
+      const userLng = effectiveLocation.longitude;
 
       let hasChanges = false;
       const updatedRestaurants = prevData.map((restaurant) => {
@@ -1863,7 +1964,7 @@ export default function Home() {
     debugLog(
       "?? Recalculated distances for all restaurants based on user location",
     );
-  }, [location?.latitude, location?.longitude]);
+  }, [effectiveLocation?.latitude, effectiveLocation?.longitude]);
 
   // IMPORTANT:
   // Homepage should avoid eager N+1 menu requests. We only resolve menu metadata
@@ -2224,7 +2325,7 @@ export default function Home() {
     if (showBannerSkeleton) {
       return (
         <div className="px-4 py-2">
-          <HeroBannerSkeleton className="h-28 sm:h-36 lg:h-44 rounded-2xl" />
+          <HeroBannerSkeleton className="h-36 sm:h-44 lg:h-56 rounded-2xl" />
         </div>
       );
     }
@@ -2236,7 +2337,7 @@ export default function Home() {
         <div
           ref={heroShellRef}
           data-home-hero-shell="true"
-          className="relative w-full overflow-hidden aspect-[2.1/1] rounded-2xl shadow-sm group cursor-pointer bg-white"
+          className="relative w-full overflow-hidden aspect-[1.7/1] sm:aspect-[1.9/1] lg:aspect-[2.1/1] min-h-[180px] sm:min-h-[220px] lg:min-h-[260px] rounded-2xl shadow-sm group cursor-pointer bg-white"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -2507,7 +2608,7 @@ export default function Home() {
             <HomeHeader 
               activeTab={activeTab}
               setActiveTab={setActiveTab}
-              location={location}
+              location={effectiveLocation}
               handleLocationClick={handleLocationClick}
               handleSearchFocus={handleSearchFocus}
               placeholderIndex={placeholderIndex}
@@ -2551,7 +2652,7 @@ export default function Home() {
                     >
                       <div className="flex flex-col">
                         <span className="text-[10px] font-black text-amber-500 tracking-widest uppercase mb-0.5">Budget</span>
-                        <span className="text-sm font-black text-amber-600 dark:text-amber-400">Under ₹250</span>
+                        <span className="text-sm font-black text-amber-600 dark:text-amber-400">Under ₹{under250PriceLimit}</span>
                       </div>
                       <div className="w-10 h-10 p-1.5 rounded-xl bg-white dark:bg-[#1a1a1a] shadow-sm group-hover:scale-110 transition-transform">
                         <IndianRupee className="w-full h-full text-amber-500" />
@@ -2629,18 +2730,18 @@ export default function Home() {
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            className="px-4 pt-3 pb-1"
+                            className="px-4 pt-3 pb-2"
                           >
                             <div
-                              className="bg-white dark:bg-[#1a1a1a] rounded-xl flex items-center px-4 py-2 cursor-pointer border-2 border-[#7e3866]/30 dark:border-[#7e3866]/50 shadow-md"
+                              className="bg-white dark:bg-[#1a1a1a] rounded-2xl flex items-center px-4 py-3 cursor-pointer border-2 border-[#7e3866]/30 dark:border-[#7e3866]/50 shadow-md"
                               onClick={handleSearchFocus}
                             >
-                              <Search className="h-4 w-4 text-[#7e3866] dark:text-[#a14b84] mr-3" strokeWidth={2.5} />
-                              <div className="flex-1 relative h-4 overflow-hidden">
-                                <span className="absolute inset-0 text-sm text-gray-400 font-medium">Search "biryani"</span>
+                              <Search className="h-5 w-5 text-[#7e3866] dark:text-[#a14b84] mr-3" strokeWidth={2.5} />
+                              <div className="flex-1 relative h-5 overflow-hidden">
+                                <span className="absolute inset-0 text-base text-gray-400 font-medium">Search "biryani"</span>
                               </div>
-                              <div className="h-4 w-[1px] bg-gray-200 dark:bg-white/10 mx-2" />
-                              <Mic className="h-4 w-4 text-[#7e3866] dark:text-[#a14b84]" />
+                              <div className="h-5 w-[1px] bg-gray-200 dark:bg-white/10 mx-2" />
+                              <Mic className="h-5 w-5 text-[#7e3866] dark:text-[#a14b84]" />
                             </div>
                           </motion.div>
                         )}

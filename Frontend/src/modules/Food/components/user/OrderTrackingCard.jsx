@@ -37,11 +37,20 @@ import { orderAPI } from "@food/api";
 
 const getOrderKey = (order) => order?.id || order?._id || order?.orderId || null;
 
+const normalizeOrderToken = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+
 const getOrderStatus = (order) =>
-  String(order?.orderStatus || order?.status || order?.deliveryState?.status || "").toLowerCase();
+  normalizeOrderToken(
+    order?.orderStatus || order?.status || order?.deliveryState?.status || order?.deliveryStatus || "",
+  );
 
 const getOrderPhase = (order) =>
-  String(order?.deliveryState?.currentPhase || "").toLowerCase();
+  normalizeOrderToken(order?.deliveryState?.currentPhase || order?.currentPhase || "");
 
 const ACTIVE_PHASES = new Set([
   "created",
@@ -62,11 +71,15 @@ const ACTIVE_PHASES = new Set([
 const TERMINAL_STATUSES = new Set([
   "delivered",
   "cancelled",
+  "canceled",
   "completed",
   "failed",
   "cancelled_by_user",
+  "canceled_by_user",
   "cancelled_by_restaurant",
+  "canceled_by_restaurant",
   "cancelled_by_admin",
+  "canceled_by_admin",
 ]);
 
 const isActiveOrder = (order) => {
@@ -311,7 +324,7 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
 
   const orderStatus = getOrderStatus(activeOrder) || "preparing";
   const orderPhase = getOrderPhase(activeOrder);
-  if (orderStatus === "delivered" || orderStatus === "completed") {
+  if (TERMINAL_STATUSES.has(orderStatus) || orderPhase === "cancelled" || orderPhase === "canceled") {
     return null;
   }
 

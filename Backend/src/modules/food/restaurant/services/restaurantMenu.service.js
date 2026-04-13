@@ -51,6 +51,7 @@ const buildMenuFromFoods = async (foods = []) => {
             name: food.name,
             description: food.description || '',
             price: getFoodDisplayPrice(food),
+            priceOnOtherPlatforms: food.priceOnOtherPlatforms || null,
             variants: serializeFoodVariants(food.variants),
             variations: serializeFoodVariants(food.variants),
             image: food.image || '',

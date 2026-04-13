@@ -15,7 +15,7 @@ import { subscribeOrderTracking } from '@food/realtimeTracking';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Navigation, Info, Circle } from 'lucide-react';
 
-const LIBRARIES = ['geometry', 'places'];
+const MAP_LIBRARIES = Object.freeze(['geometry', 'places']);
 
 const RIDER_BIKE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60">
   <circle cx="30" cy="30" r="28" fill="white" stroke="#ff8100" stroke-width="4" />
@@ -53,11 +53,13 @@ const DeliveryTrackingMap = ({
   const [cloudPolyline, setCloudPolyline] = useState(null);
   const [smoothLocation, setSmoothLocation] = useState(null);
   const socketRef = useRef(null);
-  const interpStateRef = useRef({ lastPos: null, nextPos: null, startTime: 0 });
+  const interpStateRef = useRef({ lastPos: null, nextPos: null, startTime: 0, durationMs: 1500 });
+  const lastUpdateAtRef = useRef(0);
+  const lastSmoothSetRef = useRef(0);
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-    libraries: LIBRARIES,
+    libraries: MAP_LIBRARIES,
   });
 
   if (loadError) {
@@ -131,20 +133,28 @@ const DeliveryTrackingMap = ({
     });
 
     socketRef.current.on('location-update', (data) => {
-      // Ensure data belongs to one of our tracked orders
-      const matchedId = trackingIds.find(id => String(id) === String(data.orderId));
-      if (data && matchedId && typeof data.lat === 'number') {
+      const dataOrderId = data?.orderId || data?.order_id || data?.trackingId || data?.order?.id || data?.order?._id;
+      const matchedId = dataOrderId
+        ? trackingIds.find(id => String(id) === String(dataOrderId))
+        : (trackingIds.length === 1 ? trackingIds[0] : null);
+      const lat = Number(data?.lat ?? data?.boy_lat ?? data?.location?.lat ?? data?.location?.coordinates?.[1]);
+      const lng = Number(data?.lng ?? data?.boy_lng ?? data?.location?.lng ?? data?.location?.coordinates?.[0]);
+      if (data && matchedId && Number.isFinite(lat) && Number.isFinite(lng)) {
         const nextPos = {
-          lat: data.lat,
-          lng: data.lng,
-          heading: data.heading || data.bearing || 0
+          lat,
+          lng,
+          heading: Number(data?.heading ?? data?.bearing ?? data?.location?.heading ?? 0)
         };
-        
+        const now = Date.now();
+        const delta = Math.max(300, Math.min(now - (lastUpdateAtRef.current || now), 4000));
+        lastUpdateAtRef.current = now;
+
         // Trigger Smooth Interpolation
         interpStateRef.current = {
-           lastPos: smoothLocation || riderLocation || nextPos,
-           nextPos: nextPos,
-           startTime: Date.now()
+          lastPos: interpStateRef.current.nextPos || smoothLocation || riderLocation || nextPos,
+          nextPos: nextPos,
+          startTime: now,
+          durationMs: delta
         };
         
         setRiderLocation(nextPos);
@@ -161,11 +171,12 @@ const DeliveryTrackingMap = ({
   useEffect(() => {
     let frame;
     const update = () => {
-      const { lastPos, nextPos, startTime } = interpStateRef.current;
+      const { lastPos, nextPos, startTime, durationMs } = interpStateRef.current;
       if (lastPos && nextPos) {
-        const duration = 5000; // Expected update interval (match rider app throttle)
+        const duration = Math.max(600, durationMs || 1500);
         const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
+        const raw = Math.min(elapsed / duration, 1);
+        const progress = raw * raw * (3 - 2 * raw); // easeInOut
         
         // Linear Interpolation (LERP)
         const lat = lastPos.lat + (nextPos.lat - lastPos.lat) * progress;
@@ -180,7 +191,11 @@ const DeliveryTrackingMap = ({
         }
         const heading = lastHead + (nextHead - lastHead) * progress;
 
-        setSmoothLocation({ lat, lng, heading: heading % 360 });
+        const now = Date.now();
+        if (now - lastSmoothSetRef.current >= 33 || raw >= 1) {
+          lastSmoothSetRef.current = now;
+          setSmoothLocation({ lat, lng, heading: heading % 360 });
+        }
       }
       frame = requestAnimationFrame(update);
     };
@@ -439,10 +454,11 @@ const DeliveryTrackingMap = ({
             position={displayRiderLocation}
             mapPaneName={OverlayView.MARKER_LAYER}
           >
-            <div 
+            <div
               style={{
                 transform: `translate(-50%, -50%) rotate(${displayRiderLocation.heading || 0}deg)`,
-                transition: 'all 0.1s linear', // Micro-damping for heading
+                transition: 'transform 0.2s linear',
+                willChange: 'transform',
               }}
               className="relative w-16 h-16"
             >

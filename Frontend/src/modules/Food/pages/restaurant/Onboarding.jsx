@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
 import { Label } from "@food/components/ui/label"
-import { Image as ImageIcon, Upload, Clock, Calendar as CalendarIcon, Sparkles, X, LogOut } from "lucide-react"
+import { Image as ImageIcon, Upload, Clock, Calendar as CalendarIcon, Sparkles, X, LogOut, FileText } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
 import { Calendar } from "@food/components/ui/calendar"
 import {
@@ -40,12 +40,14 @@ const OWNER_NAME_REGEX = /^[A-Za-z ]+$/
 const ACCOUNT_HOLDER_NAME_REGEX = /^[A-Za-z ]+$/
 const GST_LEGAL_NAME_REGEX = /^[A-Za-z ]+$/
 const LOCAL_IMAGE_FILE_ACCEPT = ".jpg,.jpeg,.png,.webp,.heic,.heif"
+const LOCAL_PDF_FILE_ACCEPT = ".pdf,application/pdf"
 const GALLERY_IMAGE_ACCEPT =
   ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif"
 let onboardingFileCache = {
   step2: {
     menuImages: [],
     profileImage: null,
+    menuPdf: null,
   },
   step3: {
     panImage: null,
@@ -154,6 +156,14 @@ const persistMenuImagesToDB = async (menuImages = []) => {
   }
 }
 
+const persistMenuPdfToDB = async (menuPdf) => {
+  if (menuPdf && isUploadableFile(menuPdf)) {
+    await saveFileToDB("menuPdf", menuPdf)
+  } else {
+    await deleteFileFromDB("menuPdf")
+  }
+}
+
 const isUploadableFile = (value) => {
   if (!value || typeof value !== "object") return false
 
@@ -220,6 +230,11 @@ const saveOnboardingToLocalStorage = (step1, step2, step3, currentStep) => {
         (step2.profileImage?.url || (typeof step2.profileImage === "string" && step2.profileImage.trim()))
           ? step2.profileImage
           : null,
+      menuPdf:
+        !isUploadableFile(step2.menuPdf) &&
+        (step2.menuPdf?.url || (typeof step2.menuPdf === "string" && step2.menuPdf.trim()))
+          ? step2.menuPdf
+          : null,
     }
 
     const serializableStep3 = {
@@ -279,6 +294,7 @@ const syncOnboardingFileCache = (step2, step3) => {
     step2: {
       menuImages: (step2?.menuImages || []).filter((img) => isUploadableFile(img)),
       profileImage: isUploadableFile(step2?.profileImage) ? step2.profileImage : null,
+      menuPdf: isUploadableFile(step2?.menuPdf) ? step2.menuPdf : null,
     },
     step3: {
       panImage: isUploadableFile(step3?.panImage) ? step3.panImage : null,
@@ -293,6 +309,7 @@ const clearOnboardingFileCache = () => {
     step2: {
       menuImages: [],
       profileImage: null,
+      menuPdf: null,
     },
     step3: {
       panImage: null,
@@ -531,6 +548,7 @@ export default function RestaurantOnboarding() {
 
   const [step2, setStep2] = useState({
     menuImages: [],
+    menuPdf: null,
     profileImage: null,
     cuisines: [],
     estimatedDeliveryTime: "",
@@ -563,6 +581,7 @@ export default function RestaurantOnboarding() {
   const placesAutocompleteRef = useRef(null)
   const mapsScriptLoadedRef = useRef(false)
   const menuImagesInputRef = useRef(null)
+  const menuPdfInputRef = useRef(null)
   const profileImageInputRef = useRef(null)
   const panImageInputRef = useRef(null)
   const gstImageInputRef = useRef(null)
@@ -623,6 +642,29 @@ export default function RestaurantOnboarding() {
       menuImages: nextMenuImages,
     }))
     void persistMenuImagesToDB(nextMenuImages)
+  }
+
+  const isPdfFile = (file) => {
+    if (!isUploadableFile(file)) return false
+    const type = String(file.type || "").toLowerCase()
+    if (type === "application/pdf") return true
+    const name = String(file.name || "").toLowerCase()
+    return name.endsWith(".pdf")
+  }
+
+  const handleMenuPdfSelected = async (file) => {
+    if (!file) return
+    if (!isPdfFile(file)) {
+      toast.error("Only PDF files are allowed for menu upload")
+      return
+    }
+    setStep2((prev) => ({ ...prev, menuPdf: file }))
+    await persistMenuPdfToDB(file)
+  }
+
+  const handleRemoveMenuPdf = async () => {
+    setStep2((prev) => ({ ...prev, menuPdf: null }))
+    await persistMenuPdfToDB(null)
   }
 
   const handleProfileImageSelected = (file) => {
@@ -745,6 +787,20 @@ export default function RestaurantOnboarding() {
     return getPersistedImagePayload(value)
   }
 
+  const resolveMenuPdfForProfileUpdate = async (value) => {
+    if (!value) return null
+
+    if (isUploadableFile(value)) {
+      if (!isPdfFile(value)) {
+        throw new Error("Only PDF files are allowed for menu upload")
+      }
+      const uploaded = await handleFileUpload(value, "food/restaurants/menu-pdf")
+      return uploaded || null
+    }
+
+    return getPersistedImagePayload(value)
+  }
+
   const resolveMenuImagesForProfileUpdate = async (menuImages = []) => {
     const items = Array.isArray(menuImages) ? menuImages : []
     const resolved = await Promise.all(
@@ -825,6 +881,7 @@ export default function RestaurantOnboarding() {
           const restoredPanImage = await getFileFromDB("panImage")
           const restoredGstImage = await getFileFromDB("gstImage")
           const restoredFssaiImage = await getFileFromDB("fssaiImage")
+          const restoredMenuPdf = await getFileFromDB("menuPdf")
           
           const restoredMenuImages = []
           for (let i = 0; i < 10; i++) {
@@ -840,6 +897,11 @@ export default function RestaurantOnboarding() {
             setStep2((prev) => ({
               ...prev,
               menuImages: [...urlMenuImages, ...restoredMenuImages],
+              menuPdf:
+                restoredMenuPdf ||
+                (typeof localData.step2.menuPdf === "string" || localData.step2.menuPdf?.url
+                  ? localData.step2.menuPdf
+                  : null),
               profileImage:
                 restoredProfileImage ||
                 (typeof localData.step2.profileImage === "string" || localData.step2.profileImage?.url
@@ -938,6 +1000,7 @@ export default function RestaurantOnboarding() {
       }
       
       await persistMenuImagesToDB(step2.menuImages || [])
+      await persistMenuPdfToDB(step2.menuPdf || null)
     }
     saveFiles()
   }, [isOnboardingHydrated, step1, step2, step3, step])
@@ -1031,6 +1094,7 @@ export default function RestaurantOnboarding() {
                   : (data.menuImages && data.menuImages.length > 0)
                   ? data.menuImages
                   : prev.menuImages,
+              menuPdf: step2Data.menuPdfUrl || data.menuPdf || prev.menuPdf,
               profileImage: step2Data.profileImageUrl || data.profileImage || prev.profileImage,
               cuisines:
                 (step2Data.cuisines && step2Data.cuisines.length > 0)
@@ -1143,6 +1207,31 @@ export default function RestaurantOnboarding() {
     }
   }
 
+  const handleFileUpload = async (file, folder) => {
+    try {
+      if (!isUploadableFile(file)) {
+        throw new Error("Invalid file")
+      }
+
+      const response = await uploadAPI.uploadFile(file, { folder })
+      const uploadedFile = response?.data?.data
+
+      if (!uploadedFile?.url) {
+        throw new Error("Uploaded file URL was not returned")
+      }
+
+      return uploadedFile
+    } catch (err) {
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to upload file"
+      debugError("Upload error:", errorMsg, err)
+      throw new Error(`File upload failed: ${errorMsg}`)
+    }
+  }
+
   // Validation functions for each step
   const validateStep1 = () => {
     const errors = []
@@ -1213,6 +1302,18 @@ export default function RestaurantOnboarding() {
         (typeof step2.profileImage === 'string' && step2.profileImage.trim())
       if (!isValidProfileImage) {
         errors.push("Please upload a valid restaurant profile image")
+      }
+    }
+
+    if (!step2.menuPdf) {
+      errors.push("Menu PDF is required")
+    } else {
+      const isValidMenuPdf =
+        isUploadableFile(step2.menuPdf) ||
+        (step2.menuPdf?.url && typeof step2.menuPdf.url === "string") ||
+        (typeof step2.menuPdf === "string" && step2.menuPdf.trim())
+      if (!isValidMenuPdf) {
+        errors.push("Please upload a valid menu PDF")
       }
     }
 
@@ -1386,18 +1487,25 @@ export default function RestaurantOnboarding() {
         window.scrollTo({ top: 0, behavior: "instant" })
       } else if (step === 3) {
         if (hasExistingRestaurantProfile) {
-          const [menuImagesPayload, profileImagePayload, panImagePayload, gstImagePayload, fssaiImagePayload] =
-            await Promise.all([
-              resolveMenuImagesForProfileUpdate(step2.menuImages || []),
-              resolveImageForProfileUpdate(step2.profileImage, "food/restaurants/profile"),
-              resolveImageForProfileUpdate(step3.panImage, "food/restaurants/pan"),
-              step3.gstRegistered
-                ? resolveImageForProfileUpdate(step3.gstImage, "food/restaurants/gst")
-                : Promise.resolve(null),
-              resolveImageForProfileUpdate(step3.fssaiImage, "food/restaurants/fssai"),
-            ])
+          const [
+            menuImagesPayload,
+            profileImagePayload,
+            panImagePayload,
+            gstImagePayload,
+            fssaiImagePayload,
+            menuPdfPayload,
+          ] = await Promise.all([
+            resolveMenuImagesForProfileUpdate(step2.menuImages || []),
+            resolveImageForProfileUpdate(step2.profileImage, "food/restaurants/profile"),
+            resolveImageForProfileUpdate(step3.panImage, "food/restaurants/pan"),
+            step3.gstRegistered
+              ? resolveImageForProfileUpdate(step3.gstImage, "food/restaurants/gst")
+              : Promise.resolve(null),
+            resolveImageForProfileUpdate(step3.fssaiImage, "food/restaurants/fssai"),
+            resolveMenuPdfForProfileUpdate(step2.menuPdf),
+          ])
 
-          await restaurantAPI.updateProfile({
+          const updatePayload = {
             restaurantName: step1.restaurantName || "",
             pureVegRestaurant: step1.pureVegRestaurant === true,
             ownerName: step1.ownerName || "",
@@ -1439,7 +1547,13 @@ export default function RestaurantOnboarding() {
             ifscCode: (step3.ifscCode || "").toUpperCase(),
             accountHolderName: step3.accountHolderName || "",
             accountType: step3.accountType || "",
-          })
+          }
+
+          if (menuPdfPayload) {
+            updatePayload.menuPdf = menuPdfPayload
+          }
+
+          await restaurantAPI.updateProfile(updatePayload)
 
           clearOnboardingFromLocalStorage()
           clearOnboardingFileCache()
@@ -1487,6 +1601,11 @@ export default function RestaurantOnboarding() {
           throw new Error("At least one menu image must be uploaded")
         }
         menuFiles.forEach((file) => formData.append("menuImages", file))
+
+        if (!isUploadableFile(step2.menuPdf)) {
+          throw new Error("Menu PDF is required")
+        }
+        formData.append("menuPdf", step2.menuPdf)
 
         if (!isUploadableFile(step2.profileImage)) {
           throw new Error("Restaurant profile image is required")
@@ -2210,6 +2329,62 @@ export default function RestaurantOnboarding() {
                   </div>
                 )
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Menu PDF */}
+        <div className="space-y-2">
+          <Label className="text-xs font-medium text-gray-700">Menu PDF <span className="text-red-500">*</span></Label>
+          <div className="mt-1 border border-dashed border-gray-300 rounded-md bg-gray-50/70 px-4 py-3 flex items-center justify-between flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-md bg-white flex items-center justify-center">
+                <FileText className="w-5 h-5 text-gray-700" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xs font-medium text-gray-900">Upload menu PDF</span>
+                <span className="text-[11px] text-gray-500">PDF only, max 1 file</span>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full text-xs"
+              onClick={() => menuPdfInputRef.current?.click()}
+            >
+              <Upload className="w-4 h-4 mr-1.5" />
+              Upload PDF
+            </Button>
+            <input
+              id="menuPdfInput"
+              type="file"
+              accept={LOCAL_PDF_FILE_ACCEPT}
+              className="hidden"
+              ref={menuPdfInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null
+                if (file) {
+                  handleMenuPdfSelected(file)
+                }
+                e.target.value = ""
+              }}
+            />
+          </div>
+          {step2.menuPdf && (
+            <div className="mt-2 flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-gray-600" />
+                <span className="text-xs text-gray-700">
+                  {typeof step2.menuPdf === "object" ? step2.menuPdf.name || "Menu.pdf" : "Menu.pdf"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveMenuPdf}
+                className="text-xs text-red-600 hover:text-red-700"
+              >
+                Remove
+              </button>
             </div>
           )}
         </div>

@@ -194,12 +194,12 @@ export default function HomeHeader({
         </div>
 
         <div
-          className="relative bg-white rounded-xl flex items-center px-4 py-2 shadow-lg border border-black/5 cursor-pointer active:scale-[0.98] transition-all duration-300 max-w-[95%] mx-auto"
+          className="relative bg-white rounded-2xl flex items-center px-4 py-3 shadow-lg border border-black/5 cursor-pointer active:scale-[0.98] transition-all duration-300 max-w-[95%] mx-auto"
           onClick={handleSearchFocus}
         >
-          <Search className="h-3.5 w-3.5 text-[#7e3866] mr-2 shrink-0" strokeWidth={3} />
+          <Search className="h-4.5 w-4.5 text-[#7e3866] mr-2 shrink-0" strokeWidth={3} />
           
-          <div className="flex-1 overflow-hidden relative h-4">
+          <div className="flex-1 overflow-hidden relative h-5">
             <AnimatePresence mode="wait">
               <motion.span
                 key={placeholderIndex}
@@ -207,7 +207,7 @@ export default function HomeHeader({
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -10, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="absolute inset-0 text-xs font-bold text-gray-400 truncate flex items-center"
+                className="absolute inset-0 text-sm font-bold text-gray-400 truncate flex items-center"
               >
                 {placeholders?.[placeholderIndex] || 'Search'}
               </motion.span>
@@ -215,8 +215,8 @@ export default function HomeHeader({
           </div>
 
           <div className="flex items-center gap-2 pl-2">
-            <div className="h-3 w-[1px] bg-gray-100" />
-            <Mic className="h-3.5 w-3.5 text-[#7e3866]" />
+            <div className="h-4 w-[1px] bg-gray-100" />
+            <Mic className="h-4.5 w-4.5 text-[#7e3866]" />
           </div>
         </div>
       </div>
