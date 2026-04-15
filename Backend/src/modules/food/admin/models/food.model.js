@@ -17,6 +17,7 @@ const foodSchema = new mongoose.Schema(
         description: { type: String, trim: true, default: '' },
         price: { type: Number, required: true, min: 0 },
         priceOnOtherPlatforms: { type: Number, default: null, min: 0 },
+        otherPlatformGst: { type: Number, default: null, min: 0, max: 100 },
         variants: { type: [foodVariantSchema], default: [] },
         image: { type: String, trim: true, default: '' },
         foodType: { type: String, enum: ['Veg', 'Non-Veg'], default: 'Non-Veg' },

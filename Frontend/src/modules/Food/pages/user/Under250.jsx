@@ -657,6 +657,7 @@ export default function Under250() {
       description: item.description || "",
       originalPrice: item.originalPrice || item.price,
       priceOnOtherPlatforms: item.priceOnOtherPlatforms || null, // Include platform pricing for savings display
+      otherPlatformGst: item.otherPlatformGst ?? null,
     }
 
     // Get source position for animation from event target

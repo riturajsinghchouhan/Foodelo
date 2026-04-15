@@ -338,6 +338,8 @@ export async function tryAutoAssign(orderId, options = {}) {
     const io = getIO();
     const payload = buildDeliverySocketPayload(order, order.restaurantId);
 
+    const phase1Batch = eligible.slice(0, Math.min(3, eligible.length));
+
     if (isPhase2) {
       // PHASE 2 BROADCAST: Notify everyone remaining
       logger.info(`[Phase 2] Broadcasting order ${order._id} to ${eligible.length} riders.`);
@@ -350,31 +352,38 @@ export async function tryAutoAssign(orderId, options = {}) {
         }
       }
     } else {
-      // PHASE 1: Target best rider only
-      const p = eligible[0];
-      const roomName = rooms.delivery(p.partnerId);
-      logger.info(`[Phase 1] Offering order ${order._id} to best rider ${p.partnerId} (${p.distanceKm}km)`);
-      if (io) {
-        const eventPayload = { ...payload, pickupDistanceKm: p.distanceKm };
-        io.to(roomName).emit('new_order', eventPayload);
-        io.to(roomName).emit('new_order_available', eventPayload);
+      // PHASE 1: Offer to top few nearby riders (avoid single-partner bottleneck).
+      const lead = phase1Batch[0];
+      if (lead) {
+        logger.info(`[Phase 1] Offering order ${order._id} to ${phase1Batch.length} riders (lead ${lead.partnerId}, ${lead.distanceKm}km)`);
       }
-      
-      try {
-        await notifyOwnerSafely(
-          { ownerType: 'DELIVERY_PARTNER', ownerId: p.partnerId },
-          {
-            title: 'New order assigned!',
-            body: `You have 60 seconds to accept Order #${order.order_id || order._id}.`,
-            data: { type: 'new_order', orderId: order._id.toString() },
-          },
-        );
-      } catch (err) {
-        logger.warn(`Push notification failed for partner ${p.partnerId}: ${err.message}`);
+
+      for (const p of phase1Batch) {
+        const roomName = rooms.delivery(p.partnerId);
+        if (io) {
+          const eventPayload = { ...payload, pickupDistanceKm: p.distanceKm };
+          io.to(roomName).emit('new_order', eventPayload);
+          io.to(roomName).emit('new_order_available', eventPayload);
+        }
+      }
+
+      if (lead) {
+        try {
+          await notifyOwnerSafely(
+            { ownerType: 'DELIVERY_PARTNER', ownerId: lead.partnerId },
+            {
+              title: 'New order assigned!',
+              body: `You have 60 seconds to accept Order #${order.order_id || order._id}.`,
+              data: { type: 'new_order', orderId: order._id.toString() },
+            },
+          );
+        } catch (err) {
+          logger.warn(`Push notification failed for partner ${lead.partnerId}: ${err.message}`);
+        }
       }
     }
 
-    const partnersToRecord = isPhase2 ? eligible : eligible.slice(0, 1);
+    const partnersToRecord = isPhase2 ? eligible : phase1Batch;
     const offeredToEntries = partnersToRecord.map(p => ({
       partnerId: p.partnerId,
       at: new Date(),

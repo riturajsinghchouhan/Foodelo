@@ -5,10 +5,11 @@ import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
+import { haversineKm } from './order.helpers.js';
 
 export async function calculateOrderPricing(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status")
+    .select("status location")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
@@ -26,6 +27,7 @@ export async function calculateOrderPricing(userId, dto) {
   const feeSettings = feeDoc || {
     deliveryFee: 25,
     deliveryFeeRanges: [],
+    freeDeliveryUpTo: 0,
     freeDeliveryThreshold: 149,
     platformFee: 5,
     packagingFee: 0,
@@ -35,9 +37,27 @@ export async function calculateOrderPricing(userId, dto) {
   const packagingFee = feeSettings.packagingFee != null ? Number(feeSettings.packagingFee) : 0;
   const platformFee = feeSettings.platformFee != null ? Number(feeSettings.platformFee) : 0;
 
+  const freeUpTo = Number(feeSettings.freeDeliveryUpTo || 0);
   const freeThreshold = Number(feeSettings.freeDeliveryThreshold || 0);
-  let deliveryFee = 0;
+  let distanceKm = null;
   if (
+    restaurant?.location?.coordinates?.length === 2 &&
+    dto?.deliveryAddress?.location?.coordinates?.length === 2
+  ) {
+    const [rLng, rLat] = restaurant.location.coordinates;
+    const [dLng, dLat] = dto.deliveryAddress.location.coordinates;
+    const d = haversineKm(rLat, rLng, dLat, dLng);
+    distanceKm = Number.isFinite(d) ? d : null;
+  }
+  let deliveryFee = 0;
+  let deliveryFeeBreakdown = null;
+  if (
+    Number.isFinite(freeUpTo) &&
+    freeUpTo > 0 &&
+    subtotal >= freeUpTo
+  ) {
+    deliveryFee = 0;
+  } else if (
     Number.isFinite(freeThreshold) &&
     freeThreshold > 0 &&
     subtotal >= freeThreshold
@@ -63,11 +83,23 @@ export async function calculateOrderPricing(userId, dto) {
           continue;
         }
         const isLast = i === ranges.length - 1;
+        if (!Number.isFinite(distanceKm)) {
+          continue;
+        }
         const inRange = isLast
-          ? subtotal >= min && subtotal <= max
-          : subtotal >= min && subtotal < max;
+          ? distanceKm >= min && distanceKm <= max
+          : distanceKm >= min && distanceKm < max;
         if (inRange) {
           matched = fee;
+          if (Number.isFinite(distanceKm)) {
+            deliveryFeeBreakdown = {
+              source: "distance",
+              distanceKm,
+              minKm: min,
+              maxKm: max,
+              fee,
+            };
+          }
           break;
         }
       }
@@ -174,6 +206,8 @@ export async function calculateOrderPricing(userId, dto) {
       tax,
       packagingFee,
       deliveryFee,
+      deliveryFeeBreakdown: deliveryFeeBreakdown || undefined,
+      freeDeliveryUpTo: Number.isFinite(freeUpTo) ? freeUpTo : undefined,
       platformFee,
       discount,
       total,

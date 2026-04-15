@@ -454,6 +454,7 @@ export default function Home() {
   const [landingCategories, setLandingCategories] = useState([]);
   const [landingExploreMore, setLandingExploreMore] = useState([]);
   const [exploreMoreHeading, setExploreMoreHeading] = useState("Explore More");
+  const [festBannerVideoUrl, setFestBannerVideoUrl] = useState("");
   const [recommendedRestaurantIds, setRecommendedRestaurantIds] = useState([]);
   const [under250PriceLimit, setUnder250PriceLimit] = useState(250);
   const [
@@ -488,6 +489,8 @@ export default function Home() {
         .replace(/(^-|-$)/g, ""),
     [],
   );
+  const festVideoActive =
+    typeof festBannerVideoUrl === "string" && festBannerVideoUrl.trim().length > 0;
 
   // Stable list of restaurant ids for menu-category union so we don't refetch menus
   // when `restaurantsData` changes for reasons like distance recalculation or outletTimings enrichment.
@@ -940,12 +943,14 @@ export default function Home() {
         setRecommendedRestaurantsFromSettings(
           settings.recommendedRestaurants || [],
         );
+        setFestBannerVideoUrl(typeof settings.festBannerVideoUrl === "string" ? settings.festBannerVideoUrl : "");
       })
       .catch(() => {
         if (!cancelled) {
           setLandingExploreMore([]);
           setExploreMoreHeading("Explore More");
           setRecommendedRestaurantsFromSettings([]);
+          setFestBannerVideoUrl("");
         }
       })
       .finally(() => {
@@ -2604,20 +2609,41 @@ export default function Home() {
 
         <div className="md:hidden relative overflow-x-clip bg-white dark:bg-[#0a0a0a]">
           {/* Brand Top Section (Dark) */}
-          <div className="bg-gradient-to-b from-[#3a142c] to-[#1a0a14] rounded-b-[2rem] shadow-lg mb-2">
-            <HomeHeader 
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              location={effectiveLocation}
-              handleLocationClick={handleLocationClick}
-              handleSearchFocus={handleSearchFocus}
-              placeholderIndex={placeholderIndex}
-              placeholders={placeholders}
-              vegMode={vegMode}
-              handleVegModeChange={handleVegModeChange}
-            />
+          <div className="relative overflow-hidden bg-gradient-to-b from-[#3a142c] to-[#1a0a14] rounded-b-[2rem] shadow-lg mb-2">
+            {festVideoActive && (
+              <div className="absolute inset-0 z-0">
+                <video
+                  src={festBannerVideoUrl}
+                  className="w-full h-full object-cover"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                />
+                <div className="absolute inset-0 bg-black/40" />
+              </div>
+            )}
+            <div className="relative z-10">
+              <HomeHeader 
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                location={effectiveLocation}
+                handleLocationClick={handleLocationClick}
+                handleSearchFocus={handleSearchFocus}
+                placeholderIndex={placeholderIndex}
+                placeholders={placeholders}
+                vegMode={vegMode}
+                handleVegModeChange={handleVegModeChange}
+              />
 
-            {activeTab === "food" && <FestBanner isVegMode={vegMode} />}
+              {activeTab === "food" && (
+                <FestBanner
+                  isVegMode={vegMode}
+                  videoUrl={festVideoActive ? "" : festBannerVideoUrl}
+                  hideFoodImages={festVideoActive}
+                />
+              )}
+            </div>
           </div>
 
           <AnimatePresence mode="wait">

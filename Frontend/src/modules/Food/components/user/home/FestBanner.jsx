@@ -21,9 +21,10 @@ const images = {
   ]
 };
 
-export default function FestBanner({ isVegMode }) {
+export default function FestBanner({ isVegMode, videoUrl = "", hideFoodImages = false }) {
   const [imgIndex, setImgIndex] = useState(0);
   const currentPool = isVegMode ? images.veg : images.nonVeg;
+  const hasVideo = typeof videoUrl === "string" && videoUrl.trim().length > 0;
   
   // Dynamic rotation
   useEffect(() => {
@@ -46,53 +47,23 @@ export default function FestBanner({ isVegMode }) {
   ];
 
   return (
-    <motion.div 
+      <motion.div 
       initial={false}
-      className="relative px-4 pt-2 pb-4 overflow-hidden min-h-[140px] sm:min-h-[180px] transition-all duration-700 bg-transparent rounded-b-[2rem]"
+      className={`relative px-4 pt-2 pb-4 overflow-hidden min-h-[140px] sm:min-h-[180px] transition-all duration-700 ${hasVideo ? 'bg-transparent' : 'bg-transparent'} rounded-b-[2rem]`}
     >
-      {/* Dynamic Moving Logo / Mascot - Rebranded for Foodelo */}
-      <motion.div
-        animate={{ 
-          x: [0, 15, -15, 0],
-          y: [0, -8, 0],
-          rotate: [0, 5, -5, 0]
-        }}
-        transition={{ 
-          duration: 5, 
-          repeat: Infinity, 
-          ease: "easeInOut" 
-        }}
-        className="absolute top-4 right-6 w-16 h-16 sm:w-24 sm:h-24 z-20 overflow-visible"
-      >
-        <img 
-          src={quickSpicyLogo} 
-          alt="Foodelo Mascot" 
-          className="w-full h-full object-contain filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)] brightness-110 contrast-125"
-          style={{ mixBlendMode: 'multiply' }} // Assuming white bg, this helps
-          onError={(e) => {
-            e.target.src = "https://cdn-icons-png.flaticon.com/512/1046/1046751.png"; // Fallback cute cloche
-          }}
-        />
-        <div className="absolute -inset-2 bg-white/10 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-      </motion.div>
-
-      {/* Decorative Background Elements */}
-      <div className="absolute inset-0 opacity-15 pointer-events-none overflow-hidden">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-          <motion.circle 
-            animate={{ scale: [1, 1.3, 1], opacity: [0.1, 0.3, 0.1] }}
-            transition={{ duration: 4, repeat: Infinity }}
-            cx="85%" cy="15%" r="15" stroke="white" strokeWidth="0.5" fill="none" 
+      {hasVideo && (
+        <div className="absolute inset-0 z-0">
+          <video
+            src={videoUrl}
+            className="w-full h-full object-cover"
+            autoPlay
+            muted
+            loop
+            playsInline
           />
-          <path d="M -10 30 Q 20 10 50 30 T 110 30" stroke="white" strokeWidth="0.3" fill="none" />
-          <path d="M -10 50 Q 20 30 50 50 T 110 50" stroke="white" strokeWidth="0.3" fill="none" />
-          <motion.circle 
-            animate={{ x: [-15, 15, -15], scale: [1, 1.1, 1] }}
-            transition={{ duration: 10, repeat: Infinity }}
-            cx="10%" cy="80%" r="20" stroke="white" strokeWidth="0.2" fill="none" 
-          />
-        </svg>
-      </div>
+          <div className="absolute inset-0 bg-black/35" />
+        </div>
+      )}
 
       <div className="relative z-10 flex flex-col items-center text-center space-y-4">
         {/* Mission Text at Top */}
@@ -133,78 +104,77 @@ export default function FestBanner({ isVegMode }) {
           <ArrowRightCircle className="h-5 w-5 text-[#fff200] shadow-sm" />
         </motion.div>
 
-        {/* Food Images Row - MAX SCALE */}
-        <div className="flex items-end justify-center gap-5 sm:gap-8 pt-10 relative w-full mb-2">
-          {/* Enhanced glow */}
-          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-56 h-12 blur-[45px] rounded-full transition-colors duration-700 ${isVegMode ? 'bg-emerald-500/40' : 'bg-yellow-400/40'}`} />
-          
-          <AnimatePresence mode="popLayout" initial={false}>
-            {/* Left Image (Compact) */}
-            <motion.div 
-              key={`img-left-${isVegMode}-${imgIndex}`}
-              className="w-16 h-16 sm:w-20 sm:h-20 z-10"
-              initial={{ x: -100, opacity: 0, rotate: -45, scale: 0.5 }}
-              animate={{ 
-                x: 0, 
-                opacity: 1, 
-                rotate: -15,
-                scale: 1,
-                y: [0, -12, 0]
-              }}
-              exit={{ x: -100, opacity: 0, rotate: -45, scale: 0.5 }}
-              transition={{ 
-                y: { duration: 3.5, repeat: Infinity, ease: "easeInOut" },
-                default: { duration: 0.8, type: "spring", damping: 15 }
-              }}
-            >
-              <img src={displayImages[0]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl rotate-12" />
-            </motion.div>
+        {hideFoodImages ? (
+          <div className="h-28 sm:h-36" />
+        ) : (
+          <div className="flex items-end justify-center gap-5 sm:gap-8 pt-10 relative w-full mb-2">
+            <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-56 h-12 blur-[45px] rounded-full transition-colors duration-700 ${isVegMode ? 'bg-emerald-500/40' : 'bg-yellow-400/40'}`} />
+            
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div 
+                key={`img-left-${isVegMode}-${imgIndex}`}
+                className="w-16 h-16 sm:w-20 sm:h-20 z-10"
+                initial={{ x: -100, opacity: 0, rotate: -45, scale: 0.5 }}
+                animate={{ 
+                  x: 0, 
+                  opacity: 1, 
+                  rotate: -15,
+                  scale: 1,
+                  y: [0, -12, 0]
+                }}
+                exit={{ x: -100, opacity: 0, rotate: -45, scale: 0.5 }}
+                transition={{ 
+                  y: { duration: 3.5, repeat: Infinity, ease: "easeInOut" },
+                  default: { duration: 0.8, type: "spring", damping: 15 }
+                }}
+              >
+                <img src={displayImages[0]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl rotate-12" />
+              </motion.div>
 
-            {/* Center Main Image (MAX SCALE) */}
-            <motion.div 
-              key={`img-center-${isVegMode}-${imgIndex}`}
-              className="w-24 h-24 sm:w-32 sm:h-32 z-30 -mb-2"
-              initial={{ y: 100, opacity: 0, scale: 0.5 }}
-              animate={{ 
-                y: 0, 
-                opacity: 1,
-                scale: 1,
-                rotate: [0, 5, -5, 0]
-              }}
-              exit={{ y: 50, opacity: 0, scale: 0.5 }}
-              transition={{ 
-                rotate: { duration: 6, repeat: Infinity, ease: "easeInOut" },
-                default: { duration: 0.8, type: "spring", damping: 12, stiffness: 100 }
-              }}
-            >
-              <div className="relative h-full w-full">
-                <div className={`absolute -inset-2.5 blur-3xl rounded-full animate-pulse transition-colors duration-700 ${isVegMode ? 'bg-white/40' : 'bg-yellow-400/40'}`} />
-                <img src={displayImages[1]} alt="food" className="relative w-full h-full object-cover rounded-[2.5rem] border-[4px] border-white shadow-[0_22px_55px_rgba(0,0,0,0.4)]" />
-              </div>
-            </motion.div>
+              <motion.div 
+                key={`img-center-${isVegMode}-${imgIndex}`}
+                className="w-24 h-24 sm:w-32 sm:h-32 z-30 -mb-2"
+                initial={{ y: 100, opacity: 0, scale: 0.5 }}
+                animate={{ 
+                  y: 0, 
+                  opacity: 1,
+                  scale: 1,
+                  rotate: [0, 5, -5, 0]
+                }}
+                exit={{ y: 50, opacity: 0, scale: 0.5 }}
+                transition={{ 
+                  rotate: { duration: 6, repeat: Infinity, ease: "easeInOut" },
+                  default: { duration: 0.8, type: "spring", damping: 12, stiffness: 100 }
+                }}
+              >
+                <div className="relative h-full w-full">
+                  <div className={`absolute -inset-2.5 blur-3xl rounded-full animate-pulse transition-colors duration-700 ${isVegMode ? 'bg-white/40' : 'bg-yellow-400/40'}`} />
+                  <img src={displayImages[1]} alt="food" className="relative w-full h-full object-cover rounded-[2.5rem] border-[4px] border-white shadow-[0_22px_55px_rgba(0,0,0,0.4)]" />
+                </div>
+              </motion.div>
 
-            {/* Right Image (Enlarged) */}
-            <motion.div 
-              key={`img-right-${isVegMode}-${imgIndex}`}
-              className="w-16 h-16 sm:w-20 sm:h-20 z-10"
-              initial={{ x: 100, opacity: 0, rotate: 45, scale: 0.5 }}
-              animate={{ 
-                x: 0, 
-                opacity: 1, 
-                rotate: 15,
-                scale: 1,
-                y: [0, -12, 0]
-              }}
-              exit={{ x: 100, opacity: 0, rotate: 45, scale: 0.5 }}
-              transition={{ 
-                y: { duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.4 },
-                default: { duration: 0.8, type: "spring", damping: 15 }
-              }}
-            >
-              <img src={displayImages[2]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl -rotate-12 bg-white" />
-            </motion.div>
-          </AnimatePresence>
-        </div>
+              <motion.div 
+                key={`img-right-${isVegMode}-${imgIndex}`}
+                className="w-16 h-16 sm:w-20 sm:h-20 z-10"
+                initial={{ x: 100, opacity: 0, rotate: 45, scale: 0.5 }}
+                animate={{ 
+                  x: 0, 
+                  opacity: 1, 
+                  rotate: 15,
+                  scale: 1,
+                  y: [0, -12, 0]
+                }}
+                exit={{ x: 100, opacity: 0, rotate: 45, scale: 0.5 }}
+                transition={{ 
+                  y: { duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.4 },
+                  default: { duration: 0.8, type: "spring", damping: 15 }
+                }}
+              >
+                <img src={displayImages[2]} alt="food" className="w-full h-full object-cover rounded-2xl border-[3px] border-white shadow-2xl -rotate-12 bg-white" />
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </motion.div>
   );

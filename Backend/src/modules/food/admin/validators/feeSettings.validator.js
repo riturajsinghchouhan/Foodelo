@@ -10,6 +10,7 @@ const rangeSchema = z.object({
 const feeSettingsUpsertSchema = z.object({
     deliveryFee: z.number().min(0).nullable().optional(),
     deliveryFeeRanges: z.array(rangeSchema).optional(),
+    freeDeliveryUpTo: z.number().min(0).nullable().optional(),
     freeDeliveryThreshold: z.number().min(0).nullable().optional(),
     platformFee: z.number().min(0).nullable().optional(),
     packagingFee: z.number().min(0).nullable().optional(),
@@ -32,6 +33,12 @@ export const validateFeeSettingsUpsertDto = (body) => {
                 fee: Number(r?.fee)
             }))
             : undefined,
+        freeDeliveryUpTo:
+            body?.freeDeliveryUpTo === null
+                ? null
+                : body?.freeDeliveryUpTo !== undefined
+                    ? Number(body.freeDeliveryUpTo)
+                    : undefined,
         freeDeliveryThreshold:
             body?.freeDeliveryThreshold === null
                 ? null

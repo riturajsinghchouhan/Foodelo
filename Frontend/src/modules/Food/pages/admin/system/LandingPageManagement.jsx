@@ -60,10 +60,12 @@ export default function LandingPageManagement() {
   const diningBannersFileInputRef = useRef(null)
 
   // Settings
-  const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250 })
+  const [settings, setSettings] = useState({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerVideoUrl: "" })
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [recommendedSearchQuery, setRecommendedSearchQuery] = useState("")
+  const [festBannerUploading, setFestBannerUploading] = useState(false)
+  const festBannerFileInputRef = useRef(null)
 
   const [allRestaurants, setAllRestaurants] = useState([])
   const [restaurantsLoading, setRestaurantsLoading] = useState(false)
@@ -1034,13 +1036,14 @@ export default function LandingPageManagement() {
         setSettings({
           exploreMoreHeading: nextSettings.exploreMoreHeading || "Explore More",
           recommendedRestaurantIds: Array.isArray(nextSettings.recommendedRestaurantIds) ? nextSettings.recommendedRestaurantIds : [],
-          under250PriceLimit: Number(nextSettings.under250PriceLimit) || 250
+          under250PriceLimit: Number(nextSettings.under250PriceLimit) || 250,
+          festBannerVideoUrl: typeof nextSettings.festBannerVideoUrl === "string" ? nextSettings.festBannerVideoUrl : ""
         })
       }
     } catch (err) {
       // Silently handle 401/404 errors - endpoints may not exist yet, use default settings
       if (err.response?.status === 401 || err.response?.status === 404) {
-        setSettings({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250 }) // Use default settings
+        setSettings({ exploreMoreHeading: "Explore More", recommendedRestaurantIds: [], under250PriceLimit: 250, festBannerVideoUrl: "" }) // Use default settings
         setError(null) // Clear any previous error
       } else {
         // Filter out token-related errors
@@ -1060,7 +1063,8 @@ export default function LandingPageManagement() {
       const response = await api.patch('/food/hero-banners/landing/settings', {
         exploreMoreHeading: settings.exploreMoreHeading,
         recommendedRestaurantIds: Array.isArray(settings.recommendedRestaurantIds) ? settings.recommendedRestaurantIds : [],
-        under250PriceLimit: Number(settings.under250PriceLimit) || 250
+        under250PriceLimit: Number(settings.under250PriceLimit) || 250,
+        festBannerVideoUrl: settings.festBannerVideoUrl || ""
       }, getAuthConfig())
       if (response.data.success) {
         const savedSettings = response.data.data?.settings || {}
@@ -1070,7 +1074,10 @@ export default function LandingPageManagement() {
           recommendedRestaurantIds: Array.isArray(savedSettings.recommendedRestaurantIds)
             ? savedSettings.recommendedRestaurantIds
             : prev.recommendedRestaurantIds,
-          under250PriceLimit: Number(savedSettings.under250PriceLimit) || prev.under250PriceLimit
+          under250PriceLimit: Number(savedSettings.under250PriceLimit) || prev.under250PriceLimit,
+          festBannerVideoUrl: typeof savedSettings.festBannerVideoUrl === "string"
+            ? savedSettings.festBannerVideoUrl
+            : prev.festBannerVideoUrl
         }))
         setSuccess('Settings saved successfully!')
         setTimeout(() => setSuccess(null), 3000)
@@ -1079,6 +1086,46 @@ export default function LandingPageManagement() {
       setErrorSafely(err.response?.data?.message || 'Failed to save settings.')
     } finally {
       setSettingsSaving(false)
+    }
+  }
+
+  const handleFestBannerVideoSelect = async (e) => {
+    const file = e.target?.files?.[0] || null
+    if (!file) return
+
+    if (!file.type.startsWith('video/')) {
+      setErrorSafely('Please select a valid video file')
+      return
+    }
+    if (file.size > 30 * 1024 * 1024) {
+      setErrorSafely('Video must be 30MB or smaller')
+      return
+    }
+
+    try {
+      setFestBannerUploading(true)
+      setError(null)
+      setSuccess(null)
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', 'food/landing/fest-banner')
+
+      const response = await api.post('/uploads/video', formData, getAuthConfig())
+      const url = response?.data?.data?.url || ''
+      if (!url) {
+        setErrorSafely('Failed to upload video')
+        return
+      }
+
+      setSettings((prev) => ({ ...prev, festBannerVideoUrl: url }))
+      setSuccess('Video uploaded. Click Save Settings to publish.')
+      if (festBannerFileInputRef.current) festBannerFileInputRef.current.value = ''
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err) {
+      setErrorSafely(err.response?.data?.message || 'Failed to upload video')
+    } finally {
+      setFestBannerUploading(false)
     }
   }
 
@@ -1695,6 +1742,49 @@ export default function LandingPageManagement() {
                       placeholder="250"
                     />
                     <p className="text-xs text-slate-500 mt-1">Button will show "Under ₹{settings.under250PriceLimit || 250}" on user home page</p>
+                  </div>
+
+                  <div>
+                    <Label>Fest Banner Video (User Home)</Label>
+                    <p className="text-xs text-slate-500 mt-1 mb-3">
+                      Upload a promo video for the home fest banner. If empty, the default design is shown.
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      <input
+                        ref={festBannerFileInputRef}
+                        type="file"
+                        accept="video/*"
+                        onChange={handleFestBannerVideoSelect}
+                        className="hidden"
+                        disabled={festBannerUploading}
+                      />
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Button
+                          type="button"
+                          onClick={() => festBannerFileInputRef.current?.click()}
+                          disabled={festBannerUploading}
+                          className="bg-slate-900 hover:bg-slate-800 text-white"
+                        >
+                          {festBannerUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          {festBannerUploading ? 'Uploading...' : 'Upload Video'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setSettings((prev) => ({ ...prev, festBannerVideoUrl: "" }))}
+                          disabled={festBannerUploading || !settings.festBannerVideoUrl}
+                        >
+                          Remove Video
+                        </Button>
+                      </div>
+                      {settings.festBannerVideoUrl ? (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 break-all">
+                          {settings.festBannerVideoUrl}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500">No video uploaded.</p>
+                      )}
+                    </div>
                   </div>
 
                   <div>

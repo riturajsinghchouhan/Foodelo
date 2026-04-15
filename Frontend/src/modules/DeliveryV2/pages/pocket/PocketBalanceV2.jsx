@@ -30,21 +30,27 @@ export const PocketBalanceV2 = () => {
      withdrawableAmount: 0,
      canWithdraw: false
   });
+  const [withdrawalStatus, setWithdrawalStatus] = useState({
+     status: 'No request',
+     updatedAt: null
+  });
   const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [profileRes, earningsRes, walletRes] = await Promise.all([
+            const [profileRes, earningsRes, walletRes, withdrawalRes] = await Promise.all([
           deliveryAPI.getProfile(),
           deliveryAPI.getEarnings({ period: 'week' }),
-          deliveryAPI.getWallet()
+               deliveryAPI.getWallet(),
+               deliveryAPI.getWalletTransactions({ type: 'withdrawal', limit: 1 })
         ]);
         
         const profile = profileRes?.data?.data?.profile || {};
         const summary = earningsRes?.data?.data?.summary || {};
         const wallet = walletRes?.data?.data?.wallet || {};
+      const withdrawalTx = withdrawalRes?.data?.data?.transactions?.[0] || null;
         
         // Use wallet data from backend instead of non-existent profile.walletBalance
         const pocketBalance = Number(wallet.pocketBalance) || 0;
@@ -62,6 +68,28 @@ export const PocketBalanceV2 = () => {
            withdrawableAmount,
            canWithdraw: withdrawableAmount >= withdrawalLimit
         });
+
+            if (withdrawalTx) {
+               const rawStatus = String(withdrawalTx.status || 'Pending').toLowerCase();
+               const statusLabel = rawStatus === 'approved' || rawStatus === 'completed'
+                  ? 'Approved'
+                  : rawStatus === 'rejected' || rawStatus === 'denied'
+                     ? 'Rejected'
+                     : 'Pending';
+               const updatedAt = withdrawalTx.processedAt || withdrawalTx.updatedAt || withdrawalTx.createdAt || null;
+               setWithdrawalStatus({
+                  status: statusLabel,
+                  updatedAt: updatedAt ? new Date(updatedAt).toLocaleString('en-IN', {
+                     day: '2-digit',
+                     month: 'short',
+                     year: 'numeric',
+                     hour: '2-digit',
+                     minute: '2-digit'
+                  }) : null
+               });
+            } else {
+               setWithdrawalStatus({ status: 'No request', updatedAt: null });
+            }
       } catch (err) {
         toast.error('Failed to load pocket details');
       } finally {
@@ -171,6 +199,11 @@ export const PocketBalanceV2 = () => {
                 <DetailRow label="Cash collected" value={formatCurrency(walletState.cashCollected)} />
                 <DetailRow label="Deductions" value={formatCurrency(walletState.deductions)} />
                 <DetailRow label="Pocket balance" value={formatCurrency(walletState.pocketBalance)} />
+                <DetailRow
+                   label="Withdrawal status"
+                   value={withdrawalStatus.status}
+                   subLabel={withdrawalStatus.updatedAt ? `Updated: ${withdrawalStatus.updatedAt}` : 'Admin approval status'}
+                />
                 <DetailRow 
                    label="Min. withdrawal amount" 
                    value={formatCurrency(walletState.withdrawalLimit)} 

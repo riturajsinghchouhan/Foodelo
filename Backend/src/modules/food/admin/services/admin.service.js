@@ -1735,6 +1735,9 @@ export async function upsertFeeSettings(body) {
 
         if (body.deliveryFeeRanges !== undefined) $set.deliveryFeeRanges = body.deliveryFeeRanges;
 
+        if (body.freeDeliveryUpTo === null) $unset.freeDeliveryUpTo = 1;
+        else if (body.freeDeliveryUpTo !== undefined) $set.freeDeliveryUpTo = body.freeDeliveryUpTo;
+
         if (body.freeDeliveryThreshold === null) $unset.freeDeliveryThreshold = 1;
         else if (body.freeDeliveryThreshold !== undefined) $set.freeDeliveryThreshold = body.freeDeliveryThreshold;
 
@@ -1763,6 +1766,7 @@ export async function upsertFeeSettings(body) {
         isActive: body.isActive !== false
     };
     if (body.deliveryFee !== undefined && body.deliveryFee !== null) payload.deliveryFee = body.deliveryFee;
+    if (body.freeDeliveryUpTo !== undefined && body.freeDeliveryUpTo !== null) payload.freeDeliveryUpTo = body.freeDeliveryUpTo;
     if (body.freeDeliveryThreshold !== undefined && body.freeDeliveryThreshold !== null) payload.freeDeliveryThreshold = body.freeDeliveryThreshold;
     if (body.platformFee !== undefined && body.platformFee !== null) payload.platformFee = body.platformFee;
     if (body.packagingFee !== undefined && body.packagingFee !== null) payload.packagingFee = body.packagingFee;
@@ -3076,6 +3080,9 @@ export async function createFood(body) {
         description: typeof body.description === 'string' ? body.description.trim() : '',
         price,
         priceOnOtherPlatforms: body.priceOnOtherPlatforms ? Number(body.priceOnOtherPlatforms) : null,
+        otherPlatformGst: body.otherPlatformGst !== undefined && body.otherPlatformGst !== null
+            ? Number(body.otherPlatformGst)
+            : null,
         variants,
         image: typeof body.image === 'string' ? body.image.trim() : '',
         foodType,
@@ -3107,6 +3114,11 @@ export async function updateFood(id, body) {
     if (pricingUpdate.price !== undefined) doc.price = pricingUpdate.price;
     if (pricingUpdate.variants !== undefined) doc.variants = pricingUpdate.variants;
     if (body.priceOnOtherPlatforms !== undefined) doc.priceOnOtherPlatforms = body.priceOnOtherPlatforms ? Number(body.priceOnOtherPlatforms) : null;
+    if (body.otherPlatformGst !== undefined) {
+        doc.otherPlatformGst = body.otherPlatformGst !== null && body.otherPlatformGst !== ''
+            ? Number(body.otherPlatformGst)
+            : null;
+    }
     if (body.image !== undefined) doc.image = String(body.image || '').trim();
     if (body.foodType !== undefined) doc.foodType = targetFoodType;
     if (body.isAvailable !== undefined) doc.isAvailable = body.isAvailable !== false;

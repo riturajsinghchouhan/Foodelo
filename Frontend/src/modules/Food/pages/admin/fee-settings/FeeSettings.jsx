@@ -13,6 +13,7 @@ export default function FeeSettings() {
   const [feeSettings, setFeeSettings] = useState({
     deliveryFee: "",
     deliveryFeeRanges: [],
+    freeDeliveryUpTo: "",
     freeDeliveryThreshold: "",
     platformFee: "",
     packagingFee: "",
@@ -32,6 +33,7 @@ export default function FeeSettings() {
         setFeeSettings({
           deliveryFee: response.data.data.feeSettings.deliveryFee ?? "",
           deliveryFeeRanges: response.data.data.feeSettings.deliveryFeeRanges || [],
+          freeDeliveryUpTo: response.data.data.feeSettings.freeDeliveryUpTo ?? "",
           freeDeliveryThreshold: response.data.data.feeSettings.freeDeliveryThreshold ?? "",
           platformFee: response.data.data.feeSettings.platformFee ?? "",
           packagingFee: response.data.data.feeSettings.packagingFee ?? "",
@@ -42,6 +44,7 @@ export default function FeeSettings() {
         setFeeSettings({
           deliveryFee: "",
           deliveryFeeRanges: [],
+          freeDeliveryUpTo: "",
           freeDeliveryThreshold: "",
           platformFee: "",
           packagingFee: "",
@@ -68,6 +71,7 @@ export default function FeeSettings() {
       const response = await adminAPI.createOrUpdateFeeSettings({
         deliveryFee: feeSettings.deliveryFee === "" ? undefined : Number(feeSettings.deliveryFee),
         deliveryFeeRanges: feeSettings.deliveryFeeRanges,
+        freeDeliveryUpTo: feeSettings.freeDeliveryUpTo === "" ? undefined : Number(feeSettings.freeDeliveryUpTo),
         freeDeliveryThreshold: feeSettings.freeDeliveryThreshold === "" ? undefined : Number(feeSettings.freeDeliveryThreshold),
         platformFee: feeSettings.platformFee === "" ? undefined : Number(feeSettings.platformFee),
         packagingFee: feeSettings.packagingFee === "" ? undefined : Number(feeSettings.packagingFee),
@@ -83,6 +87,7 @@ export default function FeeSettings() {
           setFeeSettings({
             deliveryFee: saved.deliveryFee ?? "",
             deliveryFeeRanges: saved.deliveryFeeRanges ?? [],
+            freeDeliveryUpTo: saved.freeDeliveryUpTo ?? "",
             freeDeliveryThreshold: saved.freeDeliveryThreshold ?? "",
             platformFee: saved.platformFee ?? "",
             packagingFee: saved.packagingFee ?? "",
@@ -261,9 +266,9 @@ export default function FeeSettings() {
               <div className="mb-8">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-900">Delivery Fee by Order Value Range</h3>
+                    <h3 className="text-lg font-semibold text-slate-900">Delivery Fee by Distance Range (km)</h3>
                     <p className="text-sm text-slate-500 mt-1">
-                      Set different delivery fees based on order value ranges
+                      Set delivery fees based on distance slabs
                     </p>
                   </div>
                 </div>
@@ -274,8 +279,8 @@ export default function FeeSettings() {
                     <table className="w-full border border-slate-200 rounded-lg">
                       <thead className="bg-slate-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700 border-b border-slate-200">Min (₹)</th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700 border-b border-slate-200">Max (₹)</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700 border-b border-slate-200">Min (km)</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700 border-b border-slate-200">Max (km)</th>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700 border-b border-slate-200">Delivery Fee (₹)</th>
                           <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700 border-b border-slate-200">Actions</th>
                         </tr>
@@ -290,32 +295,26 @@ export default function FeeSettings() {
                               <tr key={originalIndex} className={`${isEditing ? 'bg-blue-50' : 'hover:bg-slate-50'} transition-colors`}>
                                 <td className="px-4 py-3 text-sm text-slate-900 border-b border-slate-100">
                                   {isEditing ? (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-slate-400">₹</span>
-                                      <input
-                                        type="number"
-                                        value={newRange.min}
-                                        onChange={(e) => setNewRange({ ...newRange, min: e.target.value })}
-                                        className="w-24 px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                      />
-                                    </div>
+                                    <input
+                                      type="number"
+                                      value={newRange.min}
+                                      onChange={(e) => setNewRange({ ...newRange, min: e.target.value })}
+                                      className="w-24 px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
                                   ) : (
-                                    <>₹{range.min}</>
+                                    <>{range.min} km</>
                                   )}
                                 </td>
                                 <td className="px-4 py-3 text-sm text-slate-900 border-b border-slate-100">
                                   {isEditing ? (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-slate-400">₹</span>
-                                      <input
-                                        type="number"
-                                        value={newRange.max}
-                                        onChange={(e) => setNewRange({ ...newRange, max: e.target.value })}
-                                        className="w-24 px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                      />
-                                    </div>
+                                    <input
+                                      type="number"
+                                      value={newRange.max}
+                                      onChange={(e) => setNewRange({ ...newRange, max: e.target.value })}
+                                      className="w-24 px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
                                   ) : (
-                                    <>₹{range.max}</>
+                                    <>{range.max} km</>
                                   )}
                                 </td>
                                 <td className="px-4 py-3 text-sm font-medium text-green-600 border-b border-slate-100">
@@ -385,11 +384,11 @@ export default function FeeSettings() {
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                     <div className="flex items-center gap-2 mb-3">
                       <Plus className="w-4 h-4 text-green-600" />
-                      <h4 className="text-sm font-semibold text-slate-700">Add New Range</h4>
+                      <h4 className="text-sm font-semibold text-slate-700">Add Distance Range</h4>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Min Value (₹)</label>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Min Distance (km)</label>
                         <input
                           type="number"
                           value={newRange.min}
@@ -401,7 +400,7 @@ export default function FeeSettings() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Max Value (₹)</label>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Max Distance (km)</label>
                         <input
                           type="number"
                           value={newRange.max}
@@ -409,7 +408,7 @@ export default function FeeSettings() {
                           min="0"
                           step="1"
                           className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-                          placeholder="1000"
+                          placeholder="5"
                         />
                       </div>
                       <div>
@@ -435,13 +434,32 @@ export default function FeeSettings() {
                       </div>
                     </div>
                     <p className="text-xs text-slate-500 mt-2 italic">
-                      Example: Orders between ₹0 and ₹1000 will have ₹50 delivery fee.
+                      Example: Orders between 0 km and 5 km will have ₹50 delivery fee.
                     </p>
                   </div>
                 )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-slate-200 pt-6 mt-6">
+
+                {/* Free Delivery Up To */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-700">
+                    Free Delivery Up To (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={feeSettings.freeDeliveryUpTo}
+                    onChange={(e) => setFeeSettings({ ...feeSettings, freeDeliveryUpTo: e.target.value })}
+                    min="0"
+                    step="1"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                    placeholder="500"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Orders at or above this amount get free delivery
+                  </p>
+                </div>
 
                 {/* Default Delivery Fee (Fallback) */}
                 <div className="space-y-2">
@@ -459,25 +477,6 @@ export default function FeeSettings() {
                   />
                   <p className="text-xs text-slate-500">
                     Used only when no delivery fee range matches and free delivery threshold is not met
-                  </p>
-                </div>
-
-                {/* Free Delivery Threshold */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Free Delivery Threshold (₹)
-                  </label>
-                  <input
-                    type="number"
-                    value={feeSettings.freeDeliveryThreshold}
-                    onChange={(e) => setFeeSettings({ ...feeSettings, freeDeliveryThreshold: e.target.value })}
-                    min="0"
-                    step="1"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-                    placeholder="149"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Orders at or above this amount get free delivery
                   </p>
                 </div>
 

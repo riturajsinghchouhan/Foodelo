@@ -18,6 +18,7 @@ import { API_BASE_URL } from "@food/api/config"
 import { initRazorpayPayment } from "@food/utils/razorpay"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@food/utils/businessSettings"
+import { calculateDistance } from "@food/utils/common"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
@@ -170,6 +171,7 @@ export default function Cart() {
   const [congratsSavingsPercentage, setCongratssSavingsPercentage] = useState(0)
   const [congratsSavingsItems, setCongratssSavingsItems] = useState([])
   const [showOrderSuccess, setShowOrderSuccess] = useState(false)
+  const [orderSuccessSavingsAmount, setOrderSuccessSavingsAmount] = useState(0)
   const [placedOrderId, setPlacedOrderId] = useState(null)
   const [selectedAddressId, setSelectedAddressId] = useState(null)
   const [deliveryAddressMode, setDeliveryAddressMode] = useState(() => {
@@ -242,6 +244,7 @@ export default function Cart() {
   const [feeSettings, setFeeSettings] = useState({
     deliveryFee: 25,
     deliveryFeeRanges: [],
+    freeDeliveryUpTo: 0,
     freeDeliveryThreshold: 149,
     platformFee: 5,
     packagingFee: 0,
@@ -976,6 +979,7 @@ export default function Cart() {
           setFeeSettings({
             deliveryFee: response.data.data.feeSettings.deliveryFee ?? 25,
             deliveryFeeRanges: response.data.data.feeSettings.deliveryFeeRanges ?? [],
+            freeDeliveryUpTo: response.data.data.feeSettings.freeDeliveryUpTo ?? 0,
             freeDeliveryThreshold: response.data.data.feeSettings.freeDeliveryThreshold ?? 149,
             platformFee: response.data.data.feeSettings.platformFee ?? 5,
             packagingFee: response.data.data.feeSettings.packagingFee ?? 0,
@@ -1009,8 +1013,23 @@ export default function Cart() {
       return 0
     }
 
+    const freeUpTo = Number(feeSettings.freeDeliveryUpTo || 0)
+    if (Number.isFinite(freeUpTo) && freeUpTo > 0 && subtotal >= freeUpTo) {
+      return 0
+    }
+
+    const distanceKm = (() => {
+      const rCoords = restaurantData?.location?.coordinates
+      const dCoords = defaultAddress?.location?.coordinates
+      if (!Array.isArray(rCoords) || !Array.isArray(dCoords)) return null
+      if (rCoords.length !== 2 || dCoords.length !== 2) return null
+      const [rLng, rLat] = rCoords
+      const [dLng, dLat] = dCoords
+      return calculateDistance(rLat, rLng, dLat, dLng)
+    })()
+
     const ranges = Array.isArray(feeSettings.deliveryFeeRanges) ? [...feeSettings.deliveryFeeRanges] : []
-    if (ranges.length > 0) {
+    if (ranges.length > 0 && Number.isFinite(distanceKm)) {
       const sortedRanges = ranges.sort((a, b) => Number(a.min) - Number(b.min))
       for (let i = 0; i < sortedRanges.length; i += 1) {
         const range = sortedRanges[i]
@@ -1019,8 +1038,8 @@ export default function Cart() {
         const fee = Number(range.fee)
         const isLastRange = i === sortedRanges.length - 1
         const inRange = isLastRange
-          ? subtotal >= min && subtotal <= max
-          : subtotal >= min && subtotal < max
+          ? distanceKm >= min && distanceKm <= max
+          : distanceKm >= min && distanceKm < max
 
         if (inRange) return fee
       }
@@ -1040,7 +1059,7 @@ export default function Cart() {
     deliveryFeeBreakdown?.source === "distance" &&
     Number.isFinite(Number(deliveryFeeBreakdown?.distanceKm))
   const deliveryFeeBreakdownText = hasDistanceDeliveryBreakdown
-    ? `Distance ${Number(deliveryFeeBreakdown.distanceKm).toFixed(1)} km: ${RUPEE_SYMBOL}${Number(deliveryFeeBreakdown.basePayout || 0).toFixed(0)} base + ${Number(deliveryFeeBreakdown.extraDistanceKm || 0).toFixed(1)} km x ${RUPEE_SYMBOL}${Number(deliveryFeeBreakdown.commissionPerKm || 0).toFixed(0)}`
+    ? `Distance ${Number(deliveryFeeBreakdown.distanceKm).toFixed(1)} km`
     : null
   const platformFee = pricing != null ? (pricing.platformFee ?? 0) : (feeSettings.platformFee ?? 0)
   const packagingFee = pricing != null ? (pricing.packagingFee ?? 0) : (feeSettings.packagingFee ?? 0)
@@ -1053,6 +1072,7 @@ export default function Cart() {
   // Calculate platform pricing comparison savings
   const platformPricingSavings = useMemo(() => {
     let totalPlatformPrice = 0
+    let totalPlatformGst = 0
     let totalFoodelloPrice = 0
     let comparison = []
     let hasAnyPlatformPrice = false
@@ -1063,35 +1083,47 @@ export default function Cart() {
         hasAnyPlatformPrice = true
         const itemQuantity = item.quantity || 1
         const platformPrice = (item.priceOnOtherPlatforms || 0) * itemQuantity
+        const platformGstRate = Number(item.otherPlatformGst || 0)
+        const platformGst = platformGstRate > 0
+          ? Math.round(platformPrice * (platformGstRate / 100))
+          : 0
         const foodelloPrice = (item.price || 0) * itemQuantity
-        const itemSavings = Math.max(0, platformPrice - foodelloPrice)
+        const itemSavings = Math.max(0, platformPrice + platformGst - foodelloPrice)
 
         totalPlatformPrice += platformPrice
+        totalPlatformGst += platformGst
         totalFoodelloPrice += foodelloPrice
 
         comparison.push({
           name: item.name,
           foodelloPrice: (item.price || 0),
           platformPrice: item.priceOnOtherPlatforms,
+          platformGstRate,
+          platformGst,
           savings: itemSavings,
           quantity: itemQuantity
         })
       }
     })
 
-    const totalSavings = Math.max(0, totalPlatformPrice - totalFoodelloPrice)
-    const savingsPercentage = totalPlatformPrice > 0 ? ((totalSavings / totalPlatformPrice) * 100).toFixed(1) : 0
+    const totalPlatformPriceWithGst = totalPlatformPrice + totalPlatformGst
+    const totalSavings = Math.max(0, totalPlatformPriceWithGst - total)
+    const savingsPercentage = totalPlatformPriceWithGst > 0
+      ? ((totalSavings / totalPlatformPriceWithGst) * 100).toFixed(1)
+      : 0
 
     debugLog('Platform pricing savings:', { hasPlatformPricing: hasAnyPlatformPrice, totalSavings, savingsPercentage })
 
     return {
       hasPlatformPricing: hasAnyPlatformPrice,
       totalPlatformPrice,
+      totalPlatformGst,
+      totalPlatformPriceWithGst,
       totalSavings,
       savingsPercentage,
       items: comparison
     }
-  }, [cart])
+  }, [cart, total])
   const selectedPaymentLabel =
     selectedPaymentMethod === "wallet"
       ? "Wallet"
@@ -1742,6 +1774,7 @@ export default function Cart() {
       if (selectedPaymentMethod === "cash") {
         toast.success("Order placed with Cash on Delivery")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
+        setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
         if (platformPricingSavings.totalSavings > 0) {
           setCongratssSavingsAmount(platformPricingSavings.totalSavings)
           setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
@@ -1767,6 +1800,7 @@ export default function Cart() {
       if (selectedPaymentMethod === "wallet") {
         toast.success("Order placed with Wallet payment")
         setPlacedOrderId(order?._id || order?.orderId || order?.id || null)
+        setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
         if (platformPricingSavings.totalSavings > 0) {
           setCongratssSavingsAmount(platformPricingSavings.totalSavings)
           setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
@@ -1873,6 +1907,7 @@ export default function Cart() {
                 paymentId: verifyResponse.data.data?.payment?.paymentId
               })
               setPlacedOrderId(order._id || order.orderId)
+              setOrderSuccessSavingsAmount(platformPricingSavings.totalSavings > 0 ? platformPricingSavings.totalSavings : 0)
               if (platformPricingSavings.totalSavings > 0) {
                 setCongratssSavingsAmount(platformPricingSavings.totalSavings)
                 setCongratssSavingsPercentage(platformPricingSavings.savingsPercentage)
@@ -1970,6 +2005,7 @@ export default function Cart() {
     setCongratssSavingsAmount(0)
     setCongratssSavingsPercentage(0)
     setCongratssSavingsItems([])
+    setOrderSuccessSavingsAmount(0)
     navigate(`/user/orders/${placedOrderId}?confirmed=true`)
   }
 
@@ -2610,7 +2646,7 @@ export default function Cart() {
                         <span className="text-base text-gray-800 dark:text-gray-200 font-semibold tracking-wide">To Pay</span>
                         {platformPricingSavings.hasPlatformPricing && (
                           <span className="text-base text-gray-400 dark:text-gray-500 line-through font-medium">
-                            {RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPrice.toFixed(2)}
+                            {RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPriceWithGst.toFixed(2)}
                           </span>
                         )}
                         <span className="text-base font-bold text-gray-900 dark:text-white">
@@ -2641,6 +2677,17 @@ export default function Cart() {
                         {deliveryFeeBreakdownText}
                       </div>
                     )}
+                    {Number((pricing?.freeDeliveryUpTo ?? feeSettings.freeDeliveryUpTo) || 0) > 0 && (
+                      <div className="-mt-1.5">
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#7e3866]/10 via-[#7e3866]/20 to-[#7e3866]/10 text-[#7e3866] border border-[#7e3866]/25 px-2.5 py-1 text-[11px] font-semibold shadow-sm animate-pulse">
+                          <Sparkles className="h-3 w-3" />
+                          <span>Free delivery at</span>
+                          <span className="text-[#55254b]">
+                            {RUPEE_SYMBOL}{Number((pricing?.freeDeliveryUpTo ?? feeSettings.freeDeliveryUpTo) || 0).toFixed(0)}+
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
                       <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{platformFee.toFixed(2)}</span>
@@ -2662,16 +2709,24 @@ export default function Cart() {
 
                     {/* Platform Pricing Comparison - Bottom */}
                     {platformPricingSavings.hasPlatformPricing && (
-                      <div className="rounded-lg bg-gradient-to-r from-[#7e3866]/5 to-[#7e3866]/10 dark:from-[#7e3866]/10 dark:to-[#7e3866]/15 border border-[#7e3866]/20 p-3 space-y-2 mt-2">
+                      <div className="rounded-lg bg-gradient-to-r from-[#7e3866]/5 via-[#7e3866]/12 to-[#7e3866]/5 dark:from-[#7e3866]/10 dark:via-[#7e3866]/15 dark:to-[#7e3866]/10 border border-[#7e3866]/20 p-3 space-y-2 mt-2 shadow-sm animate-pulse">
                         <div className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-2">
                             <Sparkles className="h-4 w-4 text-[#7e3866]" />
-                            <span className="font-semibold text-[#7e3866]">Price on Other Platforms</span>
+                            <span className="font-semibold text-[#7e3866]">Other platform total</span>
                           </div>
                           <span className="text-gray-700 dark:text-gray-300 font-medium">{RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPrice.toFixed(2)}</span>
                         </div>
+                        <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                          <span>GST on other platforms</span>
+                          <span className="font-medium">{RUPEE_SYMBOL}{platformPricingSavings.totalPlatformGst.toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm font-semibold text-gray-800 dark:text-gray-200">
+                          <span>Other platform total (incl. GST)</span>
+                          <span>{RUPEE_SYMBOL}{platformPricingSavings.totalPlatformPriceWithGst.toFixed(2)}</span>
+                        </div>
                         {platformPricingSavings.items.length > 0 && (
-                          <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 border-t border-[#7e3866]/10 pt-2">
+                          <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 border-t border-[#7e3866]/15 pt-2">
                             {platformPricingSavings.items.slice(0, 2).map((item, idx) => (
                               <div key={idx} className="flex justify-between">
                                 <span>{item.name} x{item.quantity}</span>
@@ -2686,7 +2741,7 @@ export default function Cart() {
                           </div>
                         )}
                         <div className="flex items-center justify-between text-xs font-bold text-white bg-[#7e3866] rounded px-2 py-1.5 -mx-3 -mb-3">
-                          <span>You save</span>
+                          <span>You save approx</span>
                           <span>{RUPEE_SYMBOL}{platformPricingSavings.totalSavings.toFixed(0)} ({platformPricingSavings.savingsPercentage}%)</span>
                         </div>
                       </div>
@@ -2902,7 +2957,7 @@ export default function Cart() {
 
                 {/* Savings Amount */}
                 <div className="text-center">
-                  <p className="text-gray-600 dark:text-gray-300 text-lg mb-2">You saved</p>
+                  <p className="text-gray-600 dark:text-gray-300 text-lg mb-2">You saved approx</p>
                   <div className="text-5xl md:text-6xl font-bold text-green-600 dark:text-green-400 mb-4">
                     {RUPEE_SYMBOL}{congratsSavingsAmount.toFixed(0)}
                   </div>
@@ -3025,6 +3080,11 @@ export default function Cart() {
                 >
                   <h3 className="text-3xl font-bold text-[#7e3866] dark:text-[#a65d8a] mb-2">Order Placed!</h3>
                   <p className="text-gray-600 dark:text-gray-300">Your delicious food is on its way</p>
+                  {orderSuccessSavingsAmount > 0 && (
+                    <p className="mt-2 text-sm text-[#7e3866] dark:text-[#a65d8a]">
+                      You save approx {RUPEE_SYMBOL}{orderSuccessSavingsAmount.toFixed(0)} on this order
+                    </p>
+                  )}
                 </div>
 
                 {/* Platform Pricing Savings Celebration */}

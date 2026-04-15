@@ -13,7 +13,6 @@ import {
   MoreVertical,
   MapPin,
   Clock,
-  Tag,
   ChevronDown,
   Info,
   Star,
@@ -1185,7 +1184,8 @@ function RestaurantDetailsContent() {
       originalPrice: item.originalPrice,
       isVeg: item.isVeg !== false, // Add isVeg property
       preparationTime: item.preparationTime, // Add preparationTime property
-      priceOnOtherPlatforms: item.priceOnOtherPlatforms || null // Include platform pricing for savings display
+      priceOnOtherPlatforms: item.priceOnOtherPlatforms || null, // Include platform pricing for savings display
+      otherPlatformGst: item.otherPlatformGst ?? null,
     }
 
     // Get source position for animation from event target
@@ -1910,6 +1910,21 @@ function RestaurantDetailsContent() {
     restaurant?.offerText || "",
     ...(Array.isArray(restaurant?.offers) ? restaurant.offers.map((offer) => offer?.title || "") : []),
   ]
+  const rotatingOffers = highlightOffers
+    .map((offer) => String(offer || "").trim())
+    .filter(Boolean)
+  const offersForDisplay = rotatingOffers.length > 0 ? rotatingOffers : ["Offers available"]
+  const activeOfferText = offersForDisplay[highlightIndex % offersForDisplay.length]
+  const offerIndicatorCount = Math.min(offersForDisplay.length, 5)
+  const activeOfferIndicator = offerIndicatorCount > 0 ? highlightIndex % offerIndicatorCount : 0
+  const primaryOffer = Array.isArray(restaurant?.offers) && restaurant.offers.length > 0
+    ? restaurant.offers[0]
+    : null
+  const offerHeadline = primaryOffer?.title || restaurant?.offerText || activeOfferText
+  const offerSubline =
+    primaryOffer?.description ||
+    primaryOffer?.subtitle ||
+    (primaryOffer?.code ? `Use ${primaryOffer.code}` : "Tap to view all offers")
 
   // Auto-rotate images every 3 seconds
   useEffect(() => {
@@ -2065,46 +2080,60 @@ function RestaurantDetailsContent() {
       {/* Main Content Card */}
       <div className="bg-white dark:bg-[#1a1a1a] rounded-t-3xl relative z-10 min-h-[40vh]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-5 md:py-6 lg:py-8 space-y-3 md:space-y-4 lg:space-y-5 pb-0">
-          {/* Restaurant Name and Rating */}
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{restaurant?.name || "Unknown Restaurant"}</h1>
-              <Info className="h-5 w-5 text-gray-400" />
+          {/* Restaurant Summary */}
+          <div className="relative">
+            <div className="relative rounded-3xl border border-gray-100 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)] p-4 sm:p-5 space-y-4 overflow-hidden">
+              <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#7e3866] via-[#8a4b77] to-[#b36b8f]" />
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">
+                    {restaurant?.name || "Unknown Restaurant"}
+                  </h1>
+                  <Info className="h-5 w-5 text-gray-400" />
+                </div>
+                <div className="mt-1 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <Utensils className="h-4 w-4" />
+                  <span>{restaurant?.topCategory || restaurant?.cuisine || "Multi-cuisine"}</span>
+                </div>
+              </div>
+              <div className="flex flex-col items-end">
+                <div className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                  <Star className="h-3 w-3 fill-white" />
+                  {Number(restaurant?.rating || 4.5).toFixed(1)}
+                </div>
+                <span className="mt-1 text-xs text-gray-500">
+                  {(restaurant.reviews || 0).toLocaleString()}+ ratings
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col items-end">
-              <Badge className="bg-[#8CC63F] text-white mb-1 flex items-center gap-1 px-2 py-1">
-                <Star className="h-3 w-3 fill-white" />
-                {restaurant?.rating || 4.5}
-              </Badge>
-              <span className="text-xs text-gray-500">By {(restaurant.reviews || 0).toLocaleString()}+</span>
+
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300 min-w-0"
+                onClick={() => setShowLocationSheet(true)}
+              >
+                <MapPin className="h-4 w-4" />
+                <span className="truncate">
+                  {restaurant?.distance || "1.2 km"} | {restaurant?.location || "Location"}
+                </span>
+                <ChevronDown className="h-4 w-4 text-gray-500" />
+              </button>
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold text-white ${
+                  isRestaurantOffline ? "bg-rose-600" : "bg-emerald-600"
+                }`}
+              >
+                {isRestaurantOffline ? "Offline" : "Open now"}
+              </span>
             </div>
-          </div>
 
-          {/* Top Category */} 
-          <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <Utensils className="h-4 w-4" />
-            <span>{restaurant?.topCategory || restaurant?.cuisine || "Multi-cuisine"}</span>
-          </div>
-
-          {/* Location */}
-          <div
-            className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
-            onClick={() => setShowLocationSheet(true)}
-          >
-            <MapPin className="h-4 w-4" />
-            <span>{restaurant?.distance || "1.2 km"} � {restaurant?.location || "Location"}</span>
-            <ChevronDown className="h-4 w-4 text-gray-500" />
-          </div>
-
-          {/* Delivery Time */}
-          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <Clock className="h-4 w-4" />
               <span>{restaurant?.deliveryTime || "25-30 mins"}</span>
             </div>
-            <Badge className={`${isRestaurantOffline ? "bg-rose-600" : "bg-emerald-600"} text-white`}>
-              {isRestaurantOffline ? "Offline" : "Open now"}
-            </Badge>
+            </div>
           </div>
 
           {isRestaurantOffline && (
@@ -2114,25 +2143,53 @@ function RestaurantDetailsContent() {
           )}
 
           {/* Offers */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm overflow-hidden">
-              <Tag className="h-4 w-4 text-[#7e3866]" />
-              <div className="relative h-5 overflow-hidden">
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={highlightIndex}
-                    initial={{ y: 16, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: -16, opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="text-[#7e3866] font-medium inline-block"
-                  >
-                    {highlightOffers[highlightIndex]}
-                  </motion.span>
-                </AnimatePresence>
+          <button
+            type="button"
+            onClick={() => setShowOffersSheet(true)}
+            className="w-full rounded-2xl border border-gray-900/20 bg-white px-4 py-3 text-left shadow-[0_12px_30px_rgba(15,23,42,0.18)] transition-all hover:shadow-[0_16px_36px_rgba(15,23,42,0.24)]"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
+                <Percent className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="relative h-5 overflow-hidden">
+                  <AnimatePresence mode="wait">
+                    <motion.span
+                      key={highlightIndex}
+                      initial={{ y: 16, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: -16, opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="text-sm font-semibold text-gray-900"
+                    >
+                      {offerHeadline}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{offerSubline}</p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                  <Star className="h-3 w-3 fill-emerald-700 text-emerald-700" />
+                  {Number(restaurant?.rating || 4.5).toFixed(1)}
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  {(restaurant.reviews || 0).toLocaleString()}+ ratings
+                </span>
               </div>
             </div>
-          </div>
+            <div className="mt-3 flex items-center gap-1.5">
+              {Array.from({ length: offerIndicatorCount }).map((_, index) => (
+                <span
+                  key={`offer-dot-${index}`}
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    index === activeOfferIndicator ? "bg-orange-500" : "bg-gray-200"
+                  }`}
+                />
+              ))}
+            </div>
+          </button>
 
           {/* Filter/Category Buttons */}
           <div className="border-y border-gray-200 py-3 -mx-4 px-4 overflow-x-auto scrollbar-hide">
@@ -3687,7 +3744,7 @@ function RestaurantDetailsContent() {
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
                           {restaurant.restaurantOffers.goldOffer?.title || "Gold exclusive offer"}
                         </h3>
-                        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 flex items-start justify-between gap-4">
+                        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 flex items-start justify-between gap-4 border border-gray-100 dark:border-gray-700 shadow-md">
                           <div className="flex items-start gap-3 flex-1">
                             <Lock className="h-5 w-5 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
                             <div className="flex-1">
@@ -3724,7 +3781,7 @@ function RestaurantDetailsContent() {
                             return (
                               <div
                                 key={couponKey}
-                                className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+                                className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm"
                               >
                                 <button
                                   className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"

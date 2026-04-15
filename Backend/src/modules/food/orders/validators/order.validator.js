@@ -47,6 +47,16 @@ export function validateCalculateOrderDto(body) {
     const schema = z.object({
         items: z.array(orderItemSchema).min(1, 'At least one item required'),
         restaurantId: z.string().min(1, 'Restaurant id required'),
+        deliveryAddress: z
+            .object({
+                location: z
+                    .object({
+                        type: z.literal('Point').optional(),
+                        coordinates: z.tuple([z.number(), z.number()]).optional()
+                    })
+                    .optional()
+            })
+            .optional(),
         deliveryAddressId: z.string().optional(),
         zoneId: z.string().optional(),
         couponCode: z.string().optional(),
