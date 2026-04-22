@@ -52,14 +52,18 @@ const getDayName = (date) => date.toLocaleDateString("en-US", { weekday: "long" 
 const buildSlots = (timing) => {
   if (!timing || timing.isOpen === false) return []
   const opening = parseTimeToMinutes(timing.openingTime)
-  const closing = parseTimeToMinutes(timing.closingTime)
+  let closing = parseTimeToMinutes(timing.closingTime)
   if (opening === null || closing === null) return []
+
+  // Handle case where closing time is earlier than opening time (e.g., 2:00 AM next day)
+  if (closing <= opening) {
+    closing += 24 * 60
+  }
 
   const slots = []
   let cursor = opening
-  const end = closing > opening ? closing : opening + 240
 
-  while (cursor <= end && slots.length < 16) {
+  while (cursor <= closing) {
     const hours = Math.floor((cursor % (24 * 60)) / 60)
     const minutes = cursor % 60
     slots.push(formatTimeValue(`${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`))
@@ -128,6 +132,15 @@ export default function TableBooking() {
   const [selectedSlot, setSelectedSlot] = useState(location.state?.selectedTime || null)
   const [selectedMealPeriod, setSelectedMealPeriod] = useState("lunch")
   const [currentBookings, setCurrentBookings] = useState([])
+  const [currentTime, setCurrentTime] = useState(new Date())
+
+  // Real-time update for slots filtering
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 60000) // Update every minute
+    return () => clearInterval(timer)
+  }, [])
 
   const fetchRestaurant = async () => {
     try {
@@ -213,9 +226,23 @@ export default function TableBooking() {
     return buildFallbackTiming(restaurant)
   }, [outletTimings, selectedDate, restaurant])
   const allSlots = useMemo(() => buildSlots(selectedDayTiming), [selectedDayTiming])
+
+  const availableSlots = useMemo(() => {
+    const isToday = selectedDate.toDateString() === currentTime.toDateString()
+    if (!isToday) return allSlots
+
+    const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes()
+    const buffer = 15 // Allow booking at least 15 minutes ahead
+
+    return allSlots.filter((slot) => {
+      const slotMinutes = parseTimeToMinutes(slot)
+      return slotMinutes > currentMinutes + buffer
+    })
+  }, [allSlots, selectedDate, currentTime])
+
   const filteredSlots = useMemo(
-    () => allSlots.filter((slot) => getMealPeriod(slot) === selectedMealPeriod),
-    [allSlots, selectedMealPeriod]
+    () => availableSlots.filter((slot) => getMealPeriod(slot) === selectedMealPeriod),
+    [availableSlots, selectedMealPeriod]
   )
 
   useEffect(() => {
@@ -235,9 +262,9 @@ export default function TableBooking() {
   }, [filteredSlots, selectedSlot])
 
   useEffect(() => {
-    if (allSlots.length === 0) return
-    const hasLunch = allSlots.some((slot) => getMealPeriod(slot) === "lunch")
-    const hasDinner = allSlots.some((slot) => getMealPeriod(slot) === "dinner")
+    if (availableSlots.length === 0) return
+    const hasLunch = availableSlots.some((slot) => getMealPeriod(slot) === "lunch")
+    const hasDinner = availableSlots.some((slot) => getMealPeriod(slot) === "dinner")
 
     if (selectedMealPeriod === "lunch" && !hasLunch && hasDinner) {
       setSelectedMealPeriod("dinner")
@@ -245,7 +272,7 @@ export default function TableBooking() {
     if (selectedMealPeriod === "dinner" && !hasDinner && hasLunch) {
       setSelectedMealPeriod("lunch")
     }
-  }, [allSlots, selectedMealPeriod])
+  }, [availableSlots, selectedMealPeriod])
 
   if (loading) return <Loader />
   if (!restaurant) return <div className="p-6 text-center">Restaurant not found</div>
