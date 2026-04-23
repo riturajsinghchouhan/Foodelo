@@ -93,6 +93,11 @@ export default function ReportSafetyEmergency() {
       return
     }
 
+    if (report.trim().length < 10) {
+      toast.error('Description must be at least 10 characters')
+      return
+    }
+
     try {
       setIsSubmitting(true)
       const response = await userAPI.createSafetyEmergencyReport(report.trim())
@@ -108,7 +113,8 @@ export default function ReportSafetyEmergency() {
       }
     } catch (error) {
       debugError('Error submitting safety emergency report:', error)
-      toast.error(error.response?.data?.message || 'Failed to submit safety emergency report. Please try again.')
+      const backendError = error.response?.data?.message || error.response?.data?.error
+      toast.error(backendError || 'Failed to submit safety emergency report. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -198,8 +204,9 @@ export default function ReportSafetyEmergency() {
                     maxWidth: '100%'
                   }}
                 />
-                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  {report.length} characters
+                <p className={`text-xs md:text-sm mt-2 flex justify-between ${report.trim().length < 10 ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                  <span>{report.length} characters</span>
+                  <span>Min 10 characters</span>
                 </p>
               </CardContent>
             </Card>
@@ -207,7 +214,7 @@ export default function ReportSafetyEmergency() {
             {/* Submit Button */}
             <Button
               onClick={handleSubmit}
-              disabled={!report.trim() || isSubmitting}
+              disabled={report.trim().length < 10 || isSubmitting}
               className="w-full bg-red-600 hover:bg-red-700 text-white text-sm md:text-base h-10 md:h-12 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (

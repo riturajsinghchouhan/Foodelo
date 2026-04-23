@@ -38,6 +38,7 @@ const PAGE_SIZE = 25
 export default function RegularOrderReport() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  const [filterLoading, setFilterLoading] = useState(false)
   const [error, setError] = useState(null)
   const [zones, setZones] = useState([])
   const [restaurants, setRestaurants] = useState([])
@@ -59,19 +60,19 @@ export default function RegularOrderReport() {
     const fetchFilterData = async () => {
       try {
         // Fetch zones
-        const zonesRes = await adminAPI.getZones({ limit: 100, isActive: true })
+        const zonesRes = await adminAPI.getZones({ limit: 1000, isActive: true })
         if (zonesRes.data?.success) {
           setZones(zonesRes.data.data.zones || [])
         }
 
         // Fetch restaurants
-        const restaurantsRes = await adminAPI.getRestaurants({ limit: 100 })
+        const restaurantsRes = await adminAPI.getRestaurants({ limit: 1000 })
         if (restaurantsRes.data?.success) {
           setRestaurants(restaurantsRes.data.data.restaurants || [])
         }
 
         // Fetch customers (users) via existing customers API
-        const customersRes = await adminAPI.getCustomers({ limit: 100 })
+        const customersRes = await adminAPI.getCustomers({ limit: 1000 })
         if (customersRes.data?.success) {
           setCustomers(customersRes.data.data.customers || [])
         }
@@ -116,17 +117,17 @@ export default function RegularOrderReport() {
   // Fetch orders from backend
   useEffect(() => {
     const fetchOrders = async () => {
-      setLoading(true)
+      if (orders.length === 0) {
+        setLoading(true)
+      } else {
+        setFilterLoading(true)
+      }
       setError(null)
       try {
         const { fromDate, toDate } = getDateRange()
         const params = {
           page: 1,
           limit: 10000, // Fetch all orders for report (can be optimized later)
-          search: searchQuery || undefined,
-          zone: filters.zone !== "All Zones" ? filters.zone : undefined,
-          restaurant: filters.restaurant !== "All restaurants" ? filters.restaurant : undefined,
-          customer: filters.customer !== "All customers" ? filters.customer : undefined,
           startDate: fromDate ? fromDate.toISOString().split('T')[0] : undefined,
           endDate: toDate ? toDate.toISOString().split('T')[0] : undefined,
         }
@@ -167,11 +168,34 @@ export default function RegularOrderReport() {
               order.restaurantId?.restaurantName ||
               order.restaurantName ||
               ""
+            const restaurantId =
+              order.restaurantId?._id ||
+              order.restaurantId?.id ||
+              order.restaurantId ||
+              ""
 
             const customerName =
               order.userId?.name ||
               order.customerName ||
               "N/A"
+            const customerId =
+              order.userId?._id ||
+              order.userId?.id ||
+              order.userId ||
+              ""
+
+            const restaurantMeta = restaurants.find((restaurant) => {
+              const candidateId = restaurant?._id || restaurant?.id || restaurant?.restaurantId
+              return String(candidateId || "") === String(restaurantId || "")
+            })
+
+            const zoneId =
+              order.zoneId?._id ||
+              order.zoneId?.id ||
+              order.zoneId ||
+              restaurantMeta?.zoneId?._id ||
+              restaurantMeta?.zoneId ||
+              ""
 
             const backendStatus = String(order.orderStatus || "").toLowerCase()
             let displayStatus = order.orderStatus
@@ -191,8 +215,11 @@ export default function RegularOrderReport() {
 
             return {
               orderId: order.orderId,
+              restaurantId: String(restaurantId || ""),
               restaurant: restaurantName,
+              customerId: String(customerId || ""),
               customerName,
+              zoneId: String(zoneId || ""),
               totalItemAmount: subtotal,
               couponDiscount,
               vatTax,
@@ -213,21 +240,36 @@ export default function RegularOrderReport() {
         toast.error(err.response?.data?.message || "Failed to fetch orders")
       } finally {
         setLoading(false)
+        setFilterLoading(false)
       }
     }
 
     fetchOrders()
-  }, [filters, searchQuery])
+  }, [filters.time, restaurants])
 
   const filteredOrders = useMemo(() => {
-    if (!searchQuery.trim()) return orders
+    let result = [...orders]
+
+    if (filters.zone !== "All Zones") {
+      result = result.filter((order) => String(order.zoneId || "") === String(filters.zone))
+    }
+
+    if (filters.restaurant !== "All restaurants") {
+      result = result.filter((order) => String(order.restaurantId || "") === String(filters.restaurant))
+    }
+
+    if (filters.customer !== "All customers") {
+      result = result.filter((order) => String(order.customerId || "") === String(filters.customer))
+    }
+
+    if (!searchQuery.trim()) return result
     const q = searchQuery.toLowerCase().trim()
-    return orders.filter((o) =>
-      String(o.orderId || "")
-        .toLowerCase()
-        .includes(q),
+    return result.filter((order) =>
+      String(order.orderId || "").toLowerCase().includes(q) ||
+      String(order.restaurant || "").toLowerCase().includes(q) ||
+      String(order.customerName || "").toLowerCase().includes(q)
     )
-  }, [orders, searchQuery])
+  }, [orders, filters.zone, filters.restaurant, filters.customer, searchQuery])
 
   const handleExport = (format) => {
     if (filteredOrders.length === 0) {
@@ -265,6 +307,8 @@ export default function RegularOrderReport() {
       customer: "All customers",
       time: "All Time",
     })
+    setSearchQuery("")
+    setCurrentPage(1)
   }
 
   const activeFiltersCount = (filters.zone !== "All Zones" ? 1 : 0) + (filters.restaurant !== "All restaurants" ? 1 : 0) + (filters.customer !== "All customers" ? 1 : 0) + (filters.time !== "All Time" ? 1 : 0)
@@ -387,8 +431,8 @@ export default function RegularOrderReport() {
               >
                 <option value="All Zones">All Zones</option>
                 {zones.map((zone) => (
-                  <option key={zone._id} value={zone.name}>
-                    {zone.name}
+                  <option key={zone._id} value={zone._id}>
+                    {zone.zoneName || zone.name}
                   </option>
                 ))}
               </select>
@@ -403,8 +447,8 @@ export default function RegularOrderReport() {
               >
                 <option value="All restaurants">All restaurants</option>
                 {restaurants.map((restaurant) => (
-                  <option key={restaurant._id} value={restaurant.name}>
-                    {restaurant.name}
+                  <option key={restaurant._id} value={restaurant._id}>
+                    {restaurant.restaurantName || restaurant.name}
                   </option>
                 ))}
               </select>
@@ -419,7 +463,7 @@ export default function RegularOrderReport() {
               >
                 <option value="All customers">All customers</option>
                 {customers.map((customer) => (
-                  <option key={customer._id} value={customer.name}>
+                  <option key={customer._id} value={customer._id}>
                     {customer.name}
                   </option>
                 ))}
@@ -535,6 +579,13 @@ export default function RegularOrderReport() {
               </button>
             </div>
           </div>
+
+          {filterLoading && (
+            <div className="mb-3 flex items-center gap-2 text-[11px] text-slate-500">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+              Updating report...
+            </div>
+          )}
 
           {/* Table */}
           <div className="overflow-x-auto scrollbar-hide">
