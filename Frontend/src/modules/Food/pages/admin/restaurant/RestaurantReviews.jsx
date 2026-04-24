@@ -292,6 +292,48 @@ export default function RestaurantReviews() {
           <DialogFooter className="px-6 pb-6 pt-4 border-t border-slate-200"><button onClick={() => setIsReviewModalOpen(false)} className="px-4 py-2 text-sm font-medium rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all">Close</button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-lg bg-white p-0 overflow-hidden">
+          <DialogHeader className="border-b border-slate-200 px-6 py-4">
+            <DialogTitle className="flex items-center gap-2 text-xl text-slate-900">
+              <Columns className="w-5 h-5 text-slate-600" />
+              Review Table Settings
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 px-6 py-5 sm:grid-cols-2">
+            {Object.entries(columnsConfig).map(([columnKey, label]) => (
+              <button
+                key={columnKey}
+                type="button"
+                onClick={() => toggleColumn(columnKey)}
+                className="w-full flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+              >
+                <span className="text-sm font-medium text-slate-700">{label}</span>
+                <span className={`inline-flex h-5 w-5 items-center justify-center rounded border ${visibleColumns[columnKey] ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-transparent"}`}>
+                  <Check className="w-3.5 h-3.5" />
+                </span>
+              </button>
+            ))}
+          </div>
+          <DialogFooter className="border-t border-slate-200 px-6 py-4 gap-2">
+            <button
+              type="button"
+              onClick={resetColumns}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-all"
+            >
+              Done
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -137,6 +137,22 @@ export default function OrdersTable({
                   </div>
                 </th>
               )}
+              {visibleColumns.itemPrice && (
+                <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-700 uppercase tracking-wider min-w-[120px]">
+                  <div className="flex items-center justify-end gap-2">
+                    <span>Price</span>
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                  </div>
+                </th>
+              )}
+              {visibleColumns.deliveryCharge && (
+                <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  <div className="flex items-center justify-end gap-2">
+                    <span>Delivery Charge</span>
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
+                  </div>
+                </th>
+              )}
               {visibleColumns.totalAmount && (
                 <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   <div className="flex items-center justify-end gap-2">
@@ -229,17 +245,46 @@ export default function OrdersTable({
                             <span className="text-slate-800 font-medium flex-1">
                               {item.name || item.itemName || item.title || 'Unknown Item'}
                             </span>
-                            {item.price && (
-                              <span className="text-xs text-slate-500">
-                                ₹{item.price}
-                              </span>
-                            )}
                           </div>
                         ))
                       ) : (
                         <span className="text-sm text-slate-400 italic">No items found</span>
                       )}
                     </div>
+                  </td>
+                )}
+                {visibleColumns.itemPrice && (
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex flex-col gap-2 min-w-[120px]">
+                      {order.items && Array.isArray(order.items) && order.items.length > 0 ? (
+                        order.items.map((item, idx) => {
+                          const itemPrice = Number(item.price ?? 0)
+                          return (
+                            <div key={idx || item.itemId || `item-price-${idx}`} className="text-sm text-slate-500">
+                              {`₹${itemPrice.toLocaleString(undefined, {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2
+                              })}`}
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <span className="text-sm text-slate-400 italic">-</span>
+                      )}
+                    </div>
+                  </td>
+                )}
+                {visibleColumns.deliveryCharge && (
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <span className="text-sm font-medium text-slate-700">
+                      {(() => {
+                        const deliveryCharge = Number(order.deliveryCharge ?? 0)
+                        return `₹${deliveryCharge.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}`
+                      })()}
+                    </span>
                   </td>
                 )}
                 {visibleColumns.totalAmount && (

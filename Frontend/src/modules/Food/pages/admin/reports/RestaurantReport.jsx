@@ -121,12 +121,30 @@ export default function RestaurantReport() {
   const activeFiltersCount = (filters.zone !== "All Zones" ? 1 : 0) + (filters.all !== "All" ? 1 : 0) + (filters.type !== "All types" ? 1 : 0) + (filters.time !== "All Time" ? 1 : 0)
 
   const renderStars = (rating, reviews) => {
-    if (rating === 0) {
-      return "?0"
-    }
-    const fullStars = Math.floor(rating)
-    const hasHalfStar = rating % 1 !== 0
-    return "?".repeat(fullStars) + (hasHalfStar ? "½" : "") + "?".repeat(5 - Math.ceil(rating)) + ` (${reviews})`
+    const numericRating = Number(rating || 0)
+    const safeReviews = Number(reviews || 0)
+    const fullStars = Math.floor(numericRating)
+    const hasHalfStar = numericRating % 1 >= 0.5
+    const emptyStars = Math.max(0, 5 - fullStars - (hasHalfStar ? 1 : 0))
+
+    return (
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-0.5">
+          {Array.from({ length: fullStars }).map((_, index) => (
+            <Star key={`full-${index}`} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+          ))}
+          {hasHalfStar && (
+            <Star className="w-3.5 h-3.5 fill-amber-200 text-amber-400" />
+          )}
+          {Array.from({ length: emptyStars }).map((_, index) => (
+            <Star key={`empty-${index}`} className="w-3.5 h-3.5 text-slate-300" />
+          ))}
+        </div>
+        <span className="text-sm text-slate-700 whitespace-nowrap">
+          {numericRating.toFixed(1)} ({safeReviews})
+        </span>
+      </div>
+    )
   }
 
   if (loading) {
@@ -430,7 +448,7 @@ export default function RestaurantReport() {
                         <span className="text-sm text-slate-700">{restaurant.totalVATTAX}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-slate-700">{renderStars(restaurant.averageRatings, restaurant.reviews)}</span>
+                        {renderStars(restaurant.averageRatings, restaurant.reviews)}
                       </td>
                     </tr>
                   ))
@@ -468,4 +486,3 @@ export default function RestaurantReport() {
     </div>
   )
 }
-

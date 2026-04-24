@@ -315,6 +315,54 @@ export async function getRestaurantMenuPdfDownloadUrl(restaurantId) {
 
 const CANCELLED_ORDER_STATUSES = ['cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin'];
 const PENDING_ORDER_STATUSES = ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
+const DASHBOARD_PENDING_ORDER_STATUSES = ['created', 'confirmed'];
+const DASHBOARD_PROCESSING_ORDER_STATUSES = ['preparing', 'ready_for_pickup'];
+const DELIVERED_ORDER_STATUS_EXPR = { $eq: ['$orderStatus', 'delivered'] };
+const DASHBOARD_DERIVED_PLATFORM_FEE_EXPR = {
+    $max: [
+        0,
+        {
+            $subtract: [
+                {
+                    $subtract: [
+                        {
+                            $subtract: [
+                                {
+                                    $subtract: [
+                                        { $ifNull: ['$pricing.total', 0] },
+                                        { $ifNull: ['$pricing.subtotal', 0] }
+                                    ]
+                                },
+                                { $ifNull: ['$pricing.packagingFee', 0] }
+                            ]
+                        },
+                        { $ifNull: ['$pricing.deliveryFee', 0] }
+                    ]
+                },
+                {
+                    $subtract: [
+                        { $ifNull: ['$pricing.tax', 0] },
+                        { $ifNull: ['$pricing.discount', 0] }
+                    ]
+                }
+            ]
+        }
+    ]
+};
+const DASHBOARD_PLATFORM_FEE_EXPR = {
+    $ifNull: ['$pricing.platformFee', DASHBOARD_DERIVED_PLATFORM_FEE_EXPR]
+};
+const DASHBOARD_DELIVERY_FEE_EXPR = {
+    $ifNull: [
+        '$pricing.deliveryFee',
+        {
+            $ifNull: [
+                '$deliveryPartnerSettlement',
+                { $ifNull: ['$riderEarning', 0] }
+            ]
+        }
+    ]
+};
 
 const getDateRangeByPeriod = (periodRaw) => {
     const period = String(periodRaw || 'overall').trim().toLowerCase();
@@ -422,34 +470,44 @@ export async function getDashboardStats(query = {}) {
                             $cond: [{ $in: ['$orderStatus', PENDING_ORDER_STATUSES] }, 1, 0]
                         }
                     },
+                    dashboardPending: {
+                        $sum: {
+                            $cond: [{ $in: ['$orderStatus', DASHBOARD_PENDING_ORDER_STATUSES] }, 1, 0]
+                        }
+                    },
+                    dashboardProcessing: {
+                        $sum: {
+                            $cond: [{ $in: ['$orderStatus', DASHBOARD_PROCESSING_ORDER_STATUSES] }, 1, 0]
+                        }
+                    },
                     revenueTotal: { 
                         $sum: { 
-                            $cond: [{ $eq: ['$orderStatus', 'delivered'] }, { $ifNull: ['$pricing.total', 0] }, 0] 
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.total', 0] }, 0] 
                         } 
                     },
                     commissionTotal: { 
                         $sum: { 
-                            $cond: [{ $eq: ['$orderStatus', 'delivered'] }, { $ifNull: ['$pricing.restaurantCommission', 0] }, 0] 
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.restaurantCommission', 0] }, 0] 
                         } 
                     },
                     platformFeeTotal: { 
                         $sum: { 
-                            $cond: [{ $eq: ['$orderStatus', 'delivered'] }, { $ifNull: ['$pricing.platformFee', 0] }, 0] 
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, DASHBOARD_PLATFORM_FEE_EXPR, 0] 
                         } 
                     },
                     deliveryFeeTotal: { 
                         $sum: { 
-                            $cond: [{ $eq: ['$orderStatus', 'delivered'] }, { $ifNull: ['$pricing.deliveryFee', 0] }, 0] 
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, DASHBOARD_DELIVERY_FEE_EXPR, 0] 
                         } 
                     },
                     gstTotal: { 
                         $sum: { 
-                            $cond: [{ $eq: ['$orderStatus', 'delivered'] }, { $ifNull: ['$pricing.tax', 0] }, 0] 
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$pricing.tax', 0] }, 0] 
                         } 
                     },
                     adminNetProfit: { 
                         $sum: { 
-                            $cond: [{ $eq: ['$orderStatus', 'delivered'] }, { $ifNull: ['$platformProfit', 0] }, 0] 
+                            $cond: [DELIVERED_ORDER_STATUS_EXPR, { $ifNull: ['$platformProfit', 0] }, 0] 
                         } 
                     }
                 }
@@ -661,7 +719,8 @@ export async function getDashboardStats(query = {}) {
         addons: { total: Number(addonsTotal || 0) },
         customers: { total: Number(customersTotal || 0) },
         orderStats: {
-            pending: Number(totals.pending || 0),
+            pending: Number(totals.dashboardPending || 0),
+            processing: Number(totals.dashboardProcessing || 0),
             completed: Number(totals.delivered || 0)
         },
         monthlyData,
@@ -4730,27 +4789,64 @@ export async function getDeliveryWallets(query = {}) {
 
         const partnerId = new mongoose.Types.ObjectId(p._id);
 
-        const [earningsAgg, cashAgg, bonusAgg] = await Promise.all([
+        const [earningsAgg, cashCollectedAgg, cashDepositsAgg, bonusAgg, withdrawalAgg] = await Promise.all([
             FoodOrder.aggregate([
                 { $match: { 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered' } },
                 { $group: { _id: null, totalEarned: { $sum: { $ifNull: ['$riderEarning', 0] } } } }
             ]),
             FoodOrder.aggregate([
-                { $match: { 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered', 'payment.method': 'cash', 'payment.status': 'paid' } },
-                { $group: { _id: null, cashInHand: { $sum: { $ifNull: ['$payment.amountDue', '$totalAmount'] } } } }
+                {
+                    $match: {
+                        'dispatch.deliveryPartnerId': partnerId,
+                        orderStatus: 'delivered',
+                        'payment.method': 'cash'
+                    }
+                },
+                { $group: { _id: null, cashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } } } }
+            ]),
+            FoodDeliveryCashDeposit.aggregate([
+                {
+                    $match: {
+                        deliveryPartnerId: partnerId,
+                        status: 'Completed'
+                    }
+                },
+                { $group: { _id: null, depositedCash: { $sum: { $ifNull: ['$amount', 0] } } } }
             ]),
             DeliveryBonusTransaction.aggregate([
                 { $match: { deliveryPartnerId: partnerId } },
                 { $group: { _id: null, total: { $sum: '$amount' } } }
+            ]),
+            FoodDeliveryWithdrawal.aggregate([
+                { $match: { deliveryPartnerId: partnerId } },
+                {
+                    $group: {
+                        _id: null,
+                        totalWithdrawn: {
+                            $sum: {
+                                $cond: [{ $eq: ['$status', 'approved'] }, { $ifNull: ['$amount', 0] }, 0]
+                            }
+                        },
+                        pendingWithdrawals: {
+                            $sum: {
+                                $cond: [{ $eq: ['$status', 'pending'] }, { $ifNull: ['$amount', 0] }, 0]
+                            }
+                        }
+                    }
+                }
             ])
         ]);
 
-        const totalEarned = Number(earningsAgg?.[0]?.totalEarned) || 0;
-        const cashInHand = Number(cashAgg?.[0]?.cashInHand) || 0;
-        const totalBonus = Number(bonusAgg?.[0]?.total) || 0;
-        const totalWithdrawn = Number(wallet?.totalSettled || 0);
-
-        const totalBalance = totalEarned + totalBonus - totalWithdrawn;
+        const totalEarned = Number(wallet?.totalEarnings ?? earningsAgg?.[0]?.totalEarned) || 0;
+        const grossCashCollected = Number(cashCollectedAgg?.[0]?.cashCollected) || 0;
+        const totalDepositedCash = Number(cashDepositsAgg?.[0]?.depositedCash) || 0;
+        const calculatedCashInHand = Math.max(0, grossCashCollected - totalDepositedCash);
+        const cashInHand = Number(wallet?.cashInHand ?? calculatedCashInHand) || 0;
+        const totalBonus = Number(wallet?.totalBonus ?? bonusAgg?.[0]?.total) || 0;
+        const totalWithdrawn = Number(wallet?.totalSettled ?? withdrawalAgg?.[0]?.totalWithdrawn) || 0;
+        const pendingWithdrawals = Number(wallet?.lockedAmount ?? withdrawalAgg?.[0]?.pendingWithdrawals) || 0;
+        const calculatedPocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
+        const pocketBalance = Number(wallet?.balance ?? calculatedPocketBalance) || 0;
 
         return {
             walletId: wallet?._id,
@@ -4758,13 +4854,13 @@ export async function getDeliveryWallets(query = {}) {
             name: p.name,
             phone: p.phone || '',
             deliveryIdString: partnerIdstr,
-            pocketBalance: totalBalance,
+            pocketBalance,
             remainingCashLimit: Math.max(0, globalLimit - cashInHand),
-            cashCollected: cashInHand,
+            cashCollected: grossCashCollected,
             totalEarning: totalEarned,
             bonus: totalBonus,
-            totalWithdrawn: totalWithdrawn,
-            cashInHand: cashInHand,
+            totalWithdrawn,
+            cashInHand,
         };
     }));
 

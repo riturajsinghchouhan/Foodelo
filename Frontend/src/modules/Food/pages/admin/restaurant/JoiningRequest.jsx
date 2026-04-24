@@ -21,6 +21,7 @@ const formatTime12Hour = (timeStr) => {
 export default function JoiningRequest() {
   const [activeTab, setActiveTab] = useState("pending")
   const [searchQuery, setSearchQuery] = useState("")
+  const [sortConfig, setSortConfig] = useState({ key: "createdAt", direction: "desc" })
   const [pendingRequests, setPendingRequests] = useState([])
   const [rejectedRequests, setRejectedRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -128,6 +129,55 @@ export default function JoiningRequest() {
 
     return filtered
   }, [currentRequests, searchQuery, filters])
+
+  const sortedRequests = useMemo(() => {
+    const requests = [...filteredRequests]
+    const { key, direction } = sortConfig
+    const multiplier = direction === "asc" ? 1 : -1
+
+    const getSortValue = (request) => {
+      switch (key) {
+        case "sl":
+          return Number(request.sl || 0)
+        case "restaurantName":
+          return String(request.restaurantName || "").toLowerCase()
+        case "ownerName":
+          return String(request.ownerName || "").toLowerCase()
+        case "zone":
+          return String(request.zone || "").toLowerCase()
+        case "status":
+          return String(request.status || "").toLowerCase()
+        case "createdAt":
+        default:
+          return new Date(request.createdAt || 0).getTime()
+      }
+    }
+
+    requests.sort((left, right) => {
+      const leftValue = getSortValue(left)
+      const rightValue = getSortValue(right)
+
+      if (typeof leftValue === "number" && typeof rightValue === "number") {
+        return (leftValue - rightValue) * multiplier
+      }
+
+      return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true }) * multiplier
+    })
+
+    return requests
+  }, [filteredRequests, sortConfig])
+
+  const handleSort = (key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }))
+  }
+
+  const getSortIconClassName = (key) => {
+    if (sortConfig.key !== key) return "w-3 h-3 text-slate-400"
+    return sortConfig.direction === "asc" ? "w-3 h-3 text-blue-600" : "w-3 h-3 text-slate-700"
+  }
 
   const clearFilters = () => {
     setFilters({
@@ -345,34 +395,34 @@ export default function JoiningRequest() {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                    <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => handleSort("sl")} className="flex items-center gap-1 hover:text-slate-900 transition-colors">
                       <span>SL</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    </div>
+                      <ArrowUpDown className={getSortIconClassName("sl")} />
+                    </button>
                   </th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                    <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => handleSort("restaurantName")} className="flex items-center gap-1 hover:text-slate-900 transition-colors">
                       <span>Restaurant Info</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    </div>
+                      <ArrowUpDown className={getSortIconClassName("restaurantName")} />
+                    </button>
                   </th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                    <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => handleSort("ownerName")} className="flex items-center gap-1 hover:text-slate-900 transition-colors">
                       <span>Owner Info</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    </div>
+                      <ArrowUpDown className={getSortIconClassName("ownerName")} />
+                    </button>
                   </th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                    <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => handleSort("zone")} className="flex items-center gap-1 hover:text-slate-900 transition-colors">
                       <span>Zone</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    </div>
+                      <ArrowUpDown className={getSortIconClassName("zone")} />
+                    </button>
                   </th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                    <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => handleSort("status")} className="flex items-center gap-1 hover:text-slate-900 transition-colors">
                       <span>Status</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    </div>
+                      <ArrowUpDown className={getSortIconClassName("status")} />
+                    </button>
                   </th>
                   <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Action</th>
                 </tr>
@@ -392,7 +442,7 @@ export default function JoiningRequest() {
                       <p className="text-sm text-slate-500">Failed to load restaurant requests. Please try again.</p>
                     </td>
                   </tr>
-                ) : filteredRequests.length === 0 ? (
+                ) : sortedRequests.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center">
                       <div className="flex flex-col items-center justify-center">
@@ -402,7 +452,7 @@ export default function JoiningRequest() {
                     </td>
                   </tr>
                 ) : (
-                  filteredRequests.map((request, index) => (
+                  sortedRequests.map((request, index) => (
                     <tr key={request._id || index} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-700">{request.sl ?? index + 1}</span>

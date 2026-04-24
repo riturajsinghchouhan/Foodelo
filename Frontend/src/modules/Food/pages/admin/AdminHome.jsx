@@ -147,8 +147,8 @@ export default function AdminHome() {
   const totalAddons = dashboardData?.addons?.total || 0
   const totalCustomers = dashboardData?.customers?.total || 0
   const pendingOrders = dashboardData?.orderStats?.pending || 0
+  const processingOrders = dashboardData?.orderStats?.processing || 0
   const completedOrders = dashboardData?.orderStats?.completed || 0
-  const activeOrdersTotal = pendingOrders
 
   const pieData = orderStats.map((item) => ({
     name: item.label,
@@ -238,7 +238,7 @@ export default function AdminHome() {
             />
             <MetricCard
               title="Orders processed"
-              value={activeOrdersTotal.toLocaleString("en-IN")}
+              value={processingOrders.toLocaleString("en-IN")}
               helper="Orders currently being processed"
               icon={<Activity className="h-5 w-5 text-amber-600" />}
               accent="bg-amber-200/40"
