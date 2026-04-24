@@ -443,7 +443,7 @@ export const ProfileDetailsV2 = () => {
           </button>
           <h1 className="text-lg font-black text-black uppercase tracking-tight leading-none">Profile</h1>
         </div>
-        <div className="bg-orange-500 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-orange-500/20">
+        <div className="bg-blue-600 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20">
           ID: {profile?.deliveryId || "..."}
         </div>
       </div>
@@ -475,7 +475,7 @@ export const ProfileDetailsV2 = () => {
               
               <button 
                 onClick={() => handlePickFromGallery('profilePhoto', fileInputRef)}
-                className="bg-orange-500 text-white p-3 rounded-2xl shadow-xl hover:bg-orange-600 transition-all active:scale-95 border-4 border-white flex items-center justify-center"
+                className="bg-blue-600 text-white p-3 rounded-2xl shadow-xl hover:bg-blue-700 transition-all active:scale-95 border-4 border-white flex items-center justify-center"
                 title="Gallery"
               >
                 <ImageIcon className="w-5 h-5" />
@@ -498,10 +498,10 @@ export const ProfileDetailsV2 = () => {
            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-2 mb-4">Delivery Partner • {profile?.location?.city}</p>
            
            <div className="flex items-center justify-center gap-2">
-              <div className="bg-[#10B981]/10 text-[#10B981] px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest border border-[#10B981]/20 flex items-center gap-2">
-                 <CheckCircle className="w-4 h-4" /> {profile?.status}
+              <div className={`${isAdminApproved ? 'bg-blue-600 text-white' : 'bg-orange-500/10 text-orange-500'} px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest border ${isAdminApproved ? 'border-blue-700 shadow-lg' : 'border-orange-500/20'} flex items-center gap-2`}>
+                 <CheckCircle className="w-4 h-4" /> {isAdminApproved ? "Approved" : (profile?.status || "Pending")}
               </div>
-              <div className="bg-orange-500/10 text-orange-500 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest border border-orange-500/20 flex items-center gap-2">
+              <div className="bg-blue-50 text-blue-600 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest border border-blue-100 flex items-center gap-2">
                  <Smartphone className="w-4 h-4" /> {profile?.phone}
               </div>
            </div>
@@ -542,7 +542,7 @@ export const ProfileDetailsV2 = () => {
             })()} 
             label="Vehicle Details" 
             value={[profile?.vehicle?.type, profile?.vehicle?.brand, vehicleNumber].filter(Boolean).map(v => String(v).toUpperCase()).join(" • ") || "N/A"} 
-            color="orange"
+            color="blue"
             badge={!vehicleNumber && <span className="text-[9px] bg-red-50 text-red-500 px-1.5 rounded uppercase font-bold">Missing</span>}
             onEdit={() => { 
                 setVehicleInput({ number: vehicleNumber, brand: vehicleBrand, type: vehicleType }); 
@@ -573,7 +573,7 @@ export const ProfileDetailsV2 = () => {
                   setUpiQrPreview(null)
                   setShowBankDetailsPopup(true)
                 }} 
-                className="text-[10px] font-black text-orange-500 uppercase tracking-widest hover:underline"
+                className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
               >
                 Edit Details
               </button>
@@ -588,7 +588,7 @@ export const ProfileDetailsV2 = () => {
                           <p className="text-white/40 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Bank Account</p>
                           <h4 className="text-lg font-bold tracking-tight">{bankDetails.bankName || "Link Account"}</h4>
                        </div>
-                       <Banknote className="w-8 h-8 text-orange-500/50" />
+                       <Banknote className="w-8 h-8 text-blue-500/50" />
                     </div>
                     <div className="flex justify-between items-end">
                        <div>
@@ -728,9 +728,9 @@ export const ProfileDetailsV2 = () => {
                     <div className="w-8 h-8 flex items-center justify-center">
                         {(() => {
                            const t = String(vehicleInput.type || "").toLowerCase();
-                           if (t.includes("car")) return <Car className="w-5 h-5 text-orange-500" />;
-                           if (t.includes("bicycle")) return <Bike className="w-5 h-5 text-orange-500" />;
-                           return <Truck className="w-5 h-5 text-orange-500" />;
+                           if (t.includes("car")) return <Car className="w-5 h-5 text-blue-600" />;
+                           if (t.includes("bicycle")) return <Bike className="w-5 h-5 text-blue-600" />;
+                           return <Truck className="w-5 h-5 text-blue-600" />;
                         })()}
                     </div>
                     <div className="flex-1">
@@ -738,7 +738,7 @@ export const ProfileDetailsV2 = () => {
                         <select 
                             value={vehicleInput.type} 
                             onChange={(e) => setVehicleInput({...vehicleInput, type: e.target.value})} 
-                            className="w-full bg-transparent text-lg font-black text-black outline-none border-b-2 border-transparent focus:border-orange-500 cursor-pointer"
+                            className="w-full bg-transparent text-lg font-black text-black outline-none border-b-2 border-transparent focus:border-blue-600 cursor-pointer"
                         >
                             <option value="bike">Bike</option>
                             <option value="scooter">Scooter</option>
@@ -752,7 +752,7 @@ export const ProfileDetailsV2 = () => {
 
                 {/* Name/Brand Input */}
                 <div className="flex items-center gap-4 w-full">
-                    <div className="w-8 h-8 flex items-center justify-center"><Plus className="w-4 h-4 text-orange-500/50" /></div>
+                    <div className="w-8 h-8 flex items-center justify-center"><Plus className="w-4 h-4 text-blue-600/50" /></div>
                     <div className="flex-1">
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Vehicle Name/Brand</p>
                         <input 
@@ -760,7 +760,7 @@ export const ProfileDetailsV2 = () => {
                             value={vehicleInput.brand} 
                             onChange={(e) => setVehicleInput({...vehicleInput, brand: e.target.value})} 
                             placeholder="E.g. Honda Splendor"
-                            className="w-full bg-transparent text-lg font-black text-black outline-none border-b-2 border-transparent focus:border-orange-500 placeholder:text-gray-200"
+                            className="w-full bg-transparent text-lg font-black text-black outline-none border-b-2 border-transparent focus:border-blue-600 placeholder:text-gray-200"
                         />
                     </div>
                 </div>
@@ -769,7 +769,7 @@ export const ProfileDetailsV2 = () => {
 
                 {/* Number Input */}
                 <div className="flex items-center gap-4 w-full">
-                    <div className="w-8 h-8 flex items-center justify-center"><QrCode className="w-4 h-4 text-orange-500/50" /></div>
+                    <div className="w-8 h-8 flex items-center justify-center"><QrCode className="w-4 h-4 text-blue-600/50" /></div>
                     <div className="flex-1">
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Vehicle Number</p>
                         <input 
@@ -777,7 +777,7 @@ export const ProfileDetailsV2 = () => {
                             value={vehicleInput.number} 
                             onChange={(e) => setVehicleInput({...vehicleInput, number: e.target.value.toUpperCase()})} 
                             placeholder="E.g. UP 80 AB 1234"
-                            className="w-full bg-transparent text-lg font-black text-black outline-none border-b-2 border-transparent focus:border-orange-500 placeholder:text-gray-200"
+                            className="w-full bg-transparent text-lg font-black text-black outline-none border-b-2 border-transparent focus:border-blue-600 placeholder:text-gray-200"
                         />
                     </div>
                 </div>
@@ -902,7 +902,7 @@ export const ProfileDetailsV2 = () => {
           <button 
             onClick={submitBankDetails} 
             disabled={isUpdatingBankDetails} 
-            className="w-full bg-black text-white py-5 rounded-[1.5rem] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-gray-900 transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
+            className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
           >
             {isUpdatingBankDetails ? <><Loader2 className="w-5 h-5 animate-spin" /> saving...</> : "Update Systems"}
           </button>

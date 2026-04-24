@@ -85,7 +85,7 @@ export default function SignupStep1() {
     }
 
     if (name === "drivingLicenseNumber") {
-      updatedValue = updatedValue.replace(/[^A-Z0-9]/g, "").slice(0, 16)
+      updatedValue = updatedValue.replace(/[^A-Z0-9]/g, "").slice(0, 15)
     }
 
     // Restrict Aadhaar to numeric only
@@ -99,14 +99,22 @@ export default function SignupStep1() {
 
     if (name === "email") {
       updatedValue = sanitizeEmailValue(value)
+      // Real-time validation for email
+      if (updatedValue && !isValidEmailValue(updatedValue)) {
+        setErrors(prev => ({ ...prev, email: "Please enter a valid email address (e.g., aaa@gmail.com)" }))
+      } else if (!updatedValue) {
+        setErrors(prev => ({ ...prev, email: "Email is required" }))
+      } else {
+        setErrors(prev => ({ ...prev, email: "" }))
+      }
     }
 
     setFormData(prev => ({
       ...prev,
       [name]: updatedValue
     }))
-    // Clear error for this field
-    if (errors[name]) {
+    // Clear error for this field (except email which we handled above)
+    if (name !== "email" && errors[name]) {
       setErrors(prev => ({
         ...prev,
         [name]: ""
@@ -123,8 +131,10 @@ export default function SignupStep1() {
       newErrors.name = "Name can contain letters only"
     }
 
-    if (formData.email && !isValidEmailValue(formData.email)) {
-      newErrors.email = "Enter a valid email address. Gmail must be gmail.com"
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required"
+    } else if (!isValidEmailValue(formData.email)) {
+      newErrors.email = "Please enter a valid email address (e.g., aaa@gmail.com)"
     }
 
     if (!formData.address.trim()) {
@@ -251,7 +261,7 @@ export default function SignupStep1() {
           {/* Email */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email (Optional)
+              Email <span className="text-red-500">*</span>
             </label>
             <input
               type="email"
@@ -381,7 +391,7 @@ export default function SignupStep1() {
               name="drivingLicenseNumber"
               value={formData.drivingLicenseNumber}
               onChange={handleChange}
-              maxLength={16}
+              maxLength={15}
               className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 uppercase ${errors.drivingLicenseNumber ? "border-red-500" : "border-gray-300"
                 }`}
               placeholder="e.g., MH1220110012345"
@@ -429,8 +439,8 @@ export default function SignupStep1() {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={isSubmitting}
-            className={`w-full py-4 rounded-lg font-bold text-white text-base transition-colors mt-6 ${isSubmitting
+            disabled={isSubmitting || !formData.email || !isValidEmailValue(formData.email) || Object.values(errors).some(error => error !== "")}
+            className={`w-full py-4 rounded-lg font-bold text-white text-base transition-colors mt-6 ${isSubmitting || !formData.email || !isValidEmailValue(formData.email) || Object.values(errors).some(error => error !== "")
               ? "bg-gray-400 cursor-not-allowed"
               : "bg-[#00B761] hover:bg-[#00A055]"
               }`}
