@@ -397,27 +397,11 @@ export default function Feedback() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => navigate("/food/restaurant/notifications")}
-              className="p-1 rounded-full hover:bg-gray-100 active:scale-95 transition-all"
-              aria-label="Open notifications"
-            >
-              <Bell className="w-6 h-6 text-gray-700" />
-            </button>
-            <button
-              type="button"
               onClick={() => navigate("/food/restaurant/help-centre/support")}
               className="p-1 rounded-full hover:bg-gray-100 active:scale-95 transition-all"
               aria-label="Open support"
             >
               <HelpCircle className="w-6 h-6 text-gray-700" />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/food/restaurant/explore")}
-              className="p-1 rounded-full hover:bg-gray-100 active:scale-95 transition-all"
-              aria-label="Open explore"
-            >
-              <Menu className="w-6 h-6 text-gray-700" />
             </button>
           </div>
         </div>
@@ -533,6 +517,159 @@ export default function Feedback() {
           </div>
         )}
       </div>
+
+      {/* Date Selector Popup */}
+      <AnimatePresence>
+        {isDateSelectorOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-50"
+              onClick={() => setIsDateSelectorOpen(false)}
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 p-4"
+            >
+              <div className="flex justify-center mb-4">
+                <div className="h-1 w-10 rounded-full bg-gray-300" />
+              </div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold">Select Date Range</h3>
+                <button onClick={() => setIsDateSelectorOpen(false)}><X className="w-5 h-5" /></button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {["today", "yesterday", "thisWeek", "lastWeek", "thisMonth", "lastMonth", "last5days", "custom"].map((range) => (
+                  <button
+                    key={range}
+                    onClick={() => handleDateRangeSelect(range)}
+                    className={`py-3 rounded-xl border-2 text-sm font-bold capitalize transition-all ${
+                      selectedDateRange === range ? "border-black bg-black text-white" : "border-gray-100 bg-white text-gray-600"
+                    }`}
+                  >
+                    {range === "last5days" ? "Last 5 Days" : range.replace(/([A-Z])/g, ' $1').trim()}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Date Range Picker */}
+      <AnimatePresence>
+        {isCustomDateOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-[60]"
+              onClick={() => setIsCustomDateOpen(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="fixed inset-0 m-auto w-[90%] max-w-sm h-fit bg-white rounded-3xl shadow-2xl z-[60] p-6"
+            >
+              <DateRangeCalendar
+                startDate={customDateRange.start}
+                endDate={customDateRange.end}
+                onDateRangeChange={(start, end) => {
+                  setCustomDateRange({ start, end });
+                }}
+                onClose={() => setIsCustomDateOpen(false)}
+              />
+              <button
+                onClick={handleCustomDateApply}
+                className="w-full bg-black text-white py-4 rounded-2xl font-bold mt-4"
+              >
+                Apply Custom Range
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Complaints Filter Popup */}
+      <AnimatePresence>
+        {isComplaintsFilterOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-50 backdrop-blur-sm"
+              onClick={() => setIsComplaintsFilterOpen(false)}
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[32px] shadow-2xl z-50 overflow-hidden"
+              style={{ maxHeight: "80vh" }}
+            >
+              <div className="p-6 flex flex-col h-full">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold font-primary text-slate-900">Filters</h3>
+                  <button onClick={() => setIsComplaintsFilterOpen(false)} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                    <X className="w-5 h-5 text-slate-400" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-6 mb-6">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Issue Type</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {["Missing Item", "Wrong Item", "Quality Issue", "Delivery Delay", "Other"].map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => {
+                            const current = complaintsFilterValues.issueType || [];
+                            setComplaintsFilterValues({
+                              ...complaintsFilterValues,
+                              issueType: current.includes(type) ? [] : [type]
+                            });
+                          }}
+                          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                            complaintsFilterValues.issueType?.includes(type)
+                              ? "bg-slate-900 text-white shadow-lg shadow-slate-200"
+                              : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-auto">
+                  <button
+                    onClick={handleComplaintsFilterReset}
+                    className="flex-1 py-4 rounded-2xl font-bold text-slate-400 hover:text-slate-900 transition-colors"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={handleComplaintsFilterApply}
+                    className="flex-[2] bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-xl shadow-slate-200 active:scale-[0.98] transition-all"
+                  >
+                    Apply Filters
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
       <BottomNavOrders />
     </div>
   )

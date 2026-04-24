@@ -2335,14 +2335,13 @@ export const orderAPI = {
         type: "order",
         orderId: payload.orderId,
         issueType: payload.complaintType,
-        description: `${payload.subject}: ${payload.description}`,
+        description: payload.subject ? `${payload.subject}: ${payload.description}` : payload.description,
       },
       { contextModule: "user" }
     ),
 };
 
 const DINING_BOOKINGS_STORAGE_KEY = "food_dining_bookings_v1";
-
 const safeJsonParse = (value, fallback) => {
   try {
     return JSON.parse(value);

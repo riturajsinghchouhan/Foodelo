@@ -2213,7 +2213,7 @@ function RestaurantDetailsContent() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 bg-white rounded-full ${filters.vegNonVeg === "veg" ? "border-[#8CC63F] bg-green-50 text-green-700 font-bold" : ""
+                  className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 bg-white rounded-full ${filters.vegNonVeg === "veg" ? "border-green-600 bg-green-50 text-green-700 font-bold" : ""
                     }`}
                   onClick={() =>
                     setFilters((prev) => ({
@@ -2222,7 +2222,7 @@ function RestaurantDetailsContent() {
                     }))
                   }
                 >
-                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                  <div className="h-3 w-3 rounded-full bg-green-600" />
                   Veg
                   {filters.vegNonVeg === "veg" && (
                     <X className="h-3 w-3 text-gray-600" />
@@ -2231,7 +2231,7 @@ function RestaurantDetailsContent() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 bg-white rounded-full ${filters.vegNonVeg === "non-veg" ? "border-amber-700 bg-amber-50" : ""
+                  className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 bg-white rounded-full ${filters.vegNonVeg === "non-veg" ? "border-red-600 bg-red-50 text-red-600" : ""
                     }`}
                   onClick={() =>
                     setFilters((prev) => ({
@@ -2240,7 +2240,7 @@ function RestaurantDetailsContent() {
                     }))
                   }
                 >
-                  <div className="h-3 w-3 rounded-full bg-amber-700" />
+                  <div className="h-3 w-3 rounded-full bg-red-600" />
                   Non-veg
                   {filters.vegNonVeg === "non-veg" && (
                     <X className="h-3 w-3 text-gray-600" />
@@ -2436,12 +2436,12 @@ function RestaurantDetailsContent() {
                               {/* Veg Icon & Spicy Indicator */}
                               <div className="flex items-center gap-2 mb-1">
                                 {isVeg ? (
-                                  <div className="w-4 h-4 border-2 border-[#8CC63F] flex items-center justify-center rounded-sm flex-shrink-0">
-                                    <div className="w-2 h-2 bg-[#8CC63F] rounded-full"></div>
+                                  <div className="w-4 h-4 border-2 border-green-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                                    <div className="w-2 h-2 bg-green-600 rounded-full"></div>
                                   </div>
                                 ) : (
-                                  <div className="w-4 h-4 border-2 border-[#6A2FB1] flex items-center justify-center rounded-sm flex-shrink-0">
-                                    <div className="w-2 h-2 bg-[#6A2FB1] rounded-full"></div>
+                                  <div className="w-4 h-4 border-2 border-red-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                                    <div className="w-2 h-2 bg-red-600 rounded-full"></div>
                                   </div>
                                 )}
                                 {item.isSpicy && <span className="text-xs font-semibold text-red-500">Spicy</span>}
@@ -3041,11 +3041,11 @@ function RestaurantDetailsContent() {
                             }))
                           }
                           className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all flex-1 ${filters.vegNonVeg === "veg"
-                            ? "border-[#8CC63F] dark:border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                            ? "border-green-600 dark:border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
                             : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
                             }`}
                         >
-                          <div className="h-4 w-4 rounded-full bg-[#8CC63F] dark:bg-green-500" />
+                          <div className="h-4 w-4 rounded-full bg-green-600 dark:bg-green-500" />
                           <span className="font-medium">Veg</span>
                         </button>
                         <button
@@ -3056,11 +3056,11 @@ function RestaurantDetailsContent() {
                             }))
                           }
                           className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all flex-1 ${filters.vegNonVeg === "non-veg"
-                            ? "border-amber-700 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                            ? "border-red-600 dark:border-red-600 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-gray-300"
                             : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
                             }`}
                         >
-                          <div className="h-4 w-4 rounded-full bg-amber-700 dark:bg-amber-600" />
+                          <div className="h-4 w-4 rounded-full bg-red-600" />
                           <span className="font-medium">Non-veg</span>
                         </button>
                       </div>
@@ -3432,8 +3432,8 @@ function RestaurantDetailsContent() {
                     {/* Item Name and Indicator */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2 flex-1">
-                        <div className="h-5 w-5 rounded border-2 border-amber-700 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                          <div className="h-2.5 w-2.5 rounded-full bg-amber-700 dark:bg-amber-600" />
+                        <div className={`h-5 w-5 rounded border-2 ${selectedItem.foodType === "Veg" ? "border-green-600 bg-green-50" : "border-red-600 bg-red-50"} dark:border-gray-600 dark:bg-gray-900/30 flex items-center justify-center flex-shrink-0`}>
+                          <div className={`h-2.5 w-2.5 rounded-full ${selectedItem.foodType === "Veg" ? "bg-green-600" : "bg-red-600"}`} />
                         </div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                           {selectedItem.name}

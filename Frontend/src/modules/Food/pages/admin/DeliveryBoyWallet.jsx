@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Search, PiggyBank, Loader2, Package, RefreshCw } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
@@ -17,13 +17,16 @@ export default function DeliveryBoyWallet() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(1)
+  const [summary, setSummary] = useState(null)
   const limit = 20
 
-  const fetchWallets = async (overrides = {}) => {
+  const fetchWallets = useCallback(async (overrides = {}) => {
     const p = overrides.page ?? page
     const q = overrides.search !== undefined ? overrides.search : searchQuery
+    const silent = overrides.silent ?? false
+
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const res = await adminAPI.getDeliveryWallets({
         search: q.trim() || undefined,
         page: p,
@@ -34,23 +37,30 @@ export default function DeliveryBoyWallet() {
         setWallets(data?.wallets || [])
         setTotal(data?.pagination?.total || 0)
         setPages(data?.pagination?.pages || 1)
+        setSummary(data?.summary || null)
       } else {
-        toast.error(res?.data?.message || "Failed to fetch delivery boy wallets")
+        if (!silent) toast.error(res?.data?.message || "Failed to fetch delivery boy wallets")
         setWallets([])
       }
     } catch (err) {
       debugError("Error fetching delivery boy wallets:", err)
-      toast.error(err?.response?.data?.message || "Failed to fetch delivery boy wallets")
+      if (!silent) toast.error(err?.response?.data?.message || "Failed to fetch delivery boy wallets")
       setWallets([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }
+  }, [page, searchQuery])
 
   useEffect(() => {
     fetchWallets()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page])
+
+    // Real-time polling every 5 seconds
+    const interval = setInterval(() => {
+      fetchWallets({ silent: true })
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [fetchWallets])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -71,6 +81,11 @@ export default function DeliveryBoyWallet() {
               <PiggyBank className="w-5 h-5 text-emerald-600" />
               <h1 className="text-2xl font-bold text-slate-900">Delivery Boy Wallet</h1>
             </div>
+            {import.meta.env.DEV && wallets.length > 0 && (
+              <div className="hidden">
+                {/* Debug: {JSON.stringify(wallets[0])} */}
+              </div>
+            )}
             <button
               onClick={() => fetchWallets()}
               disabled={loading}
@@ -83,6 +98,63 @@ export default function DeliveryBoyWallet() {
           <p className="text-sm text-slate-600 mt-1">
             View each delivery boy&apos;s wallet: pocket balance, cash collected, total earnings, bonus, and withdrawals.
           </p>
+        </div>
+
+        {/* Stats Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+          {[
+            { 
+              label: "Remaining Cash Limit", 
+              value: summary?.totalRemainingCashLimit ?? wallets.reduce((acc, w) => {
+                const totalLimit = Number(w.totalCashLimit || w.overallCashLimit || w.total_limit || 1500);
+                const remaining = Number(w.remainingCashLimit ?? w.availableCashLimit ?? w.available_cash_limit ?? w.remaining_limit ?? totalLimit);
+                return acc + remaining;
+              }, 0), 
+              color: "text-emerald-600", 
+              bg: "bg-emerald-50" 
+            },
+            { 
+              label: "Cash Collected", 
+              value: summary?.totalCashCollected ?? wallets.reduce((acc, w) => acc + Number(w.cashCollected ?? w.cashInHand ?? w.cash_collected ?? w.cash_in_hand ?? 0), 0), 
+              color: "text-blue-600", 
+              bg: "bg-blue-50" 
+            },
+            { 
+              label: "Total Earning", 
+              value: summary?.totalEarning ?? wallets.reduce((acc, w) => acc + Number(w.totalEarning ?? w.earnings ?? w.total_earning ?? 0), 0), 
+              color: "text-slate-900", 
+              bg: "bg-slate-100" 
+            },
+            { 
+              label: "Bonus", 
+              value: summary?.totalBonus ?? wallets.reduce((acc, w) => acc + Number(w.bonus ?? w.total_bonus ?? 0), 0), 
+              color: "text-violet-600", 
+              bg: "bg-violet-50" 
+            },
+            { 
+              label: "Total Withdrawn", 
+              value: summary?.totalWithdrawn ?? wallets.reduce((acc, w) => acc + Number(w.totalWithdrawn ?? w.payoutAmount ?? w.total_withdrawn ?? 0), 0), 
+              color: "text-orange-600", 
+              bg: "bg-orange-50" 
+            },
+            { 
+              label: "Cash In Hand", 
+              value: summary?.totalCashInHand ?? wallets.reduce((acc, w) => {
+                const totalLimit = Number(w.totalCashLimit || w.overallCashLimit || w.total_limit || 1500);
+                const remaining = Number(w.remainingCashLimit ?? w.availableCashLimit ?? w.available_cash_limit ?? w.remaining_limit ?? totalLimit);
+                const collected = Number(w.cashCollected ?? w.cashInHand ?? w.cash_collected ?? w.cash_in_hand ?? 0);
+                const cih = collected > 0 ? collected : (w.usedLimit || w.used_limit || (totalLimit - remaining));
+                return acc + cih;
+              }, 0), 
+              color: "text-rose-600", 
+              bg: "bg-rose-50" 
+            },
+          ].map((stat, i) => (
+            <div key={i} className={`${stat.bg} rounded-xl border border-slate-200 p-4 shadow-sm`}>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.label}</p>
+              <p className={`text-lg font-bold ${stat.color}`}>{formatCurrency(stat.value)}</p>
+            </div>
+          ))}
         </div>
 
         {/* Table Card */}
@@ -144,30 +216,44 @@ export default function DeliveryBoyWallet() {
                       </td>
                     </tr>
                   ) : (
-                    wallets.map((w, i) => (
-                      <tr key={w.walletId || w.deliveryId || i} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{(page - 1) * limit + i + 1}</td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <span className="text-sm font-semibold text-slate-800">{w.name || "—"}</span>
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">
-                          {w.phone || w.deliveryIdString || "—"}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <span className={`text-sm font-semibold ${w.remainingCashLimit <= 0 ? "text-red-600" : "text-emerald-600"}`}>
-                            {formatCurrency(w.remainingCashLimit)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{formatCurrency(w.pocketBalance)}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{formatCurrency(w.cashCollected)}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{formatCurrency(w.totalEarning)}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-violet-600">{formatCurrency(w.bonus)}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-orange-600">{formatCurrency(w.totalWithdrawn)}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-700">
-                          {formatCurrency(w.cashInHand ?? w.cashCollected)}
-                        </td>
-                      </tr>
-                    ))
+                    wallets.map((w, i) => {
+                      const totalLimit = Number(w.totalCashLimit || w.overallCashLimit || w.total_limit || 1500);
+                      const remaining = Number(w.remainingCashLimit ?? w.availableCashLimit ?? w.available_cash_limit ?? w.remaining_limit ?? totalLimit);
+                      const pocket = Number(w.pocketBalance ?? w.totalBalance ?? w.pocket_balance ?? w.balance ?? 0);
+                      const collected = Number(w.cashCollected ?? w.cashInHand ?? w.cash_collected ?? w.cash_in_hand ?? 0);
+                      const earning = Number(w.totalEarning ?? w.earnings ?? w.total_earning ?? 0);
+                      const bonus = Number(w.bonus || w.total_bonus || 0);
+                      const withdrawn = Number(w.totalWithdrawn ?? w.payoutAmount ?? w.total_withdrawn ?? 0);
+                      
+                      // User requirement: Cash In Hand should be the amount subtracted from 1500 (or total limit)
+                      // If collected is 0 but remaining is less than total, we use the difference.
+                      const cashInHand = collected > 0 ? collected : (w.usedLimit || w.used_limit || (totalLimit - remaining));
+
+                      return (
+                        <tr key={w.walletId || w.deliveryId || i} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{(page - 1) * limit + i + 1}</td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <span className="text-sm font-semibold text-slate-800">{w.name || "—"}</span>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">
+                            {w.phone || w.deliveryIdString || "—"}
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <span className={`text-sm font-semibold ${remaining <= 0 ? "text-red-600" : "text-emerald-600"}`}>
+                              {formatCurrency(remaining)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{formatCurrency(pocket)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{formatCurrency(collected)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{formatCurrency(earning)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-violet-600">{formatCurrency(bonus)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-orange-600">{formatCurrency(withdrawn)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-700">
+                            {formatCurrency(cashInHand)}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

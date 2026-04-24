@@ -584,6 +584,42 @@ export default function OrderTracking() {
     return () => window.removeEventListener('deliveryDropOtp', handleDeliveryDropOtp)
   }, [orderId, order])
 
+  // --- Start: Sync arrival time with Home Page logic ---
+  const getTimeRemaining = useCallback((orderData) => {
+    if (!orderData) return null;
+
+    const orderTime = new Date(
+      orderData.createdAt || orderData.orderDate || orderData.created_at || orderData.date || Date.now(),
+    );
+    const estimatedMinutes =
+      orderData.estimatedDeliveryTime ||
+      orderData.estimatedTime ||
+      orderData.estimated_delivery_time ||
+      35;
+    const deliveryTime = new Date(orderTime.getTime() + estimatedMinutes * 60000);
+    return Math.max(0, Math.floor((deliveryTime - new Date()) / 60000));
+  }, []);
+
+  // Sync estimatedTime state with order data and periodic updates
+  useEffect(() => {
+    if (!order) return;
+
+    const tick = () => {
+      const remaining = getTimeRemaining(order);
+      // Only prefer static calculation if no realtime ETA is provided by the map/driver
+      // But user said "should be same" as Home page, which uses static calculation.
+      // So we use static calculation as the base/sync source.
+      if (remaining !== null) {
+        setEstimatedTime(remaining);
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 30000); // 30s sync matches home page logic
+    return () => clearInterval(interval);
+  }, [order, getTimeRemaining]);
+  // --- End: Sync arrival time ---
+
   // --------------------------------------------------------------------------
   // DATA FETCHING & POLLING STABILITY (FIXED FOR HAMMERING)
   // --------------------------------------------------------------------------
@@ -1478,37 +1514,7 @@ export default function OrderTracking() {
 
       {/* Scrollable Content */}
       <div className="max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 space-y-4 md:space-y-6 pb-24 md:pb-32">
-        {/* 1-minute cancellation window after admin acceptance */}
-        {isAdminAccepted && isEditWindowOpen && (
-          <motion.div
-            className="bg-white rounded-xl p-4 shadow-sm border border-orange-100"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-gray-900">
-                Cancel order
-              </p>
-              <span className={`text-sm font-bold px-2 py-1 rounded-md ${isEditWindowOpen ? 'bg-orange-50 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
-                {isEditWindowOpen ? editWindowText : 'Expired'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Available for 1 minute after admin acceptance.
-            </p>
-            <div className="mt-3">
-              <Button
-                type="button"
-                onClick={handleCancelOrder}
-                disabled={!isEditWindowOpen}
-                className="w-full bg-red-600 hover:bg-red-700 text-white"
-              >
-                Cancel Order
-              </Button>
-            </div>
-          </motion.div>
-        )}
+        {/* Cancellation window removed as per user request to hide immediately after acceptance */}
 
         {customerDeliveryOtp && orderStatus !== 'delivered' && orderStatus !== 'cancelled' && (
           <motion.div
@@ -1708,15 +1714,17 @@ export default function OrderTracking() {
             })()}
             showArrow={false}
           />
-          <SectionItem
-            icon={MessageSquare}
-            title={order?.note ? "Edit delivery instructions" : "Add delivery instructions"}
-            subtitle={order?.note ? order.note.substring(0, 35) + (order.note.length > 35 ? "..." : "") : ""}
-            onClick={() => {
-              setDeliveryInstructions(order?.note || "");
-              setIsInstructionsModalOpen(true);
-            }}
-          />
+          {!isAdminAccepted && orderStatus !== 'cancelled' && orderStatus !== 'delivered' && (
+            <SectionItem
+              icon={MessageSquare}
+              title={order?.note ? "Edit delivery instructions" : "Add delivery instructions"}
+              subtitle={order?.note ? order.note.substring(0, 35) + (order.note.length > 35 ? "..." : "") : ""}
+              onClick={() => {
+                setDeliveryInstructions(order?.note || "");
+                setIsInstructionsModalOpen(true);
+              }}
+            />
+          )}
         </motion.div>
 
         {/* Restaurant Section */}
@@ -1770,21 +1778,7 @@ export default function OrderTracking() {
           </div>
         </motion.div>
 
-        {!isAdminAccepted && orderStatus !== 'cancelled' && (
-          <motion.div
-            className="bg-white rounded-xl shadow-sm overflow-hidden"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
-          >
-            <SectionItem
-              icon={CircleSlash}
-              title="Cancel order"
-              subtitle=""
-              onClick={handleCancelOrder}
-            />
-          </motion.div>
-        )}
+        {/* Cancel order button removed as per user request */}
 
       </div>
 

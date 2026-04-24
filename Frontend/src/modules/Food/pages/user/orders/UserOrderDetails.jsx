@@ -383,8 +383,18 @@ export default function UserOrderDetails() {
             <h2 className="font-semibold text-gray-800">
               {order.status === "delivered"
                 ? "Order was delivered"
-                : "Order status: " + (order.status || "Processing")}
+                : (order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled") 
+                  ? "Order was cancelled by restaurant"
+                  : "Order status: " + (order.status || "Processing")}
             </h2>
+            {(order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled") && (
+              <div className="mt-1">
+                {order.cancellationReason && (
+                  <p className="text-sm text-red-600 font-medium">Reason: {order.cancellationReason}</p>
+                )}
+                <p className="text-xs text-gray-500">Refund will be initiated to your source payment method.</p>
+              </div>
+            )}
           </div>
         </div>
 

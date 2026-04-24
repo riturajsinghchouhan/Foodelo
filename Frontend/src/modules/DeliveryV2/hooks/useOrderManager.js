@@ -12,7 +12,7 @@ export const useOrderManager = () => {
   } = useDeliveryStore();
 
   const resolveOrderId = (orderLike = activeOrder) =>
-    orderLike?.orderId || orderLike?.order_id || orderLike?._id || orderLike?.id;
+    orderLike?._id || orderLike?.id || orderLike?.orderId || orderLike?.order_id;
 
   const acceptOrder = async (order) => {
     const orderId = resolveOrderId(order);

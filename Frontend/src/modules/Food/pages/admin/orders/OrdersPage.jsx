@@ -429,16 +429,18 @@ export default function OrdersPage({ statusKey = "all" }) {
       }
 
       const paymentStatusRaw = order.payment?.status || ""
+      const backendStatus = String(order.orderStatus || "").toLowerCase()
       let paymentStatus = order.paymentStatus
       if (!paymentStatus) {
         const s = String(paymentStatusRaw || "").toLowerCase()
         if (s === "refunded") paymentStatus = "Refunded"
         else if (s === "paid" || s === "authorized" || s === "captured" || s === "settled") paymentStatus = "Paid"
         else if (s === "failed") paymentStatus = "Failed"
+        else if (backendStatus === "delivered" && (paymentMethod === "cash" || paymentMethod === "cod" || paymentMethod === "Cash on Delivery")) paymentStatus = "Paid"
         else paymentStatus = "Pending"
       }
 
-      const backendStatus = String(order.orderStatus || "").toLowerCase()
+
       let displayStatus = order.orderStatus
       if (!backendStatus || backendStatus === "created" || backendStatus === "confirmed") {
         displayStatus = "Pending"

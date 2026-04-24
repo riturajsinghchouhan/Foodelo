@@ -10,14 +10,12 @@ const debugError = (...args) => {}
 
 
 const COMPLAINT_TYPES = [
-  { value: 'food_quality', label: 'Food Quality Issue' },
-  { value: 'wrong_item', label: 'Wrong Item Received' },
-  { value: 'missing_item', label: 'Missing Item' },
-  { value: 'delivery_issue', label: 'Delivery Issue' },
-  { value: 'packaging', label: 'Packaging Problem' },
-  { value: 'pricing', label: 'Pricing Issue' },
-  { value: 'service', label: 'Service Issue' },
-  { value: 'other', label: 'Other' },
+  { value: 'Food Quality', label: 'Food Quality Issue' },
+  { value: 'Wrong Item', label: 'Wrong Item Received' },
+  { value: 'Missing Item', label: 'Missing Item' },
+  { value: 'Packaging Issue', label: 'Packaging Issue' },
+  { value: 'Late Delivery', label: 'Late Delivery' },
+  { value: 'Other', label: 'Other' },
 ]
 
 export default function SubmitComplaint() {

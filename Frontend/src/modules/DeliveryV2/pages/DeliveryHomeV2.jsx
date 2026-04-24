@@ -347,6 +347,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
           const syncedOrder = {
             ...serverData,
+            _id: serverData._id,
             orderId: serverData.orderId || serverData.order_id || serverData._id,
             restaurantLocation: resLoc,
             customerLocation: cusLoc
@@ -555,10 +556,48 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           null;
 
         if (!cancelled && currentPayload && (currentPayload._id || currentPayload.orderId)) {
+          // Robust location mapping
+          const getLoc = (ref, keysLat, keysLng) => {
+            if (!ref) return null;
+            if (ref.location) {
+              if (Array.isArray(ref.location.coordinates) && ref.location.coordinates.length >= 2) {
+                return { lat: ref.location.coordinates[1], lng: ref.location.coordinates[0] };
+              }
+              return { lat: ref.location.latitude || ref.location.lat, lng: ref.location.longitude || ref.location.lng };
+            }
+            for (const k of keysLat) { if (ref[k] != null) return { lat: ref[k], lng: ref[keysLng[keysLat.indexOf(k)]] }; }
+            return null;
+          };
+
+          const resLoc = getLoc(currentPayload.restaurantId, ['latitude', 'lat'], ['longitude', 'lng']) || 
+                         getLoc(currentPayload, ['restaurant_lat', 'restaurantLat', 'latitude'], ['restaurant_lng', 'restaurantLng', 'longitude']);
+          const cusLoc = getLoc(currentPayload.deliveryAddress, ['latitude', 'lat'], ['longitude', 'lng']) || 
+                         getLoc(currentPayload, ['customer_lat', 'customerLat', 'latitude'], ['customer_lng', 'customerLng', 'longitude']);
+
           setActiveOrder({
             ...currentPayload,
+            _id: currentPayload._id,
             orderId: currentPayload.orderId || currentPayload.order_id || currentPayload._id,
+            restaurantLocation: resLoc,
+            customerLocation: cusLoc
           });
+
+          // Sync status with server
+          const backendStatus = String(currentPayload.deliveryStatus || currentPayload.orderState?.status || currentPayload.orderStatus || currentPayload.status || "").toLowerCase();
+          const currentPhase = currentPayload.deliveryState?.currentPhase;
+
+          if (['delivered', 'completed'].includes(backendStatus)) {
+            updateTripStatus('COMPLETED');
+          } else if (currentPhase === 'at_drop' || backendStatus === 'reached_drop') {
+            updateTripStatus('REACHED_DROP');
+          } else if (['picked_up', 'delivering'].includes(backendStatus)) {
+            updateTripStatus('PICKED_UP');
+          } else if (currentPhase === 'at_pickup' || backendStatus === 'reached_pickup') {
+            updateTripStatus('REACHED_PICKUP');
+          } else if (['confirmed', 'preparing', 'ready_for_pickup'].includes(backendStatus)) {
+             // Only set to PICKING_UP if we aren't already further ahead
+             if (tripStatus === 'IDLE') updateTripStatus('PICKING_UP');
+          }
           return;
         }
 
@@ -615,7 +654,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       cancelled = true;
       window.clearInterval(poller);
     };
-  }, [activeOrder, currentTab, isOnline, isSocketConnected, setActiveOrder]);
+  }, [activeOrder, currentTab, isOnline, isSocketConnected, setActiveOrder, tripStatus, updateTripStatus]);
 
   useEffect(() => {
     if (orderStatusUpdate) {

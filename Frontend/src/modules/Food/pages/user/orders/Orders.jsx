@@ -575,7 +575,14 @@ Order again from this restaurant in the ${companyName} app.`
 
   const handleViewOrderDetails = (order) => {
     setActiveMenuOrderId(null)
-    navigate(`/user/orders/${order.id}/details`)
+    const status = String(order.status || '').toLowerCase()
+    const isTerminal = ['delivered', 'cancelled', 'completed', 'failed'].includes(status) || status.includes('cancelled')
+    
+    if (isTerminal) {
+      navigate(`/user/orders/${order.id}/details`)
+    } else {
+      navigate(`/user/orders/${order.id}`)
+    }
   }
 
   // Open rating modal for an order
@@ -932,12 +939,12 @@ Order again from this restaurant in the ${companyName} app.`
                                 order.payment.method || 'N/A'}
                         </span>
                         {order.payment.status && (
-                          <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium ${order.payment.status === 'completed' ? 'bg-green-100 text-green-700' :
+                          <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium ${(order.payment.status === 'completed' || (isDelivered && isCodOrWallet)) ? 'bg-green-100 text-green-700' :
                               order.payment.status === 'failed' ? 'bg-red-100 text-red-700' :
-                                order.payment.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                (order.payment.status === 'pending' || order.payment.status === 'cod_pending') ? 'bg-yellow-100 text-yellow-700' :
                                   'bg-gray-100 text-gray-700'
                             }`}>
-                            {order.payment.status}
+                            {(isDelivered && isCodOrWallet) ? 'Paid' : order.payment.status}
                           </span>
                         )}
                       </p>
@@ -946,7 +953,12 @@ Order again from this restaurant in the ${companyName} app.`
                       <p className="text-xs font-medium text-green-600 mt-1">Delivered</p>
                     )}
                     {isRestaurantCancelled && (
-                      <p className="text-xs font-medium text-red-500 mt-1">Restaurant Cancelled</p>
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-xs font-medium text-red-500 mt-1">Restaurant Cancelled</p>
+                        {order.cancellationReason && (
+                          <p className="text-[10px] text-red-400 italic">Reason: {order.cancellationReason}</p>
+                        )}
+                      </div>
                     )}
                     {isUserCancelled && (
                       <p className="text-xs font-medium text-gray-500 mt-1">Cancelled by you</p>
@@ -956,7 +968,7 @@ Order again from this restaurant in the ${companyName} app.`
                     )}
                   </div>
                   <div className="flex items-center ml-4">
-                    <Link to={`/user/orders/${order.id}`}>
+                    <Link to={(isDelivered || isCancelled) ? `/user/orders/${order.id}/details` : `/user/orders/${order.id}`}>
                       <button className="text-xs text-[#7e3866] font-medium hover:text-[#55254b] flex items-center gap-1">
                         View Details
                         <ChevronRight className="w-4 h-4" />
@@ -979,6 +991,9 @@ Order again from this restaurant in the ${companyName} app.`
                         </div>
                         <span className="text-xs font-semibold text-red-500">Restaurant Cancelled</span>
                       </div>
+                      {order.cancellationReason && (
+                        <p className="text-xs text-red-600 font-medium ml-7 mb-1">Reason: {order.cancellationReason}</p>
+                      )}
                       <p className="text-xs text-gray-600 ml-7">Refund will be processed in 24-48 hours</p>
                     </div>
                   ) : paymentFailed ? (

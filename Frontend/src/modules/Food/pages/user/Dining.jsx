@@ -378,27 +378,23 @@ export default function Dining() {
 
     if (activeFilters.has('delivery-under-30')) {
       filtered = filtered.filter(r => {
-        const timeMatch = r.deliveryTime.match(/(\d+)/)
-        return timeMatch && parseInt(timeMatch[1]) <= 30
+        const timeStr = String(r.deliveryTime || '')
+        const timeMatch = timeStr.match(/(\d+)/)
+        return timeMatch && parseInt(timeMatch[1], 10) <= 30
       })
     }
     if (activeFilters.has('delivery-under-45')) {
       filtered = filtered.filter(r => {
-        const timeMatch = r.deliveryTime.match(/(\d+)/)
-        return timeMatch && parseInt(timeMatch[1]) <= 45
+        const timeStr = String(r.deliveryTime || '')
+        const timeMatch = timeStr.match(/(\d+)/)
+        return timeMatch && parseInt(timeMatch[1], 10) <= 45
       })
     }
     if (activeFilters.has('distance-under-1km')) {
-      filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 1.0
-      })
+      filtered = filtered.filter(r => (r.distanceValue || 0) <= 1.0)
     }
     if (activeFilters.has('distance-under-2km')) {
-      filtered = filtered.filter(r => {
-        const distMatch = r.distance.match(/(\d+\.?\d*)/)
-        return distMatch && parseFloat(distMatch[1]) <= 2.0
-      })
+      filtered = filtered.filter(r => (r.distanceValue || 0) <= 2.0)
     }
     if (activeFilters.has('rating-35-plus')) {
       filtered = filtered.filter(r => r.rating >= 3.5)
