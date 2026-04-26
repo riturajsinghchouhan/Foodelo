@@ -118,43 +118,62 @@ export default function HomeHeader({
             </div>
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1">
-                <span className="text-[13px] font-black text-white truncate">
+                <span className="text-[14px] font-black text-white truncate drop-shadow-sm">
                   {(() => {
-                    const topStr = location?.area || location?.mainTitle || (location?.address?.split(',')[0]) || "Select Location";
-                    // If it looks like a latitude/longitude number, show "Current Location"
-                    if (/^-?\d+(\.\d+)?$/.test(topStr.trim())) {
-                      return "Current Location";
+                    const area = location?.area || location?.subLocality || location?.mainTitle || location?.neighborhood;
+                    const city = (location?.city || "").toLowerCase();
+                    const state = (location?.state || "").toLowerCase();
+
+                    if (area && !/^-?\d+(\.\d+)?$/.test(area.trim())) {
+                      const areaLower = area.toLowerCase();
+                      if (areaLower !== city && areaLower !== state) {
+                        return area;
+                      }
                     }
-                    return topStr;
+                    
+                    // Fallback to a part of the address if area is missing or redundant
+                    if (location?.address && location.address !== "Select location") {
+                      const parts = location.address.split(',').map(p => p.trim());
+                      // Take the first part that isn't city or state
+                      for (const part of parts) {
+                        const partLower = part.toLowerCase();
+                        if (partLower && 
+                            partLower !== city && 
+                            partLower !== state && 
+                            !/^-?\d/.test(part) &&
+                            part.length > 2) {
+                          return part;
+                        }
+                      }
+                    }
+                    
+                    return location?.area || location?.city || "Select Location";
                   })()}
                 </span>
                 <ChevronDown className="h-3 w-3 text-white/70" />
               </div>
-              <span className="text-[10px] font-medium text-white/80 truncate leading-tight mt-0.5">
+              
+              <span className="text-[10px] font-medium text-white/90 truncate leading-tight mt-0.5">
                 {(() => {
-                  const addr = location?.address || savedAddressText || "";
-                  const city = location?.city || "Indore";
-                  const area = location?.area || "";
+                  // Format Row 2: State, Pincode (matching screenshot)
+                  const state = location?.state || "";
+                  const pincode = location?.pincode || "";
                   
-                  let displayAddr = addr;
-                  if (city) {
-                    displayAddr = displayAddr.replace(new RegExp(`,?\\s*${city}\\s*`, 'gi'), '').trim();
-                  }
-                  if (area && area.length > 3) {
-                    displayAddr = displayAddr.replace(new RegExp(`^${area},?\\s*`, 'i'), '').trim();
+                  if (state && pincode) return `${state}, ${pincode}`;
+                  if (state) return state;
+                  if (pincode) return pincode;
+                  
+                  // Fallback to snippet of address if no state/pincode
+                  const addr = location?.address || "";
+                  if (addr && addr.length > 10) {
+                     return addr.split(',').slice(1, 3).join(',').trim() || "Pinpoint location";
                   }
                   
-                  // Check if it's just coordinates or essentially empty
-                  if (/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(addr.trim()) || /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(displayAddr.trim())) {
-                    return "Pinpoint location";
-                  }
-                  if (!displayAddr || displayAddr === ",") {
-                    return "Pinpoint location"; // Fallback instead of saying "Base address" if it gets empty
-                  }
-                  return displayAddr;
+                  return "Pinpoint location";
                 })()}
               </span>
-              <span className="text-[9px] font-black text-white/50 uppercase tracking-[0.2em] leading-tight mt-1">
+              
+              <span className="text-[9px] font-black text-white/60 uppercase tracking-[0.25em] leading-tight mt-1">
                 {location?.city || "Indore"}
               </span>
             </div>

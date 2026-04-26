@@ -419,7 +419,8 @@ const transformOrderForTracking = (apiOrder, previousOrder = null, explicitResta
         }
       }
       return merged
-    })()
+    })(),
+    cancellationReason: apiOrder?.cancellationReason || previousOrder?.cancellationReason || null
   }
 }
 
@@ -592,14 +593,18 @@ export default function OrderTracking() {
   const getTimeRemaining = useCallback((orderData) => {
     if (!orderData) return null;
 
+    // Use scheduled time if available, fallback to creation time
     const orderTime = new Date(
-      orderData.createdAt || orderData.orderDate || orderData.created_at || orderData.date || Date.now(),
+      orderData.scheduledAt || orderData.createdAt || orderData.orderDate || orderData.created_at || orderData.date || Date.now(),
     );
-    const estimatedMinutes =
-      orderData.estimatedDeliveryTime ||
-      orderData.estimatedTime ||
-      orderData.estimated_delivery_time ||
-      35;
+
+    // For non-scheduled orders, we add the estimated delivery time to the creation time.
+    // For scheduled orders, scheduledAt is already the target time.
+    const isScheduled = !!orderData.scheduledAt;
+    const estimatedMinutes = isScheduled 
+      ? 0 
+      : (orderData.estimatedDeliveryTime || orderData.estimatedTime || orderData.estimated_delivery_time || 35);
+
     const deliveryTime = new Date(orderTime.getTime() + estimatedMinutes * 60000);
     return Math.max(0, Math.floor((deliveryTime - new Date()) / 60000));
   }, []);
@@ -1376,7 +1381,7 @@ export default function OrderTracking() {
     },
     cancelled: {
       title: "Order cancelled",
-      subtitle: "This order has been cancelled",
+      subtitle: order?.cancellationReason || "This order has been cancelled",
       color: "bg-red-600",
       iconType: 'cancelled'
     }

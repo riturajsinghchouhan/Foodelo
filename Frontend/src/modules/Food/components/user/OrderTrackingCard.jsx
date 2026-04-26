@@ -88,6 +88,13 @@ const isActiveOrder = (order) => {
   const phase = getOrderPhase(order);
   if (TERMINAL_STATUSES.has(status)) return false;
   if (phase === "completed" || phase === "delivered") return false;
+
+  // Don't show live tracker for scheduled orders that haven't started yet
+  // They stay in 'confirmed' status until the restaurant starts preparing them.
+  if (order.scheduledAt && (status === "confirmed" || status === "created" || status === "pending")) {
+    return false;
+  }
+
   // Some refresh payloads provide live phase but sparse status; keep tracking visible.
   if (!status && phase) return ACTIVE_PHASES.has(phase);
   if (!status) return false;
@@ -97,14 +104,18 @@ const isActiveOrder = (order) => {
 const getTimeRemaining = (order) => {
   if (!order) return null;
 
+  // Use scheduled time if available, fallback to creation time
   const orderTime = new Date(
-    order.createdAt || order.orderDate || order.created_at || order.date || Date.now(),
+    order.scheduledAt || order.createdAt || order.orderDate || order.created_at || order.date || Date.now(),
   );
-  const estimatedMinutes =
-    order.estimatedDeliveryTime ||
-    order.estimatedTime ||
-    order.estimated_delivery_time ||
-    35;
+
+  // For non-scheduled orders, we add the estimated delivery time to the creation time.
+  // For scheduled orders, scheduledAt is already the target time.
+  const isScheduled = !!order.scheduledAt;
+  const estimatedMinutes = isScheduled 
+    ? 0 
+    : (order.estimatedDeliveryTime || order.estimatedTime || order.estimated_delivery_time || 35);
+
   const deliveryTime = new Date(orderTime.getTime() + estimatedMinutes * 60000);
   return Math.max(0, Math.floor((deliveryTime - new Date()) / 60000));
 };

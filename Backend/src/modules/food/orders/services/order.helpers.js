@@ -133,6 +133,10 @@ export function normalizeOrderForClient(orderDoc) {
     deliveryPartnerId:
       order?.dispatch?.deliveryPartnerId || order?.deliveryPartnerId || null,
     rating: order?.ratings?.restaurant?.rating ?? order?.rating ?? null,
+    restaurantNote: order?.restaurantNote || "",
+    cancellationReason: (order?.orderStatus?.includes('cancel') || order?.status?.includes('cancel')) 
+      ? (order.statusHistory?.findLast(h => h.to?.includes('cancel'))?.note || "")
+      : null,
     deliveryState: {
       ...(order?.deliveryState || {}),
       currentLocation: order?.lastRiderLocation?.coordinates?.length >= 2 ? {

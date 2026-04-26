@@ -191,23 +191,50 @@ export const useRestaurantNotifications = () => {
         return;
       }
 
-      // Keep re-alerting while order is pending and tab is not visible.
+      // Only re-alert if the tab is hidden. 
+      // If the user has the tab open, they are seeing the orders.
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
         playNotificationSound(activeOrderRef.current);
       }
     }, ALERT_LOOP_INTERVAL_MS);
   };
 
-  const handleIncomingOrderAlert = (orderData) => {
-    if (!shouldProcessOrderAlert(orderData)) {
+  const handleIncomingOrderAlert = (orderData, source = 'unknown') => {
+    const isSocket = source === 'socket';
+    
+    // For scheduled orders, don't alert at all if they are far away (more than 15 mins)
+    if (orderData?.scheduledAt) {
+      const scheduledTime = new Date(orderData.scheduledAt).getTime();
+      const now = Date.now();
+      const isDueSoon = scheduledTime <= now + 15 * 60000;
+      
+      // If not due soon, ignore this order for sound/alerts
+      if (!isDueSoon) {
+        return;
+      }
+    }
+
+    const deduped = !shouldProcessOrderAlert(orderData);
+    
+    // If it's a poll and it was already alerted recently, skip.
+    // If it's a socket event, we always process it (e.g., manual 'Resend' triggers).
+    if (deduped && !isSocket) {
       return;
     }
 
     activeOrderRef.current = orderData || { id: Date.now() };
-    playNotificationSound(orderData);
+
+    // Play sound immediately if:
+    // 1. It's a real-time socket event (we want to know even if on the page)
+    // 2. OR the tab is hidden (so the poll successfully alerts the user)
+    const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    if (isSocket || isTabHidden) {
+      playNotificationSound(orderData);
+    }
+
     startAlertLoop();
 
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    if (isTabHidden) {
       showBackgroundOrderNotification(orderData);
     }
   };
@@ -261,7 +288,20 @@ export const useRestaurantNotifications = () => {
         // - backend "created" -> UI "confirmed"
         // We alert only for "confirmed/new order waiting for review".
         const confirmed = (rows || [])
-          .filter((o) => String(o?.status || "").toLowerCase() === "confirmed")
+          .filter((o) => {
+            const status = String(o?.status || "").toLowerCase();
+            if (status !== "confirmed") return false;
+
+            // If it's a scheduled order, only alert if it's due soon (within 30 mins)
+            if (o.scheduledAt) {
+              const scheduledTime = new Date(o.scheduledAt).getTime();
+              const now = Date.now();
+              // Only alert if scheduled time is <= 30 mins from now
+              return scheduledTime <= now + 30 * 60000;
+            }
+
+            return true;
+          })
           .sort((a, b) => {
             const at = a?.updatedAt || a?.createdAt || 0;
             const bt = b?.updatedAt || b?.createdAt || 0;
@@ -270,7 +310,7 @@ export const useRestaurantNotifications = () => {
 
         if (confirmed.length > 0) {
           // Trigger alerts for newest confirmed orders (dedupe prevents spam).
-          confirmed.slice(0, 5).forEach((o) => handleIncomingOrderAlert(o));
+          confirmed.slice(0, 5).forEach((o) => handleIncomingOrderAlert(o, 'poll'));
         }
       } catch (error) {
         // Non-blocking: keep polling.
@@ -320,11 +360,15 @@ export const useRestaurantNotifications = () => {
   useEffect(() => {
     const onVisibilityChange = () => {
       if (typeof document === 'undefined') return;
-      if (document.visibilityState !== 'hidden') return;
-      if (!activeOrderRef.current) return;
-
-      playNotificationSound(activeOrderRef.current);
-      showBackgroundOrderNotification(activeOrderRef.current);
+      
+      if (document.visibilityState === 'visible') {
+        // Stop any repeating alert loops once the user "sees" the page
+        stopAlertLoop();
+      } else if (document.visibilityState === 'hidden' && activeOrderRef.current) {
+        // Trigger one-shot alert when tab is hidden to ensure user didn't miss it
+        playNotificationSound(activeOrderRef.current);
+        showBackgroundOrderNotification(activeOrderRef.current);
+      }
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -603,10 +647,21 @@ export const useRestaurantNotifications = () => {
         orderMongoId: orderData?.orderMongoId || orderData?._id || orderData?.order_mongo_id,
         orderId: orderData?.orderId || orderData?.order_id || orderData?._id,
       };
+
+      // Filter scheduled orders here as well to prevent "red dot" from showing up too early
+      if (normalizedOrder.scheduledAt) {
+        const scheduledTime = new Date(normalizedOrder.scheduledAt).getTime();
+        const now = Date.now();
+        if (scheduledTime > now + 15 * 60000) {
+          debugLog('Ignoring far-away scheduled order from socket:', normalizedOrder.orderId);
+          return;
+        }
+      }
+
       debugLog('?? New order received:', normalizedOrder);
       setNewOrder(normalizedOrder);
 
-      handleIncomingOrderAlert(normalizedOrder);
+      handleIncomingOrderAlert(normalizedOrder, 'socket');
     });
     
     // Listen for new dining booking notifications
@@ -624,14 +679,8 @@ export const useRestaurantNotifications = () => {
         orderMongoId: data?.orderMongoId || data?.order_mongo_id,
         ...data
       };
-      // Force immediate buzz for notification events, even if dedupe would skip.
-      activeOrderRef.current = normalizedData || { id: Date.now() };
-      playNotificationSound(normalizedData);
-      startAlertLoop();
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        showBackgroundOrderNotification(normalizedData);
-      }
-      handleIncomingOrderAlert(normalizedData);
+      // handleIncomingOrderAlert manages sound (socket source always rings) and background notifications
+      handleIncomingOrderAlert(normalizedData, 'socket');
     });
 
     // Listen for order status updates

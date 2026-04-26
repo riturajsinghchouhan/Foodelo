@@ -383,16 +383,17 @@ export default function UserOrderDetails() {
             <h2 className="font-semibold text-gray-800">
               {order.status === "delivered"
                 ? "Order was delivered"
-                : (order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled") 
-                  ? "Order was cancelled by restaurant"
+                : (order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled" || order.status?.includes('cancel')) 
+                  ? "Order was cancelled"
                   : "Order status: " + (order.status || "Processing")}
             </h2>
-            {(order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled") && (
-              <div className="mt-1">
-                {order.cancellationReason && (
-                  <p className="text-sm text-red-600 font-medium">Reason: {order.cancellationReason}</p>
-                )}
-                <p className="text-xs text-gray-500">Refund will be initiated to your source payment method.</p>
+            {(order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled" || order.status?.includes('cancel')) && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-100 rounded-xl">
+                  <p className="text-sm text-red-700 font-bold mb-1">Cancellation Reason:</p>
+                  <p className="text-sm text-red-600 font-medium">
+                    {order.cancellationReason || "The restaurant was unable to fulfill this order."}
+                  </p>
+                <p className="text-[10px] text-gray-500 mt-2">Refund will be initiated to your source payment method.</p>
               </div>
             )}
           </div>

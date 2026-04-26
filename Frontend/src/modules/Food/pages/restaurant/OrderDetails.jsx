@@ -16,6 +16,7 @@ import {
   XCircle,
   Loader2,
   Volume2,
+  FileText,
 } from "lucide-react"
 import ResendNotificationButton from "@food/components/restaurant/ResendNotificationButton"
 const debugLog = (...args) => {}
@@ -240,6 +241,7 @@ export default function OrderDetails() {
             deliveryPartnerId: order.deliveryPartnerId || order.dispatch?.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
             reason: order.cancellationReason || '',
+            restaurantNote: order.restaurantNote || '',
             timeline: [
               { event: 'Order placed', timestamp: new Date(order.createdAt).toLocaleString('en-GB'), status: 'completed' },
               ...(reached.confirmed ? [{ event: 'Order confirmed', timestamp: order.tracking?.confirmed?.timestamp ? new Date(order.tracking.confirmed.timestamp).toLocaleString('en-GB') : '', status: 'completed' }] : []),
@@ -796,6 +798,17 @@ export default function OrderDetails() {
           {/* Rejection Reason */}
           {orderData.reason && (
             <p className="text-sm text-red-600">{orderData.reason}</p>
+          )}
+
+          {/* Restaurant Note */}
+          {orderData.restaurantNote && (
+            <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+              <div className="flex items-center gap-2 mb-1">
+                <Volume2 className="w-4 h-4 text-blue-700" />
+                <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Note for Restaurant</span>
+              </div>
+              <p className="text-sm text-blue-900 font-medium">{orderData.restaurantNote}</p>
+            </div>
           )}
         </div>
 

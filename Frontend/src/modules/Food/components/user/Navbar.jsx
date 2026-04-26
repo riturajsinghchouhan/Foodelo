@@ -105,15 +105,13 @@ export default function Navbar() {
                 </span>
               ) : (
                 <div className="flex flex-col items-start w-full min-w-0">
-                  <span className="text-xs sm:text-sm flex flex-row items-center gap-1 font-semibold text-left text-foreground truncate w-full">
+                  <span className="text-xs sm:text-sm flex flex-row items-center gap-1 font-bold text-left text-foreground truncate w-full">
                     <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-black flex-shrink-0" />
-                    {cityName}
+                    {location?.area || location?.subLocality || location?.city || "Select Location"}
                   </span>
-                  {location?.state && (
-                    <span className="text-[10px] sm:text-xs text-black pt-1 text-left truncate w-full">
-                      {stateName}
-                    </span>
-                  )}
+                  <span className="text-[10px] sm:text-xs text-muted-foreground pt-0.5 text-left truncate w-full">
+                    {[location?.state, location?.pincode].filter(Boolean).join(", ") || location?.city || "Location"}
+                  </span>
                 </div>
               )}
             </Button>

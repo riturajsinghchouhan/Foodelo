@@ -946,8 +946,9 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     throw new ForbiddenError('Not your order');
   }
 
-  const { otp, ratings } = body;
+  const { otp, ratings, paymentMethod: selectedPaymentMethod } = body;
 
+  // 1. Handover OTP Verification
   if (
     otp &&
     order.deliveryVerification?.dropOtp?.required &&
@@ -978,17 +979,30 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
       throw new ValidationError(`Order is already at status '${from}'. Cannot re-mark as '${nextStatus}'.`);
   }
   
+  // 2. Financial Context Resolution
   const tx = await FoodTransaction.findOne({ orderId: order._id }).lean();
-  const prevPayStatus = String(tx?.payment?.status || order?.payment?.status || '');
-  const payMethod = String(tx?.payment?.method || order?.payment?.method || order?.paymentMethod || '');
+  const prevPayStatus = String(tx?.payment?.status || order?.payment?.status || 'cod_pending');
+  const payMethod = String(tx?.payment?.method || order?.payment?.method || order?.paymentMethod || 'cash');
 
-  if (payMethod === 'razorpay_qr') {
+  /**
+   * Final Payment Method Logic:
+   * - If rider chose 'qr', we force 'razorpay_qr'.
+   * - If rider chose 'cash', we force 'cash'. 
+   * - Otherwise, we keep the original method.
+   */
+  let finalPayMethod = payMethod;
+  if (selectedPaymentMethod === 'qr') finalPayMethod = 'razorpay_qr';
+  else if (selectedPaymentMethod === 'cash') finalPayMethod = 'cash';
+
+  // 3. QR Payment Verification (Blocking)
+  if (finalPayMethod === 'razorpay_qr') {
     const syncedPayment = await syncRazorpayQrPayment(order);
     if (String(syncedPayment?.status || '').toLowerCase() !== 'paid') {
-      throw new ValidationError('QR payment not verified yet');
+      throw new ValidationError('Please wait for the customer to complete the QR payment. Payment not verified yet.');
     }
   }
 
+  // 4. Update Order State
   order.orderStatus = 'delivered';
   order.deliveryState = {
     ...(order.deliveryState?.toObject?.() || order.deliveryState || {}),
@@ -1009,34 +1023,40 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     byId: deliveryPartnerId,
     from,
     to: 'delivered',
-    note: 'Delivery completed successfully',
+    note: `Delivery completed using ${finalPayMethod}.`,
   });
 
   await order.save();
 
+  // 5. Update Financial Ledger (FoodTransaction)
+  // This triggers the sync back to FoodOrder.payment.method which updates the Rider's Cash Limit (if cash) or Pocket (always).
   const ledgerKind =
-    payMethod === 'cash' && prevPayStatus === 'cod_pending'
-      ? 'cod_marked_paid_on_delivery'
-      : 'payment_snapshot_sync';
+    finalPayMethod === 'cash' 
+      ? 'cod_marked_paid_on_delivery' 
+      : (finalPayMethod === 'razorpay_qr' ? 'cod_collect_qr_settled' : 'payment_snapshot_sync');
 
   await foodTransactionService.updateTransactionStatus(order._id, ledgerKind, {
-    status: 'captured',
+    status: 'captured', // This marks payment as 'paid'
+    paymentMethod: finalPayMethod,
     recordedByRole: 'DELIVERY_PARTNER',
     recordedById: deliveryPartnerId,
-    note: `Delivery completed. Prev status: ${prevPayStatus}`,
+    note: `Rider finalized payment as ${finalPayMethod}. Order is now delivered.`,
   });
 
   emitOrderUpdate(order, deliveryPartnerId);
+  
   enqueueOrderEvent('delivery_completed', {
     orderMongoId: order._id?.toString?.(),
-    orderId: order._id.toString(),
+    orderId: order.orderId || order._id.toString(),
     deliveryPartnerId,
-    payMethod,
+    payMethod: finalPayMethod,
     prevPayStatus,
-    paymentStatus: order.payment?.status,
+    paymentStatus: 'paid'
   });
+
   return sanitizeOrderForExternal(order);
 }
+
 
 export async function updateOrderStatusDelivery(orderId, deliveryPartnerId, orderStatus) {
   const identity = buildOrderIdentityFilter(orderId);

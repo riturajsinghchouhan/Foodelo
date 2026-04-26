@@ -189,7 +189,6 @@ export default function Dining() {
 
         const restaurantParams = {}
         if (city) restaurantParams.city = city
-        if (zoneId) restaurantParams.zoneId = zoneId
         if (Number.isFinite(lat) && Number.isFinite(lng)) {
           restaurantParams.lat = lat
           restaurantParams.lng = lng

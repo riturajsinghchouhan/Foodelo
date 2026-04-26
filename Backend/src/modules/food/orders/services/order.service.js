@@ -268,6 +268,7 @@ export async function createOrder(userId, dto) {
       },
     ],
     note: dto.note || "",
+    restaurantNote: dto.restaurantNote || "",
     sendCutlery: dto.sendCutlery !== false,
     deliveryFleet: dto.deliveryFleet || "standard",
     scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
@@ -980,6 +981,7 @@ export async function updateOrderStatusRestaurant(
   orderId,
   restaurantId,
   orderStatus,
+  note = ""
 ) {
   const identity = buildOrderIdentityFilter(orderId);
   let order = await FoodOrder.findOne({
@@ -997,6 +999,7 @@ export async function updateOrderStatusRestaurant(
     byId: restaurantId,
     from,
     to: orderStatus,
+    note: note || ""
   });
   await order.save();
 

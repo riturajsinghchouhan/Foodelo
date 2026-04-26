@@ -98,10 +98,20 @@ const reverseGeocodeDirect = async (latitude, longitude) => {
         if (infoArea) area = infoArea.name
       }
 
-      if (!area && addrParts.length >= 2) {
-        // If first part is not the city, use it as area
-        if (addrParts[0].toLowerCase() !== (data.city || data.locality || "").toLowerCase()) {
-          area = addrParts[0]
+      if (!area && addrParts.length >= 1) {
+        // Find the first part that isn't the city or state
+        const cityLower = (data.city || data.locality || "").toLowerCase()
+        const stateLower = (data.principalSubdivision || "").toLowerCase()
+        
+        for (const part of addrParts) {
+          const partLower = part.toLowerCase()
+          if (partLower !== cityLower && 
+              partLower !== stateLower && 
+              !/^-?\d/.test(part) && 
+              part.length > 2) {
+            area = part
+            break
+          }
         }
       }
 

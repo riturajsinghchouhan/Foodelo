@@ -281,6 +281,7 @@ const orderSchema = new mongoose.Schema(
             type: orderRatingsSchema,
             default: () => ({})
         },
+        restaurantNote: { type: String, default: '', trim: true },
         note: { type: String, default: '', trim: true },
         sendCutlery: { type: Boolean, default: true },
         deliveryFleet: { type: String, default: 'standard', trim: true },

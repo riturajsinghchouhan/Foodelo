@@ -138,6 +138,17 @@ export default function Cart() {
       return ""
     }
   })
+  const [restaurantNote, setRestaurantNote] = useState(() => {
+    try {
+      if (typeof window === "undefined") return ""
+      const raw = window.localStorage.getItem(CART_ORDER_NOTE_STORAGE_KEY)
+      if (!raw) return ""
+      const stored = JSON.parse(raw)
+      return String(stored?.restaurantNote || "")
+    } catch {
+      return ""
+    }
+  })
   const [showNoteInput, setShowNoteInput] = useState(() => {
     try {
       if (typeof window === "undefined") return false
@@ -146,6 +157,18 @@ export default function Cart() {
       const stored = JSON.parse(raw)
       const storedNote = String(stored?.note || "")
       return Boolean(stored?.showNoteInput) || storedNote.trim().length > 0
+    } catch {
+      return false
+    }
+  })
+  const [showRestaurantNoteInput, setShowRestaurantNoteInput] = useState(() => {
+    try {
+      if (typeof window === "undefined") return false
+      const raw = window.localStorage.getItem(CART_ORDER_NOTE_STORAGE_KEY)
+      if (!raw) return false
+      const stored = JSON.parse(raw)
+      const storedRestaurantNote = String(stored?.restaurantNote || "")
+      return Boolean(stored?.showRestaurantNoteInput) || storedRestaurantNote.trim().length > 0
     } catch {
       return false
     }
@@ -479,13 +502,15 @@ export default function Cart() {
         CART_ORDER_NOTE_STORAGE_KEY,
         JSON.stringify({
           note,
+          restaurantNote,
           showNoteInput,
+          showRestaurantNoteInput,
         })
       )
     } catch {
       // Ignore storage errors and keep note flow working.
     }
-  }, [note, showNoteInput])
+  }, [note, restaurantNote, showNoteInput, showRestaurantNoteInput])
 
   useEffect(() => {
     if (deliveryAddressMode === "current") {
@@ -1741,6 +1766,7 @@ export default function Cart() {
         restaurantName: finalRestaurantName || undefined,
         pricing: orderPricing,
         note: note || "",
+        restaurantNote: restaurantNote || "",
         sendCutlery: sendCutlery !== false,
         paymentMethod: selectedPaymentMethod,
         // `useZone()` can return `null`. Zod expects string/undefined, not null.
@@ -1786,7 +1812,9 @@ export default function Cart() {
         window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
         clearCart()
         setNote("")
+        setRestaurantNote("")
         setShowNoteInput(false)
+        setShowRestaurantNoteInput(false)
         try {
           window.localStorage.removeItem(CART_ORDER_NOTE_STORAGE_KEY)
         } catch {
@@ -1812,7 +1840,9 @@ export default function Cart() {
         window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
         clearCart()
         setNote("")
+        setRestaurantNote("")
         setShowNoteInput(false)
+        setShowRestaurantNoteInput(false)
         try {
           window.localStorage.removeItem(CART_ORDER_NOTE_STORAGE_KEY)
         } catch {
@@ -2150,20 +2180,29 @@ export default function Cart() {
 
               {/* Note & Cutlery */}
               <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-4 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800 flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={() => setShowNoteInput(!showNoteInput)}
-                  className="flex-1 flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  <FileText className="h-4 w-4 md:h-5 md:w-5" />
-                  <span className="truncate">{note || "Add a note for the delivery partner"}</span>
-                </button>
+                <div className="flex-1 flex flex-col gap-2">
+                  <button
+                    onClick={() => setShowNoteInput(!showNoteInput)}
+                    className="flex-1 flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    <FileText className="h-4 w-4 md:h-5 md:w-5" />
+                    <span className="truncate">{note || "Add note for delivery partner"}</span>
+                  </button>
+                  <button
+                    onClick={() => setShowRestaurantNoteInput(!showRestaurantNoteInput)}
+                    className="flex-1 flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    <Utensils className="h-4 w-4 md:h-5 md:w-5" />
+                    <span className="truncate">{restaurantNote || "Add note for restaurant"}</span>
+                  </button>
+                </div>
                 <button
                   onClick={() => setSendCutlery(!sendCutlery)}
-                  className={`flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border rounded-lg md:rounded-xl text-sm md:text-base ${sendCutlery ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300' : 'border-[#7e3866] dark:border-[#7e3866]/50 text-[#7e3866] dark:text-[#7e3866] bg-[#7e386605] dark:bg-[#7e386610]'}`}
+                  className={`flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border rounded-lg md:rounded-xl text-sm md:text-base h-full ${sendCutlery ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300' : 'border-[#7e3866] dark:border-[#7e3866]/50 text-[#7e3866] dark:text-[#7e3866] bg-[#7e386605] dark:bg-[#7e386610]'}`}
                 >
                   <Utensils className="h-4 w-4 md:h-5 md:w-5" />
                   <span className="whitespace-nowrap">
-                    {sendCutlery ? "Send cutlery" : "Don't send cutlery"}
+                    {sendCutlery ? "Send cutlery" : "Don't send"}
                   </span>
                 </button>
               </div>
@@ -2183,10 +2222,34 @@ export default function Cart() {
                   />
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Ye note order ke saath save hoga aur assigned delivery partner ko dikh sakta hai.
+                      Note for delivery partner.
                     </p>
                     <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
                       {note.length}/240
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Restaurant Note Input */}
+              {showRestaurantNoteInput && (
+                <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl border border-slate-100 dark:border-gray-800">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                    Restaurant instructions
+                  </p>
+                  <textarea
+                    value={restaurantNote}
+                    onChange={(e) => setRestaurantNote(e.target.value)}
+                    placeholder="Eg. Don't add onions, make it extra spicy, etc."
+                     className="w-full border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl p-3 md:p-4 text-sm md:text-base resize-none h-20 md:h-24 focus:outline-none focus:border-[#7e3866] dark:focus:border-[#7e3866] bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-gray-100"
+                    maxLength={240}
+                  />
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Note for restaurant.
+                    </p>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                      {restaurantNote.length}/240
                     </span>
                   </div>
                 </div>

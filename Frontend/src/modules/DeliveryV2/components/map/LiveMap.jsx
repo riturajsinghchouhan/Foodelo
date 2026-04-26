@@ -24,7 +24,7 @@ const mapOptions = {
   mapTypeControl: false,
   scaleControl: false,
   streetViewControl: false,
-  rotateControl: false,
+  rotateControl: true,
   fullscreenControl: false,
   styles: [
     { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
@@ -61,8 +61,9 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
       mapTypeControl: false,
       scaleControl: false,
       streetViewControl: false,
-      rotateControl: false,
-      fullscreenControl: false
+      rotateControl: true, // Enabled for front-view navigation
+      fullscreenControl: false,
+      tilt: 45, // 3D Perspective
     });
     setMapInternal(mapInstance);
     if (onMapLoad) onMapLoad(mapInstance);
@@ -199,17 +200,47 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
     }
   }, [map, parsedRiderLocation, restaurantPoint, customerPoint]);
 
-  const remainingPath = useMemo(() => {
-    if (!directions || !parsedRiderLocation) return [];
+  const { remainingPath, traveledPath } = useMemo(() => {
+    if (!directions || !parsedRiderLocation || !window.google?.maps) return { remainingPath: [], traveledPath: [] };
+    
     const fullPath = directions.routes[0].overview_path;
+    if (!fullPath || fullPath.length === 0) return { remainingPath: [], traveledPath: [] };
+
     let closestIndex = 0;
-    let minDist = Infinity;
-    const rPos = new window.google.maps.LatLng(parsedRiderLocation.lat, parsedRiderLocation.lng);
+    let minDistance = Infinity;
+    const riderLatLng = new window.google.maps.LatLng(parsedRiderLocation.lat, parsedRiderLocation.lng);
+
     for (let i = 0; i < fullPath.length; i++) {
-       const d = window.google.maps.geometry.spherical.computeDistanceBetween(rPos, fullPath[i]);
-       if (d < minDist) { minDist = d; closestIndex = i; }
+      const distance = window.google.maps.geometry.spherical.computeDistanceBetween(riderLatLng, fullPath[i]);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = i;
+      }
     }
-    return [{ lat: parsedRiderLocation.lat, lng: parsedRiderLocation.lng }, ...fullPath.slice(closestIndex + 1)];
+
+    let startIndex = closestIndex;
+    if (closestIndex < fullPath.length - 1) {
+      const distToCurrent = window.google.maps.geometry.spherical.computeDistanceBetween(riderLatLng, fullPath[closestIndex]);
+      const distToNext = window.google.maps.geometry.spherical.computeDistanceBetween(riderLatLng, fullPath[closestIndex + 1]);
+      const segmentLen = window.google.maps.geometry.spherical.computeDistanceBetween(fullPath[closestIndex], fullPath[closestIndex + 1]);
+      
+      if (distToNext < segmentLen && distToNext < distToCurrent) {
+        startIndex = closestIndex + 1;
+      }
+    }
+
+    const riderPoint = { lat: parsedRiderLocation.lat, lng: parsedRiderLocation.lng };
+    const toObj = (p) => ({
+      lat: typeof p.lat === 'function' ? p.lat() : p.lat,
+      lng: typeof p.lng === 'function' ? p.lng() : p.lng
+    });
+
+    const traveled = fullPath.slice(0, startIndex).map(toObj);
+    traveled.push(riderPoint);
+
+    const remaining = [riderPoint, ...fullPath.slice(startIndex).map(toObj)];
+
+    return { remainingPath: remaining, traveledPath: traveled };
   }, [directions, parsedRiderLocation]);
 
   if (loadError) return <div className="absolute inset-0 flex items-center justify-center bg-gray-50 text-red-500 font-bold">Map Load Error</div>;
@@ -236,6 +267,8 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
         mapContainerStyle={mapContainerStyle}
         center={parsedRiderLocation || targetLocation || defaultCenter}
         zoom={zoom}
+        heading={parsedRiderLocation?.heading || 0}
+        tilt={45}
         onClick={(e) => onMapClick?.(e.latLng.lat(), e.latLng.lng())}
         options={mapOptions}
       >
@@ -247,19 +280,32 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
           <DirectionsService options={baselineServiceOptions} callback={baselineDirectionsCallback} />
         )}
 
-        {remainingPath.length > 0 && (
-          <Polyline path={remainingPath} options={{ strokeColor: '#22c55e', strokeOpacity: 0.98, strokeWeight: 7, zIndex: 12 }} />
+        {traveledPath.length > 0 && (
+          <Polyline 
+            path={traveledPath} 
+            options={{ 
+              strokeColor: '#9ca3af', 
+              strokeOpacity: 0.5, 
+              strokeWeight: 4, 
+              zIndex: 10,
+              icons: [{
+                icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 2 },
+                offset: '0',
+                repeat: '10px'
+              }]
+            }} 
+          />
         )}
 
-        {baselineDirections && (
-          <Polyline
-            path={baselineDirections.routes[0].overview_path}
-            options={{
-              strokeColor: '#9ca3af',
-              strokeOpacity: 0.9,
-              strokeWeight: 5,
-              zIndex: 4,
-            }}
+        {remainingPath.length > 0 && (
+          <Polyline 
+            path={remainingPath} 
+            options={{ 
+              strokeColor: '#3b82f6', 
+              strokeOpacity: 0.9, 
+              strokeWeight: 8, 
+              zIndex: 12 
+            }} 
           />
         )}
 
@@ -294,7 +340,7 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
         )}
 
         {zones.map((zone) => (
-          <Polygon key={zone._id} paths={zone.paths} options={{ fillColor: "#22c55e", fillOpacity: 0.1, strokeColor: "#22c55e", strokeOpacity: 0.4, strokeWeight: 2, zIndex: 1 }} />
+          <Polygon key={zone._id} paths={zone.paths} options={{ fillColor: "#22c55e", fillOpacity: 0.03, strokeColor: "#22c55e", strokeOpacity: 0.1, strokeWeight: 1, zIndex: 1 }} />
         ))}
       </GoogleMap>
     </div>

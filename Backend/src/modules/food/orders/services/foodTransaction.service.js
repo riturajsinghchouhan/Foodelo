@@ -182,6 +182,12 @@ export async function updateTransactionStatus(orderId, kind, details = {}) {
     if (details.razorpayPaymentId) transaction.gateway.razorpayPaymentId = details.razorpayPaymentId;
     if (details.razorpaySignature) transaction.gateway.razorpaySignature = details.razorpaySignature;
     
+    // Sync payment method if provided (e.g. switching from cash to QR)
+    if (details.paymentMethod) {
+        transaction.paymentMethod = details.paymentMethod;
+        transaction.payment.method = details.paymentMethod;
+    }
+
     transaction.history.push({
         kind,
         amount: transaction.amounts.totalCustomerPaid,
@@ -191,6 +197,23 @@ export async function updateTransactionStatus(orderId, kind, details = {}) {
     });
 
     await transaction.save();
+
+    // Sync back to order as well
+    if (details.paymentMethod || details.status) {
+        try {
+            const updateFields = {};
+            if (details.paymentMethod) updateFields['payment.method'] = details.paymentMethod;
+            if (details.status === 'captured') updateFields['payment.status'] = 'paid';
+            
+            await mongoose.model('FoodOrder').updateOne(
+                { _id: orderId },
+                { $set: updateFields }
+            );
+        } catch (err) {
+            console.error('Failed to sync transaction status to order:', err.message);
+        }
+    }
+
     return transaction;
 }
 

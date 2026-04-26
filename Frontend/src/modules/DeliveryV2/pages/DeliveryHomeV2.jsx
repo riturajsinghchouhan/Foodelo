@@ -758,7 +758,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="px-4 mt-1"
+              className="px-3 md:px-4 mt-1"
             >
               {activeOrder ? (
                 <div className="grid grid-cols-2 gap-3 w-full">

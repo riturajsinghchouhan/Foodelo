@@ -21,6 +21,7 @@ import {
   Clock,
   Users,
   MessageSquare,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders";
@@ -99,6 +100,7 @@ const transformOrderForList = (order) => ({
   initialETA: order.estimatedDeliveryTime || 30,
   sortTimestamp: new Date(getAllOrdersTimestamp(order)).getTime(),
   scheduledAt: order.scheduledAt || null,
+  restaurantNote: order.restaurantNote || null,
 });
 
 // Completed Orders List Component
@@ -351,6 +353,7 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
             photoAlt: order.items?.[0]?.name || "Order",
             amount: order.pricing?.total || order.total || 0,
             paymentMethod: order.paymentMethod || order.payment?.method || null,
+            restaurantNote: order.restaurantNote || null,
           }));
 
           transformedOrders.sort((a, b) => {
@@ -1037,7 +1040,7 @@ export default function OrdersMain() {
   const [popupOrder, setPopupOrder] = useState(null); // Store order for popup (from Socket.IO or API)
   const [isMuted, setIsMuted] = useState(false);
   const [prepTime, setPrepTime] = useState(11);
-  const [countdown, setCountdown] = useState(240); // 4 minutes in seconds
+  const [countdown, setCountdown] = useState(180); // 3 minutes in seconds
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
   const [showRejectPopup, setShowRejectPopup] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -1378,7 +1381,7 @@ export default function OrdersMain() {
         markOrderAsShown(newOrder);
         setPopupOrder(newOrder);
         setShowNewOrderPopup(true);
-        setCountdown(240); // Reset countdown to 4 minutes
+        setCountdown(180); // Reset countdown to 3 minutes
         requestOrdersRefresh();
       }
     }
@@ -1481,7 +1484,7 @@ export default function OrdersMain() {
 
         // If an order popup is already open, start buzzing immediately after unlock.
         if (showNewOrderPopupRef.current && !isMutedRef.current) {
-          audioRef.current.loop = true;
+          audioRef.current.loop = false;
           audioRef.current.currentTime = 0;
           audioRef.current.play().catch(() => {});
         }
@@ -1500,6 +1503,20 @@ export default function OrdersMain() {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
     };
+  }, []);
+
+  // Ensure audio stops when user comes to the page
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   const [ordersRefreshToken, setOrdersRefreshToken] = useState(0);
@@ -1573,7 +1590,7 @@ export default function OrdersMain() {
             markOrderAsShown({ orderId, _id: orderToPopup._id });
             setPopupOrder(orderForPopup);
             setShowNewOrderPopup(true);
-            setCountdown(240);
+            setCountdown(180);
           }
         }
       } catch (error) {
@@ -1594,7 +1611,7 @@ export default function OrdersMain() {
   useEffect(() => {
     if (showNewOrderPopup && !isMuted) {
       if (audioRef.current) {
-        audioRef.current.loop = true;
+        audioRef.current.loop = false;
         audioRef.current.muted = false;
         audioRef.current.volume = 1;
         audioRef.current.currentTime = 0;
@@ -1608,15 +1625,37 @@ export default function OrdersMain() {
     }
   }, [showNewOrderPopup, isMuted]);
 
-  // Countdown timer
   useEffect(() => {
     if (showNewOrderPopup && countdown > 0) {
       const timer = setInterval(() => {
         setCountdown((prev) => prev - 1);
       }, 1000);
       return () => clearInterval(timer);
+    } else if (showNewOrderPopup && countdown === 0) {
+      // Auto-reject when timer hits zero
+      const orderToReject = popupOrder || newOrder;
+      const orderId = resolveOrderActionId(orderToReject);
+      
+      if (orderId && !isAcceptingOrder) {
+        debugLog("?? Timer expired. Auto-rejecting order:", orderId);
+        restaurantAPI.rejectOrder(orderId, "No response from restaurant (Auto-rejected)")
+          .then(() => {
+            toast.info("Order auto-rejected due to no response");
+            requestOrdersRefresh();
+            setShowNewOrderPopup(false);
+            setPopupOrder(null);
+            clearNewOrder();
+            setCountdown(180);
+          })
+          .catch((err) => {
+            debugError("Auto-reject failed:", err);
+            setShowNewOrderPopup(false);
+          });
+      } else {
+        setShowNewOrderPopup(false);
+      }
     }
-  }, [showNewOrderPopup, countdown]);
+  }, [showNewOrderPopup, countdown, popupOrder, newOrder, isAcceptingOrder]);
 
   useEffect(() => {
     if (!showNewOrderPopup) {
@@ -2028,14 +2067,25 @@ export default function OrdersMain() {
         );
       }
 
-      // Notes
+      // Delivery Note
       if (orderToPrint.note) {
         yPos += 10;
         doc.setFont("helvetica", "bold");
-        doc.text("Note:", 20, yPos);
+        doc.text("Note for Delivery:", 20, yPos);
         doc.setFont("helvetica", "normal");
         const noteLines = doc.splitTextToSize(orderToPrint.note, 170);
         doc.text(noteLines, 20, yPos + 7);
+        yPos += (noteLines.length * 7);
+      }
+
+      // Restaurant Note
+      if (orderToPrint.restaurantNote) {
+        yPos += 10;
+        doc.setFont("helvetica", "bold");
+        doc.text("Note for Restaurant:", 20, yPos);
+        doc.setFont("helvetica", "normal");
+        const restaurantNoteLines = doc.splitTextToSize(orderToPrint.restaurantNote, 170);
+        doc.text(restaurantNoteLines, 20, yPos + 7);
       }
 
       // Cutlery preference
@@ -2595,6 +2645,21 @@ export default function OrdersMain() {
                     </p>
                   </div>
 
+                  {/* Restaurant Note */}
+                  {(popupOrder || newOrder)?.restaurantNote && (
+                    <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                        <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
+                          Note for Restaurant
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium text-blue-900">
+                        {(popupOrder || newOrder).restaurantNote}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Details Accordion */}
                   <div className="mb-4">
                     <button
@@ -2800,7 +2865,7 @@ export default function OrdersMain() {
                           <motion.div
                             className="absolute inset-y-0 left-0 bg-blue-600"
                             initial={{ width: "100%" }}
-                            animate={{ width: `${(countdown / 240) * 100}%` }}
+                            animate={{ width: `${(countdown / 180) * 100}%` }}
                             transition={{ duration: 1, ease: "linear" }}
                           />
                           <div className="absolute inset-0 flex items-center justify-center px-16">
@@ -3175,6 +3240,13 @@ export default function OrdersMain() {
                 </div>
               )}
 
+              {selectedOrder.restaurantNote && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                  <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Note for Restaurant</p>
+                  <p className="text-xs text-blue-700 font-medium">{selectedOrder.restaurantNote}</p>
+                </div>
+              )}
+
               <button
                 className="w-full bg-primary-orange text-white py-2.5 rounded-xl text-sm font-medium hover:bg-primary-orange/90 transition-colors"
                 onClick={() => setIsSheetOpen(false)}>
@@ -3213,6 +3285,7 @@ function OrderCard({
   onMarkReady,
   isMarkingReady = false,
   scheduledAt = null,
+  restaurantNote = null,
 }) {
   const normalizedStatus = String(status || "").toLowerCase();
   const isReady = normalizedStatus === "ready";
@@ -3231,7 +3304,7 @@ function OrderCard({
       />
       
       <div
-        onClick={() => onSelect?.({ orderId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod, scheduledAt })}
+        onClick={() => onSelect?.({ orderId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod, scheduledAt, restaurantNote })}
         className="flex gap-3 items-start cursor-pointer pl-1">
         
         {/* Photo Container - Smaller for mobile */}
@@ -3292,9 +3365,17 @@ function OrderCard({
           </div>
 
           {/* Items Summary - One line only */}
-          <p className="text-[10px] text-slate-600 font-bold truncate italic mb-2">
+          <p className="text-[10px] text-slate-600 font-bold truncate italic mb-1">
             {itemsSummary}
           </p>
+
+          {restaurantNote && (
+            <div className="mb-2 px-2 py-1 bg-blue-50 border border-blue-100 rounded-md">
+              <p className="text-[9px] text-blue-700 font-bold line-clamp-1 italic">
+                Note: {restaurantNote}
+              </p>
+            </div>
+          )}
 
           {/* Bottom Actions Row - Clean Grid/Flex */}
           <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-50 mt-auto">
@@ -3434,6 +3515,7 @@ function PreparingOrders({
               paymentMethod:
                 order.paymentMethod || order.payment?.method || null,
               scheduledAt: order.scheduledAt || null,
+              restaurantNote: order.restaurantNote || null,
             };
           });
 
@@ -3741,6 +3823,7 @@ function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
             deliveryPartnerId: order.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
             scheduledAt: order.scheduledAt || null,
+            restaurantNote: order.restaurantNote || null,
           }));
 
           if (isMounted) {
@@ -3860,6 +3943,7 @@ const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
             deliveryPartnerId: order.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
             scheduledAt: order.scheduledAt || null,
+            restaurantNote: order.restaurantNote || null,
           }));
 
           if (isMounted) {
