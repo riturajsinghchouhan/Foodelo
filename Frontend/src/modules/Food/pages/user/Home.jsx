@@ -2959,8 +2959,8 @@ export default function Home() {
                         <p className="text-sm font-semibold text-gray-900 dark:text-white truncate tracking-tight">
                           {restaurant.name}
                         </p>
-                        <p className="text-[10px] text-[#6A2FB1] font-bold mt-1 flex items-center gap-1 uppercase tracking-wider">
-                          <Flame className="w-3.5 h-3.5 fill-[#6A2FB1]" />
+                        <p className="text-[10px] text-[#7e3866] font-bold mt-1 flex items-center gap-1 uppercase tracking-wider">
+                          <Flame className="w-3.5 h-3.5 fill-[#7e3866]" />
                           Near & Fast
                         </p>
                       </div>
@@ -3208,12 +3208,12 @@ export default function Home() {
                               {/* Restaurant Name & Rating */}
                               <div className="flex items-start justify-between gap-2 mb-2 lg:mb-3">
                                 <div className="flex-1 min-w-0">
-                                  <h3 className="text-lg lg:text-2xl font-medium text-gray-950 dark:text-white line-clamp-1 leading-tight tracking-tight transition-colors duration-300 group-hover:text-[#ef4f5f]">
+                                  <h3 className="text-lg lg:text-2xl font-bold text-gray-950 dark:text-white line-clamp-1 leading-tight tracking-tight transition-colors duration-300 group-hover:text-[#7e3866]">
                                     {restaurant.name}
                                   </h3>
                                   <div className="flex flex-wrap items-center gap-2 mt-2">
                                     <span
-                                      className={`inline-flex rounded-full px-3 py-1 text-[10px] font-medium uppercase tracking-widest shadow-sm ${availability.isOpen ? "bg-emerald-500 text-white" : "bg-gray-400 text-white"}`}>
+                                      className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest shadow-sm ${availability.isOpen ? "bg-[#7e3866] text-white" : "bg-gray-400 text-white"}`}>
                                       {availability.isOpen
                                         ? "Open now"
                                         : "Offline"}
@@ -3222,10 +3222,10 @@ export default function Home() {
                                       availability.closingCountdownLabel &&
                                       availability.openingTime &&
                                       availability.closingTime && (
-                                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-medium uppercase tracking-wide">
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#7e3866]/10 text-[#7e3866] border border-[#7e3866]/20 text-[10px] font-black uppercase tracking-widest">
                                           <Timer
                                             className="h-3 w-3 flex-shrink-0"
-                                            strokeWidth={2.5}
+                                            strokeWidth={3}
                                           />
                                           <span>
                                             {availability.closingCountdownLabel}
@@ -3234,8 +3234,8 @@ export default function Home() {
                                       )}
                                   </div>
                                 </div>
-                                <div className={`flex-shrink-0 ${Number(restaurant.rating) > 0 ? "bg-[#259539]" : "bg-gray-400"} text-white px-3 py-1.5 rounded-2xl flex items-center gap-1.5 shadow-md transform transition-transform duration-300 group-hover:scale-110`}>
-                                  <span className="text-sm lg:text-lg font-medium tracking-tight">
+                                <div className={`flex-shrink-0 ${Number(restaurant.rating) > 0 ? "bg-[#7e3866]" : "bg-gray-400"} text-white px-3 py-1.5 rounded-2xl flex items-center gap-1.5 shadow-md transform transition-transform duration-300 group-hover:scale-110`}>
+                                  <span className="text-sm lg:text-lg font-black tracking-tight">
                                     {Number(restaurant.rating) > 0 ? Number(restaurant.rating).toFixed(1) : "NEW"}
                                   </span>
                                   {Number(restaurant.rating) > 0 && <Star className="h-3.5 w-3.5 lg:h-4.5 lg:w-4.5 fill-white text-white" strokeWidth={0} />}
@@ -3261,10 +3261,10 @@ export default function Home() {
                               {restaurant.offer && (
                                 <div className="flex items-center gap-2 text-sm lg:text-base mt-auto transform transition-transform duration-300 group-hover:translate-x-1">
                                   <BadgePercent
-                                    className="h-4 w-4 lg:h-5 lg:w-5 text-black"
-                                    strokeWidth={2}
+                                    className="h-4 w-4 lg:h-5 lg:w-5 text-[#7e3866]"
+                                    strokeWidth={3}
                                   />
-                                  <span className="text-gray-700 dark:text-gray-300 font-medium">
+                                  <span className="text-[#7e3866] dark:text-[#a05485] font-black uppercase text-[10px] tracking-wider">
                                     {restaurant.offer}
                                   </span>
                                 </div>

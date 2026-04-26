@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { ArrowLeft, Star, Clock, Bookmark, BadgePercent } from "lucide-react"
+import { ArrowLeft, Star, Clock, Bookmark, BadgePercent, Utensils } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Card, CardContent } from "@food/components/ui/card"
 import api from "@food/api"
@@ -13,7 +13,7 @@ import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import { useLocation } from "@food/hooks/useLocation"
 
 // Import banner
-import gourmetBanner from "@food/assets/groumetpagebanner.png"
+import gourmetBanner from "@food/assets/gourmet_new_banner.png"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -79,38 +79,50 @@ export default function Gourmet() {
   return (
     <div className="min-h-screen bg-white dark:bg-[#0a0a0a]">
       {/* Banner Section */}
-      <div className="relative w-full overflow-hidden min-h-[25vh] md:min-h-[30vh]">
+      <div className="relative w-full overflow-hidden h-[30vh] sm:h-[35vh] md:h-[40vh] shadow-2xl">
         {/* Back Button */}
         <button
           onClick={goBack}
-          className="absolute top-4 left-4 md:top-6 md:left-6 z-20 w-10 h-10 md:w-12 md:h-12 bg-gray-800/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-gray-800/80 transition-colors"
+          className="absolute top-4 left-4 md:top-6 md:left-6 z-20 w-10 h-10 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center transition-all active:scale-90"
         >
-          <ArrowLeft className="h-5 w-5 md:h-6 md:w-6 text-white" />
+          <ArrowLeft className="h-5 w-5 text-white" />
         </button>
 
         {/* Banner Image */}
-        <div className="absolute inset-0 z-0">
+        <div className="absolute inset-0 z-0 scale-105">
           <img
             src={gourmetBanner}
             alt="Gourmet Dining"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover animate-in fade-in zoom-in duration-1000"
           />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+        </div>
+
+        {/* Banner Text Overlay */}
+        <div className="absolute bottom-8 left-6 md:left-10 z-10 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-[2px] bg-[#7e3866]" />
+            <span className="text-[10px] font-black tracking-[0.3em] text-white/80 uppercase">Experience Excellence</span>
+          </div>
+          <h1 className="text-3xl md:text-5xl font-black text-white drop-shadow-2xl">Gourmet Dining</h1>
+          <p className="text-white/70 text-sm md:text-base font-medium max-w-md">Indulge in carefully curated premium dining from the city's finest restaurants.</p>
         </div>
       </div>
 
       {/* Content */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 py-6 md:py-8 lg:py-10 space-y-4 md:space-y-6">
         <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
-          {/* Header */}
-          <div className="mb-2">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Premium Gourmet Restaurants</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Exquisite dining experiences delivered to your doorstep</p>
-          </div>
 
           {/* Restaurant Count */}
-          <p className="text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase">
-            {showGourmetSkeleton ? '...' : gourmetRestaurants.length} GOURMET RESTAURANTS
-          </p>
+          <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-zinc-800">
+            <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 tracking-[0.2em] uppercase">
+              {showGourmetSkeleton ? '...' : gourmetRestaurants.length} PREMIER ESTABLISHMENTS
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-gray-500 uppercase">Live Deals Available</span>
+            </div>
+          </div>
 
           {/* Loading State */}
           {showGourmetSkeleton && <RestaurantGridSkeleton count={4} />}
@@ -183,66 +195,76 @@ export default function Gourmet() {
 
                   return (
                     <Link key={restaurantId} to={`/user/restaurants/${restaurantSlug}`}>
-                      <Card className="overflow-hidden cursor-pointer border-0 group bg-white dark:bg-[#1a1a1a] shadow-md hover:shadow-xl transition-all duration-300 py-0 rounded-2xl mb-4">
+                      <Card className="overflow-hidden cursor-pointer border-0 group bg-white dark:bg-[#1a1a1a] shadow-xl shadow-gray-200/20 dark:shadow-none hover:shadow-2xl hover:shadow-[#7e3866]/5 transition-all duration-500 py-0 rounded-[32px] mb-4 group active:scale-[0.98]">
                         {/* Image Section */}
-                        <div className="relative h-44 sm:h-52 md:h-56 w-full overflow-hidden rounded-t-2xl">
+                        <div className="relative h-48 sm:h-56 md:h-60 w-full overflow-hidden rounded-t-[32px]">
                           {restaurantImage ? (
                             <OptimizedImage
                               src={restaurantImage}
                               alt={restaurant.restaurantName || restaurant.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                             />
                           ) : (
-                            <div className="w-full h-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
-                              <span className="text-slate-600 dark:text-slate-300 text-sm font-semibold">
-                                No image
-                              </span>
+                            <div className="w-full h-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center">
+                              <Utensils className="w-8 h-8 text-gray-200" />
                             </div>
                           )}
+                          
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
 
                           {/* Bookmark Icon - Top Right */}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-3 right-3 h-9 w-9 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors"
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              toggleFavorite(restaurantId)
-                            }}
-                          >
-                            <Bookmark className={`h-5 w-5 ${isFavorite ? "fill-gray-800 dark:fill-gray-200 text-gray-800 dark:text-gray-200" : "text-gray-600 dark:text-gray-400"}`} strokeWidth={2} />
-                          </Button>
+                          <div className="absolute top-4 right-4 z-10">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-10 w-10 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-2xl border border-white/20 transition-all active:scale-90"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                toggleFavorite(restaurantId)
+                              }}
+                            >
+                              <Bookmark className={`h-5 w-5 ${isFavorite ? "fill-white text-white" : "text-white/80"}`} strokeWidth={2} />
+                            </Button>
+                          </div>
+                          
+                          {/* Rating Badge Overlay */}
+                          <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-2xl shadow-2xl">
+                             <span className="text-sm font-black text-gray-900">{restaurant.rating?.toFixed(1) || '4.0'}</span>
+                             <Star className="h-3.5 w-3.5 fill-[#7e3866] text-[#7e3866]" />
+                          </div>
                         </div>
 
                         {/* Content Section */}
-                        <CardContent className="p-3 sm:p-4">
-                          {/* Restaurant Name & Rating */}
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 line-clamp-1">
-                                {restaurant.restaurantName || restaurant.name}
-                              </h3>
-                            </div>
-                            <div className="flex-shrink-0 bg-green-600 text-white px-2 py-1 rounded-lg flex items-center gap-1">
-                              <span className="text-sm font-bold">{restaurant.rating?.toFixed(1) || '0.0'}</span>
-                              <Star className="h-3 w-3 fill-white text-white" />
-                            </div>
+                        <CardContent className="p-5">
+                          {/* Restaurant Name */}
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 truncate group-hover:text-[#7e3866] transition-colors">
+                              {restaurant.restaurantName || restaurant.name}
+                            </h3>
                           </div>
 
                           {/* Delivery Time & Distance */}
-                          <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 mb-2">
-                            <Clock className="h-4 w-4" strokeWidth={1.5} />
-                            <span className="font-medium">{restaurant.estimatedDeliveryTime || '25-30 mins'}</span>
-                            <span className="mx-1">|</span>
-                            <span className="font-medium">{distanceStr}</span>
+                          <div className="flex items-center gap-4 text-[12px] text-gray-500 dark:text-gray-400 mb-4 font-bold uppercase tracking-tight">
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="h-4 w-4 text-[#7e3866]" strokeWidth={2.5} />
+                              <span>{restaurant.estimatedDeliveryTime || '25-30 mins'}</span>
+                            </div>
+                            <span className="text-gray-200">•</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[#a05485] font-black">{distanceStr} away</span>
+                            </div>
                           </div>
 
                           {/* Offer Badge */}
-                          {restaurant.offer && (
-                            <div className="flex items-center gap-2 text-sm">
-                              <BadgePercent className="h-4 w-4 text-[#7e3866] dark:text-[#7e3866]" strokeWidth={2} />
-                              <span className="text-gray-700 dark:text-gray-300 font-medium">{restaurant.offer}</span>
+                          {restaurant.offer ? (
+                            <div className="flex items-center gap-2.5 px-3 py-2 bg-[#7e3866]/5 dark:bg-[#7e3866]/10 rounded-2xl w-fit">
+                              <BadgePercent className="h-4 w-4 text-[#7e3866]" strokeWidth={3} />
+                              <span className="text-[10px] font-black text-[#7e3866] uppercase tracking-wider">{restaurant.offer}</span>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-zinc-900 px-3 py-2 rounded-2xl w-fit">
+                              Elite Selection
                             </div>
                           )}
                         </CardContent>

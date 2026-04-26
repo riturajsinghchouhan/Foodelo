@@ -267,8 +267,14 @@ export default function HomeHeader({
           </div>
 
           <div className="flex items-center gap-2 pl-2">
-            <div className="h-4 w-[1px] bg-gray-100" />
-            <Mic className="h-4.5 w-4.5 text-[#7e3866]" />
+            <div className="h-4 w-[1px] bg-gray-200" />
+            <Mic 
+              className="h-4.5 w-4.5 text-[#7e3866]" 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleVoiceSearchClick?.();
+              }}
+            />
           </div>
         </div>
       </div>

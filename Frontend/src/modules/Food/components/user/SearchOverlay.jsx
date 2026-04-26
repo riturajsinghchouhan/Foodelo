@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { X, Search, Clock, Loader2 } from "lucide-react"
+import { X, Search, Clock, Loader2, Mic } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { restaurantAPI } from "@food/api"
+import { useVoiceSearch } from "@food/hooks/useVoiceSearch"
 
 const SEARCH_HISTORY_KEY = "user_recent_searches_v1"
 
@@ -14,6 +15,16 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
   const [filteredFoods, setFilteredFoods] = useState([])
   const [recentSuggestions, setRecentSuggestions] = useState([])
   const [loadingFoods, setLoadingFoods] = useState(false)
+
+  const { isListening, startListening, stopListening } = useVoiceSearch((transcript) => {
+    onSearchChange(transcript)
+  })
+
+  useEffect(() => {
+    if (isOpen && autoStartVoice) {
+      startListening()
+    }
+  }, [isOpen, autoStartVoice, startListening])
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -159,14 +170,34 @@ export default function SearchOverlay({ isOpen, onClose, searchValue, onSearchCh
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground dark:text-gray-400 z-10" />
+              <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[#7e3866] dark:text-[#a05485] z-10" strokeWidth={2.5} />
               <Input
                 ref={inputRef}
                 value={searchValue}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search for food, restaurants..."
-                className="pl-12 pr-4 h-12 w-full bg-white dark:bg-[#1a1a1a] border-gray-100 dark:border-gray-800 focus:border-[#7e3866] dark:focus:border-[#7e3866] rounded-full text-lg dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                placeholder="Search dishes or restaurants"
+                className="pl-14 pr-16 h-13 w-full bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-gray-800 focus:ring-2 focus:ring-[#7e3866]/20 focus:border-[#7e3866] dark:focus:border-[#7e3866] rounded-2xl text-base dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 shadow-sm transition-all duration-200"
               />
+              <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center gap-3">
+                <div className="h-6 w-[1px] bg-gray-200 dark:bg-gray-700" />
+                {isListening ? (
+                  <button
+                    type="button"
+                    onClick={stopListening}
+                    className="p-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-500 animate-pulse shadow-sm"
+                  >
+                    <Mic className="h-5 w-5" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startListening}
+                    className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-[#7e3866] dark:text-[#a05485] transition-all active:scale-90"
+                  >
+                    <Mic className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
             </div>
             <Button
               type="button"
