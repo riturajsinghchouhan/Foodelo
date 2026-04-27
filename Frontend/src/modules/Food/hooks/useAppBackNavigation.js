@@ -21,14 +21,14 @@ const getNormalizedUserPath = (pathname) => {
 
 const resolveBackPath = ({ pathname, search, state }) => {
   const normalizedPath = getNormalizedUserPath(pathname)
-  const explicitBackPath = toFoodPath(state?.backTo) || toFoodPath(state?.from)
+  const explicitBackPath = toFoodPath(state?.backTo) || toFoodPath(state?.from) || toFoodPath(state?.returnTo)
   const searchParams = new URLSearchParams(search || "")
 
   if (
     normalizedPath === "/user/profile/payments/new" ||
     /^\/user\/profile\/payments\/[^/]+\/edit$/.test(normalizedPath)
   ) {
-    return "/food/user/profile/payments"
+    return explicitBackPath || "/food/user/profile/payments"
   }
 
   if (
@@ -36,7 +36,7 @@ const resolveBackPath = ({ pathname, search, state }) => {
       normalizedPath,
     )
   ) {
-    return "/food/user/profile"
+    return explicitBackPath || "/food/user/profile"
   }
 
   if (

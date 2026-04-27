@@ -477,6 +477,8 @@ export const adminAPI = {
     apiClient.patch(`/food/admin/restaurants/${String(id)}`, body ?? {}, {
       contextModule: "admin",
     }),
+  deleteRestaurant: (id) =>
+    apiClient.delete(`/food/admin/restaurants/${id}`, { contextModule: "admin" }),
   /** Update restaurant status (admin). Body: { status: boolean } */
   updateRestaurantStatus: (id, status) =>
     apiClient.patch(

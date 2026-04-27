@@ -1,10 +1,11 @@
-import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom"
+import { useParams, Link, useSearchParams, useNavigate, useLocation } from "react-router-dom"
 import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import {
   ArrowLeft,
   Share2,
+  Star,
   RefreshCw,
   Phone,
   User,
@@ -174,16 +175,14 @@ const DeliveryMap = memo(({ orderId, order, isVisible, fallbackCustomerCoords = 
   if (!isVisible || !orderId || !order || !effectiveRestaurantCoords || !effectiveCustomerCoords) {
     return (
       <div
-        className="relative min-h-[450px] bg-gradient-to-b from-gray-100 to-gray-200"
-        style={{ height: '450px' }}
+        className="relative h-[300px] sm:h-[450px] bg-gradient-to-b from-gray-100 to-gray-200 dark:from-[#0a0a0a] dark:to-[#1a1a1a]"
       />
     );
   }
 
   return (
     <div
-      className="relative w-full min-h-[450px] overflow-visible"
-      style={{ height: '450px' }}
+      className="relative w-full h-[300px] sm:h-[450px] overflow-visible"
     >
       <DeliveryTrackingMap
         orderId={orderId}
@@ -205,10 +204,10 @@ const DeliveryMap = memo(({ orderId, order, isVisible, fallbackCustomerCoords = 
 const SectionItem = ({ icon: Icon, iconNode, title, subtitle, onClick, showArrow = true, rightContent }) => (
   <motion.button
     onClick={onClick}
-    className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left border-b border-dashed border-gray-200 last:border-0"
+    className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left border-b border-dashed border-gray-200 dark:border-gray-800 last:border-0"
     whileTap={{ scale: 0.99 }}
   >
-    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 overflow-hidden">
       {iconNode ? (
         <div
           className="w-6 h-6 flex-shrink-0 flex items-center justify-center [&_svg]:w-full [&_svg]:h-full [&_svg]:block"
@@ -216,14 +215,14 @@ const SectionItem = ({ icon: Icon, iconNode, title, subtitle, onClick, showArrow
           {iconNode}
         </div>
       ) : (
-        <Icon className="w-5 h-5 text-gray-600 flex-shrink-0" />
+        <Icon className="w-5 h-5 text-gray-600 dark:text-gray-400 flex-shrink-0" />
       )}
     </div>
     <div className="flex-1 min-w-0">
-      <p className="font-medium text-gray-900 truncate">{title}</p>
-      {subtitle && <p className="text-sm text-gray-500 truncate">{subtitle}</p>}
+      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{title}</p>
+      {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{subtitle}</p>}
     </div>
-    {rightContent || (showArrow && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />)}
+    {rightContent || (showArrow && <ChevronRight className="w-5 h-5 text-gray-400 dark:text-gray-500 flex-shrink-0" />)}
   </motion.button>
 )
 
@@ -244,8 +243,8 @@ class MapErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="relative min-h-[450px] bg-gray-100 rounded-2xl border border-gray-200 flex items-center justify-center">
-          <p className="text-sm text-gray-600">Live map unavailable right now</p>
+        <div className="relative h-[300px] sm:h-[450px] bg-gray-100 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 flex items-center justify-center">
+          <p className="text-sm text-gray-600 dark:text-gray-400 px-4 text-center">Live map unavailable right now</p>
         </div>
       )
     }
@@ -420,7 +419,10 @@ const transformOrderForTracking = (apiOrder, previousOrder = null, explicitResta
       }
       return merged
     })(),
-    cancellationReason: apiOrder?.cancellationReason || previousOrder?.cancellationReason || null
+    cancellationReason: apiOrder?.cancellationReason || previousOrder?.cancellationReason || null,
+    ratings: apiOrder?.ratings || previousOrder?.ratings || {},
+    restaurantRating: apiOrder?.ratings?.restaurant?.rating || apiOrder?.restaurantRating || previousOrder?.restaurantRating || null,
+    deliveryPartnerRating: apiOrder?.ratings?.deliveryPartner?.rating || apiOrder?.deliveryPartnerRating || previousOrder?.deliveryPartnerRating || null,
   }
 }
 
@@ -478,6 +480,7 @@ function normalizeLookupId(value) {
 export default function OrderTracking() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
+  const location = useLocation()
   const { orderId } = useParams()
   const [searchParams] = useSearchParams()
   const confirmed = searchParams.get("confirmed") === "true"
@@ -506,6 +509,67 @@ export default function OrderTracking() {
   const [isUpdatingInstructions, setIsUpdatingInstructions] = useState(false)
   const [resolvedLookupId, setResolvedLookupId] = useState("")
   const [timerNow, setTimerNow] = useState(Date.now())
+  
+  // Rating states
+  const [showRatingModal, setShowRatingModal] = useState(false)
+  const [selectedRestaurantRating, setSelectedRestaurantRating] = useState(null)
+  const [selectedDeliveryRating, setSelectedDeliveryRating] = useState(null)
+  const [restaurantFeedbackText, setRestaurantFeedbackText] = useState("")
+  const [deliveryFeedbackText, setDeliveryFeedbackText] = useState("")
+  const [submittingRating, setSubmittingRating] = useState(false)
+
+  // Check if order is already rated
+  const hasRestaurantRating = Number.isFinite(Number(order?.ratings?.restaurant?.rating || order?.restaurantRating))
+  const hasDeliveryPartner = !!(order?.deliveryPartnerId || order?.deliveryPartnerName)
+  const hasDeliveryRating = Number.isFinite(Number(order?.ratings?.deliveryPartner?.rating || order?.deliveryPartnerRating))
+  const isOrderRated = hasRestaurantRating && (!hasDeliveryPartner || hasDeliveryRating)
+
+  const handleOpenRating = () => {
+    setSelectedRestaurantRating(order?.ratings?.restaurant?.rating || order?.restaurantRating || null)
+    setSelectedDeliveryRating(order?.ratings?.deliveryPartner?.rating || order?.deliveryPartnerRating || null)
+    setRestaurantFeedbackText(order?.ratings?.restaurant?.comment || "")
+    setDeliveryFeedbackText(order?.ratings?.deliveryPartner?.comment || "")
+    setShowRatingModal(true)
+  }
+
+  const handleSubmitRating = async () => {
+    const deliveryPartnerCheck = !!(order?.deliveryPartnerId || order?.deliveryPartnerName)
+    const isMissingDeliveryRating = deliveryPartnerCheck && selectedDeliveryRating === null
+    if (!order || selectedRestaurantRating === null || isMissingDeliveryRating) {
+      toast.error("Please select all required ratings first")
+      return
+    }
+
+    try {
+      setSubmittingRating(true)
+      const response = await orderAPI.submitOrderRatings(order.mongoId || order._id || order.id, {
+        restaurantRating: selectedRestaurantRating,
+        deliveryPartnerRating: deliveryPartnerCheck ? selectedDeliveryRating : undefined,
+        restaurantComment: restaurantFeedbackText || undefined,
+        deliveryPartnerComment: deliveryPartnerCheck ? (deliveryFeedbackText || undefined) : undefined,
+      })
+      
+      const updatedOrderData = response?.data?.data?.order || response?.data?.order
+      if (updatedOrderData) {
+        setOrder(prev => ({
+          ...prev,
+          ...updatedOrderData,
+          ratings: updatedOrderData.ratings,
+          restaurantRating: updatedOrderData.ratings?.restaurant?.rating,
+          deliveryPartnerRating: updatedOrderData.ratings?.deliveryPartner?.rating
+        }))
+      }
+
+      toast.success("Thanks for your feedback!")
+      setShowRatingModal(false)
+    } catch (error) {
+      debugError("Error submitting order ratings:", error)
+      toast.error(error?.response?.data?.message || "Failed to submit ratings")
+    } finally {
+      setSubmittingRating(false)
+    }
+  }
+
   const handleEtaUpdate = useCallback((newEta) => {
     if (typeof newEta === 'string') {
       const match = newEta.match(/(\d+)/);
@@ -1300,10 +1364,10 @@ export default function OrderTracking() {
   // Loading state (moved after hooks)
   if (loading) {
     return (
-      <AnimatedPage className="min-h-screen bg-gray-50 p-4">
+      <AnimatedPage className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] p-4">
         <div className="max-w-lg mx-auto text-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading order details...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-gray-600 dark:text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Loading order details...</p>
         </div>
       </AnimatedPage>
     )
@@ -1312,10 +1376,10 @@ export default function OrderTracking() {
   // Error state (moved after hooks)
   if (error || !order) {
     return (
-      <AnimatedPage className="min-h-screen bg-gray-50 p-4">
+      <AnimatedPage className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] p-4">
         <div className="max-w-lg mx-auto text-center py-20">
-          <h1 className="text-lg sm:text-xl md:text-2xl font-bold mb-4">Order Not Found</h1>
-          <p className="text-gray-600 mb-6">{error || 'The order you\'re looking for doesn\'t exist.'}</p>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold mb-4 dark:text-gray-100">Order Not Found</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">{error || 'The order you\'re looking for doesn\'t exist.'}</p>
           <Link to="/user/orders">
             <Button>Back to Orders</Button>
           </Link>
@@ -1425,7 +1489,7 @@ export default function OrderTracking() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.9 }}
-                className="text-2xl font-bold text-gray-900 mt-6"
+                className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-6"
               >
                 {isScheduledOrder ? "Order Scheduled!" : "Order Confirmed!"}
               </motion.h1>
@@ -1433,7 +1497,7 @@ export default function OrderTracking() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1.1 }}
-                className="text-gray-600 mt-2"
+                className="text-gray-600 dark:text-gray-300 mt-2"
               >
                 {isScheduledOrder
                   ? `Scheduled for ${scheduledDateFormatted}`
@@ -1455,7 +1519,7 @@ export default function OrderTracking() {
                 transition={{ delay: 2.0 }}
                 className="mt-12 pt-8 border-t border-gray-100 dark:border-gray-800"
               >
-                <div className="flex items-center justify-center gap-2 text-[#7e3866] dark:text-orange-400 font-medium cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/user/profile/report-safety-emergency')}>
+                <div className="flex items-center justify-center gap-2 text-[#7e3866] dark:text-orange-400 font-medium cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/user/profile/report-safety-emergency', { state: { returnTo: location.pathname } })}>
                   <Shield className="w-4 h-4" />
                   <span className="text-sm">Learn about delivery partner safety</span>
                 </div>
@@ -1595,20 +1659,20 @@ export default function OrderTracking() {
 
         {customerDeliveryOtp && orderStatus !== 'delivered' && orderStatus !== 'cancelled' && (
           <motion.div
-            className="bg-blue-50 rounded-xl p-4 shadow-sm border border-blue-100"
+            className="bg-blue-50 dark:bg-blue-900/10 rounded-xl p-4 shadow-sm border border-blue-100 dark:border-blue-900/30"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.28 }}
           >
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Delivery OTP</p>
-            <p className="text-2xl font-extrabold text-blue-900 mt-1 tracking-widest">{customerDeliveryOtp}</p>
-            <p className="text-xs text-blue-700 mt-1">Share this 4-digit OTP with your delivery partner at drop-off.</p>
+            <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Delivery OTP</p>
+            <p className="text-2xl font-extrabold text-blue-900 dark:text-blue-200 mt-1 tracking-widest">{customerDeliveryOtp}</p>
+            <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">Share this 4-digit OTP with your delivery partner at drop-off.</p>
           </motion.div>
         )}
 
         {/* Dynamic Status Card */}
         <motion.div
-          className="bg-white dark:bg-[#1a1a1a] rounded-xl p-4 shadow-sm"
+          className="bg-white dark:bg-[#1a1a1a] rounded-xl p-3 sm:p-4 shadow-sm"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
@@ -1630,11 +1694,11 @@ export default function OrderTracking() {
             </div>
           ) : (
             <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm border border-gray-100 ${
-                currentStatus.iconType === 'rider' ? 'bg-blue-50' : 
-                currentStatus.iconType === 'cancelled' ? 'bg-red-50' : 
-                currentStatus.iconType === 'delivered' ? 'bg-green-50' : 
-                'bg-orange-50'
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm border border-gray-100 dark:border-gray-800 ${
+                currentStatus.iconType === 'rider' ? 'bg-blue-50 dark:bg-blue-900/20' : 
+                currentStatus.iconType === 'cancelled' ? 'bg-red-50 dark:bg-red-900/20' : 
+                currentStatus.iconType === 'delivered' ? 'bg-green-50 dark:bg-green-900/20' : 
+                'bg-orange-50 dark:bg-orange-900/20'
               }`}>
                 {currentStatus.iconType === 'rider' ? (
                   <div 
@@ -1662,6 +1726,104 @@ export default function OrderTracking() {
             </div>
           )}
         </motion.div>
+
+        {/* Rating Logic: Show rating card after delivery */}
+        {orderStatus === 'delivered' && !isOrderRated && (
+          <motion.div
+            className="bg-white dark:bg-[#1a1a1a] rounded-xl p-6 shadow-sm border-2 border-[#7e3866]/10 relative overflow-hidden group"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45 }}
+          >
+            {/* Background pattern decoration */}
+            <div className="absolute -top-4 -right-4 w-24 h-24 bg-[#7e3866]/5 rounded-full blur-2xl group-hover:bg-[#7e3866]/10 transition-colors" />
+            
+            <div className="flex flex-col items-center text-center relative z-10">
+              <div className="w-16 h-16 bg-[#7e3866]/10 dark:bg-[#7e3866]/20 rounded-full flex items-center justify-center mb-4 transition-transform group-hover:scale-110 duration-300">
+                <Star className="w-8 h-8 text-[#7e3866] fill-[#7e3866]" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Enjoyed your food?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 mb-6 max-w-[280px]">
+                Rate your experience with <span className="font-semibold text-gray-700 dark:text-gray-300">{order?.restaurant}</span> and help us improve!
+              </p>
+              
+              <Button 
+                onClick={handleOpenRating}
+                className="w-full max-w-[200px] bg-[#7e3866] hover:bg-[#55254b] text-white font-bold h-12 rounded-xl border-none shadow-lg shadow-[#7e3866]/20"
+              >
+                Rate Order
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Rating Summary: Show what the user rated */}
+        {orderStatus === 'delivered' && isOrderRated && (
+          <motion.div
+            className="bg-white dark:bg-[#1a1a1a] rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-800"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-50 dark:border-gray-800/50">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                Your Feedback
+              </h3>
+              <button 
+                onClick={handleOpenRating}
+                className="text-[10px] font-bold text-[#7e3866] dark:text-orange-400 uppercase tracking-widest hover:opacity-80 transition-opacity"
+              >
+                Edit Rating
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Food & Restaurant</span>
+                  {order?.ratings?.restaurant?.comment && (
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 italic mt-0.5 line-clamp-1">"{order.ratings.restaurant.comment}"</span>
+                  )}
+                </div>
+                <div className="flex gap-0.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={`res-rated-${star}`}
+                      className={`w-3.5 h-3.5 ${
+                        star <= (order?.ratings?.restaurant?.rating || order?.restaurantRating)
+                          ? "text-yellow-400 fill-yellow-400"
+                          : "text-gray-200 dark:text-gray-800"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              
+              {hasDeliveryPartner && (
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Delivery Service</span>
+                    {order?.ratings?.deliveryPartner?.comment && (
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 italic mt-0.5 line-clamp-1">"{order.ratings.deliveryPartner.comment}"</span>
+                    )}
+                  </div>
+                  <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={`del-rated-${star}`}
+                        className={`w-3.5 h-3.5 ${
+                          star <= (order?.ratings?.deliveryPartner?.rating || order?.deliveryPartnerRating)
+                            ? "text-yellow-400 fill-yellow-400"
+                            : "text-gray-200 dark:text-gray-800"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
 
         {/* Delivery Partner Info */}
         {order?.deliveryPartnerId && (
@@ -1716,7 +1878,7 @@ export default function OrderTracking() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
             whileTap={{ scale: 0.99 }}
-            onClick={() => navigate('/user/profile/report-safety-emergency')}
+            onClick={() => navigate('/user/profile/report-safety-emergency', { state: { returnTo: location.pathname } })}
           >
             <Shield className="w-6 h-6 text-gray-600 dark:text-gray-400" />
             <span className="flex-1 text-left font-medium text-gray-900 dark:text-gray-100">
@@ -1729,13 +1891,13 @@ export default function OrderTracking() {
         {/* Delivery Details Banner */}
         {orderStatus !== 'delivered' && orderStatus !== 'cancelled' && (
           <motion.div
-            className="bg-yellow-50 rounded-xl p-4 text-center"
+            className="bg-yellow-50 dark:bg-yellow-900/10 rounded-xl p-4 text-center border dark:border-yellow-900/30"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.65 }}
           >
-            <p className="text-yellow-800 font-medium">
-              All your delivery details in one place ??
+            <p className="text-yellow-800 dark:text-yellow-400 font-medium text-sm">
+              All your delivery details in one place 🥡
             </p>
           </motion.div>
         )}
@@ -2161,6 +2323,103 @@ export default function OrderTracking() {
             >
               {isUpdatingInstructions ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Save Instructions"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rating & Feedback Modal */}
+      <Dialog open={showRatingModal} onOpenChange={setShowRatingModal}>
+        <DialogContent className="sm:max-w-md w-[95vw] rounded-3xl p-6 border-0 shadow-2xl bg-white dark:bg-[#1a1a1a] max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="mb-2">
+            <DialogTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <Star className="w-6 h-6 text-[#7e3866] fill-[#7e3866]" />
+              Rate your Experience
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-2">
+            {/* Restaurant Rating */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-gray-800 dark:text-gray-200">How was the food?</p>
+                <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-600 dark:bg-orange-950/30 dark:text-orange-400 rounded-full font-medium">Restaurant</span>
+              </div>
+              <div className="flex justify-center gap-3">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <motion.button
+                    key={`res-star-${star}`}
+                    whileHover={{ scale: 1.15 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setSelectedRestaurantRating(star)}
+                    className="p-1"
+                  >
+                    <Star
+                      className={`w-10 h-10 transition-all duration-300 ${
+                        star <= selectedRestaurantRating
+                          ? "text-yellow-400 fill-yellow-400 drop-shadow-sm"
+                          : "text-gray-200 dark:text-gray-800"
+                      }`}
+                    />
+                  </motion.button>
+                ))}
+              </div>
+              <Textarea
+                placeholder="Write a quick review for the food (optional)"
+                value={restaurantFeedbackText}
+                onChange={(e) => setRestaurantFeedbackText(e.target.value)}
+                className="min-h-[80px] text-sm bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800 resize-none rounded-xl"
+              />
+            </div>
+
+            {/* Delivery Rating */}
+            {hasDeliveryPartner && (
+              <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-gray-800 dark:text-gray-200">How was the delivery?</p>
+                  <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 rounded-full font-medium">Delivery</span>
+                </div>
+                <div className="flex justify-center gap-3">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <motion.button
+                      key={`del-star-${star}`}
+                      whileHover={{ scale: 1.15 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setSelectedDeliveryRating(star)}
+                      className="p-1"
+                    >
+                      <Star
+                        className={`w-10 h-10 transition-all duration-300 ${
+                          star <= selectedDeliveryRating
+                            ? "text-yellow-400 fill-yellow-400 drop-shadow-sm"
+                            : "text-gray-200 dark:text-gray-800"
+                        }`}
+                      />
+                    </motion.button>
+                  ))}
+                </div>
+                <Textarea
+                  placeholder={`How was ${order?.deliveryPartnerName || 'the rider'}? (optional)`}
+                  value={deliveryFeedbackText}
+                  onChange={(e) => setDeliveryFeedbackText(e.target.value)}
+                  className="min-h-[80px] text-sm bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800 resize-none rounded-xl"
+                />
+              </div>
+            )}
+
+            <Button
+              onClick={handleSubmitRating}
+              disabled={submittingRating || selectedRestaurantRating === null || (hasDeliveryPartner && selectedDeliveryRating === null)}
+              className="w-full bg-[#7e3866] hover:bg-[#55254b] text-white font-bold h-14 rounded-2xl shadow-lg mt-4"
+            >
+              {submittingRating ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Submit Feedback"}
+            </Button>
+            
+            <button
+              onClick={() => setShowRatingModal(false)}
+              className="w-full text-sm text-gray-400 dark:text-gray-500 font-medium hover:text-gray-600 dark:hover:text-gray-400 transition-colors py-2"
+            >
+              Maybe later
+            </button>
           </div>
         </DialogContent>
       </Dialog>

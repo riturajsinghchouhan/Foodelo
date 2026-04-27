@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
@@ -14,13 +15,21 @@ export const useOrderManager = () => {
   const resolveOrderId = (orderLike = activeOrder) =>
     orderLike?._id || orderLike?.id || orderLike?.orderId || orderLike?.order_id;
 
+  const acceptOrderInFlight = useRef(false);
+
   const acceptOrder = async (order) => {
+    // Client-side guard: prevent duplicate API calls if already processing
+    if (acceptOrderInFlight.current) {
+      toast.info('Already processing this order...');
+      return;
+    }
     const orderId = resolveOrderId(order);
     if (!orderId) {
       toast.error('Invalid order data');
       return;
     }
 
+    acceptOrderInFlight.current = true;
     try {
       const response = await deliveryAPI.acceptOrder(orderId);
       
@@ -75,10 +84,19 @@ export const useOrderManager = () => {
       }
     } catch (error) {
       console.error('Accept Order Error:', error);
-      toast.error(error?.response?.data?.error || error?.response?.data?.message || 'Network error. Please try again.');
+      const msg = error?.response?.data?.error || error?.response?.data?.message || 'Network error. Please try again.';
+      // If the backend says already accepted by another — show friendly message
+      if (error?.response?.status === 403 || msg.toLowerCase().includes('already accepted')) {
+        toast.error('This order was just taken by another delivery partner.', { duration: 4000 });
+      } else {
+        toast.error(msg);
+      }
       throw error;
+    } finally {
+      acceptOrderInFlight.current = false;
     }
   };
+
 
   /**
    * Mark "Reached Pickup" (Arrival at restaurant)

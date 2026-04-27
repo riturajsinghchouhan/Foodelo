@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react"
+import { useNavigate } from "react-router-dom"
 import { ChevronLeft, ChevronRight, Plus, MapPin, MoreHorizontal, Navigation, Home, Building2, Briefcase, Phone, X, Crosshair } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
@@ -48,7 +49,8 @@ const getAddressIcon = (address) => {
 
 export default function LocationSelectorOverlay({ isOpen, onClose }) {
   const { location, loading, requestLocation } = useGeoLocation()
-  const { addresses = [], addAddress, updateAddress, setDefaultAddress, userProfile } = useProfile()
+  const navigate = useNavigate()
+  const { addresses = [], addAddress, updateAddress, setDefaultAddress, userProfile, isAuthenticated } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [mapPosition, setMapPosition] = useState([22.7196, 75.8577]) // Default Indore coordinates [lat, lng]
   const [addressFormData, setAddressFormData] = useState({
@@ -988,6 +990,15 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
   }
 
   const handleAddAddress = () => {
+    if (!isAuthenticated) {
+      toast.info("Please login to add an address", {
+        description: "You'll be redirected to the login page",
+        duration: 3000,
+      })
+      onClose()
+      navigate("/user/auth/login")
+      return
+    }
     setShowAddressForm(true)
     // Initialize form with current location data
     if (location?.latitude && location?.longitude) {

@@ -177,7 +177,14 @@ const isUploadableFile = (value) => {
   )
 }
 
-const normalizePhoneDigits = (value) => String(value || "").replace(/\D/g, "").slice(-15)
+const normalizePhoneDigits = (value) => {
+  const digits = String(value || "").replace(/\D/g, "")
+  // For India, users often provide 12 digits (starting with 91). 
+  // We strictly need the last 10 digits for the national mobile number.
+  return digits.slice(-10)
+}
+
+const normalizePincode = (value) => String(value || "").replace(/\D/g, "").slice(0, 6)
 
 const getVerifiedPhoneFromStoredRestaurant = () => {
   try {
@@ -207,12 +214,29 @@ const getVerifiedPhoneFromStoredRestaurant = () => {
   }
 }
 
+const normalizeEmail = (val) => {
+  let email = String(val || "").toLowerCase().trim()
+  // Auto-correct common Gmail typos
+  email = email.replace(/@(gnail|gamil|gimail|gnil)\.com$/i, "@gmail.com")
+  return email
+}
+
 const normalizeAccountTypeValue = (value) => {
   const normalized = String(value || "").trim().toLowerCase()
   if (normalized === "saving" || normalized === "savings") return "Saving"
   if (normalized === "current") return "Current"
   return ""
 }
+
+const formatNameToCapital = (str) => {
+  if (!str) return ""
+  return str.split(" ").map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" ")
+}
+
+const normalizeIFSC = (val) => String(val || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 11)
+const normalizePAN = (val) => String(val || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10)
+const normalizeGST = (val) => String(val || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 15)
+const normalizeBankAcc = (val) => String(val || "").replace(/\D/g, "").slice(0, 18)
 
 const getTodayLocalYMD = () => formatDateToLocalYMD(new Date())
 
@@ -833,119 +857,159 @@ export default function RestaurantOnboarding() {
 
     const loadData = async () => {
       try {
+        setLoading(true);
         const currentPhone = getVerifiedPhoneFromStoredRestaurant()
         const localData = loadOnboardingFromLocalStorage()
         
+        // 1. First fetch API data to have the latest backend state
+        let apiData = null;
+        try {
+          const res = await restaurantAPI.getCurrentRestaurant()
+          apiData = res?.data?.data?.restaurant || res?.data?.restaurant
+        } catch (err) {
+          debugError("API fetch skipped/failed:", err)
+        }
+
+        // 2. Hydrate from API if exists
+        if (apiData) {
+          setHasExistingRestaurantProfile(true)
+          const onboarding = apiData.onboarding || {}
+          const s1 = onboarding.step1 || {}
+          const s2 = onboarding.step2 || {}
+          const s3 = onboarding.step3 || {}
+          const loc = s1.location || apiData.location || {}
+          const pay = s3.bank || apiData.bankAccount || {}
+
+          setStep1(prev => ({
+            ...prev,
+            restaurantName: s1.restaurantName || apiData.name || "",
+            pureVegRestaurant: typeof s1.pureVegRestaurant === 'boolean' ? s1.pureVegRestaurant : (apiData.pureVegRestaurant ?? null),
+            ownerName: s1.ownerName || apiData.ownerName || "",
+            ownerEmail: s1.ownerEmail || apiData.email || "",
+            ownerPhone: s1.ownerPhone || apiData.phone || "",
+            primaryContactNumber: s1.primaryContactNumber || apiData.primaryContactNumber || "",
+            zoneId: s1.zoneId || apiData.zoneId || "",
+            location: {
+              ...prev.location,
+              formattedAddress: loc.formattedAddress || loc.address || apiData.address || "",
+              addressLine1: loc.addressLine1 || "",
+              addressLine2: loc.addressLine2 || "",
+              area: loc.area || apiData.area || "",
+              city: loc.city || apiData.city || "",
+              state: loc.state || apiData.state || "",
+              pincode: loc.pincode || apiData.pincode || "",
+              landmark: loc.landmark || "",
+              latitude: loc.latitude || "",
+              longitude: loc.longitude || "",
+            }
+          }))
+
+          setStep2(prev => ({
+            ...prev,
+            menuImages: s2.menuImageUrls || apiData.menuImages || [],
+            menuPdf: s2.menuPdfUrl || apiData.menuPdf || null,
+            profileImage: s2.profileImageUrl || apiData.profileImage || null,
+            cuisines: s2.cuisines || apiData.cuisines || [],
+            estimatedDeliveryTime: s2.estimatedDeliveryTime || apiData.estimatedDeliveryTime || "",
+            openingTime: normalizeTimeValue(s2.openingTime || apiData.openingTime),
+            closingTime: normalizeTimeValue(s2.closingTime || apiData.closingTime),
+            openDays: s2.openDays || apiData.openDays || [],
+          }))
+
+          setStep3(prev => ({
+            ...prev,
+            panNumber: s3.pan?.panNumber || apiData.panNumber || "",
+            nameOnPan: s3.pan?.nameOnPan || apiData.nameOnPan || "",
+            panImage: s3.pan?.image || apiData.panImage || null,
+            gstRegistered: s3.gst?.isRegistered ?? apiData.gstRegistered ?? false,
+            gstNumber: s3.gst?.gstNumber || apiData.gstNumber || "",
+            gstLegalName: s3.gst?.legalName || apiData.gstLegalName || "",
+            gstAddress: s3.gst?.address || apiData.gstAddress || "",
+            gstImage: s3.gst?.image || apiData.gstImage || null,
+            fssaiNumber: s3.fssai?.registrationNumber || apiData.fssaiNumber || "",
+            fssaiExpiry: s3.fssai?.expiryDate ? String(s3.fssai.expiryDate).split('T')[0] : (apiData.fssaiExpiry ? String(apiData.fssaiExpiry).split('T')[0] : ""),
+            fssaiImage: s3.fssai?.image || apiData.fssaiImage || null,
+            accountNumber: pay.accountNumber || apiData.accountNumber || "",
+            confirmAccountNumber: pay.accountNumber || apiData.accountNumber || "",
+            ifscCode: normalizeIFSC(pay.ifscCode || apiData.ifscCode),
+            accountHolderName: pay.accountHolderName || apiData.accountHolderName || "",
+            accountType: normalizeAccountTypeValue(pay.accountType || apiData.accountType),
+          }))
+        }
+
+        // 3. APPLY LOCAL OVERRIDES (The "Persistence" fix)
+        // If localStorage has unsaved changes for this user, apply them over the API/Initial state.
         if (localData) {
-          // SECURITY CHECK: If the saved data's phone number doesn't match current login, clear it.
-          // This prevents data leakage when logging in with a different account on the same device.
           const savedPhone = normalizePhoneDigits(localData.step1?.ownerPhone || "")
           const normalizedCurrent = normalizePhoneDigits(currentPhone)
           
-          if (savedPhone && normalizedCurrent && savedPhone !== normalizedCurrent) {
-             debugLog("? Phone mismatch, data belongs to different user. Clearing.")
+          // Only use local data if it belongs to the same user
+          if (savedPhone && normalizedCurrent && savedPhone === normalizedCurrent) {
+            debugLog("? Matching local session found. Resuming with unsaved changes.")
+            
+            if (localData.step1) {
+              setStep1(prev => ({ ...prev, ...localData.step1, location: { ...prev.location, ...localData.step1.location } }));
+            }
+            if (localData.step2) {
+              // Note: Files/Images must be re-hydrated from IndexedDB (handled below)
+              setStep2(prev => ({ 
+                ...prev, 
+                ...localData.step2,
+                openingTime: normalizeTimeValue(localData.step2.openingTime),
+                closingTime: normalizeTimeValue(localData.step2.closingTime),
+              }));
+            }
+            if (localData.step3) {
+              setStep3(prev => ({ ...prev, ...localData.step3 }));
+            }
+
+            // Restore Step
+            if (localData.currentStep && !stepParam) {
+              setStep(Math.min(3, Math.max(1, Number(localData.currentStep))))
+            }
+          } else if (savedPhone && normalizedCurrent && savedPhone !== normalizedCurrent) {
+             debugLog("? Phone mismatch, data belongs to different user. Clearing local cache.")
              clearOnboardingFromLocalStorage()
              await clearAllFilesFromDB()
-             return
-          }
-
-          if (localData.step1) {
-            setStep1((prev) => ({
-              ...prev,
-              restaurantName: localData.step1.restaurantName || "",
-              pureVegRestaurant:
-                typeof localData.step1.pureVegRestaurant === "boolean"
-                  ? localData.step1.pureVegRestaurant
-                  : null,
-              ownerName: localData.step1.ownerName || "",
-              ownerEmail: localData.step1.ownerEmail || "",
-              ownerPhone: localData.step1.ownerPhone || "",
-              primaryContactNumber: localData.step1.primaryContactNumber || "",
-              zoneId: localData.step1.zoneId || "",
-              location: {
-                formattedAddress: localData.step1.location?.formattedAddress || "",
-                addressLine1: localData.step1.location?.addressLine1 || "",
-                addressLine2: localData.step1.location?.addressLine2 || "",
-                area: localData.step1.location?.area || "",
-                city: localData.step1.location?.city || "",
-                state: localData.step1.location?.state || "",
-                pincode: localData.step1.location?.pincode || "",
-                landmark: localData.step1.location?.landmark || "",
-                latitude: localData.step1.location?.latitude ?? "",
-                longitude: localData.step1.location?.longitude ?? "",
-              },
-            }))
-          }
-
-          // Restore Images from IndexedDB
-          const restoredProfileImage = await getFileFromDB("profileImage")
-          const restoredPanImage = await getFileFromDB("panImage")
-          const restoredGstImage = await getFileFromDB("gstImage")
-          const restoredFssaiImage = await getFileFromDB("fssaiImage")
-          const restoredMenuPdf = await getFileFromDB("menuPdf")
-          
-          const restoredMenuImages = []
-          for (let i = 0; i < 10; i++) {
-            const img = await getFileFromDB(`menuImage_${i}`)
-            if (img) restoredMenuImages.push(img)
-          }
-
-          if (localData.step2) {
-            const urlMenuImages = (localData.step2.menuImages || []).filter(
-              (img) => img?.url || typeof img === "string"
-            )
-            
-            setStep2((prev) => ({
-              ...prev,
-              menuImages: [...urlMenuImages, ...restoredMenuImages],
-              menuPdf:
-                restoredMenuPdf ||
-                (typeof localData.step2.menuPdf === "string" || localData.step2.menuPdf?.url
-                  ? localData.step2.menuPdf
-                  : null),
-              profileImage:
-                restoredProfileImage ||
-                (typeof localData.step2.profileImage === "string" || localData.step2.profileImage?.url
-                  ? localData.step2.profileImage
-                  : null),
-              cuisines: localData.step2.cuisines || [],
-              estimatedDeliveryTime: localData.step2.estimatedDeliveryTime || "",
-              openingTime: normalizeTimeValue(localData.step2.openingTime),
-              closingTime: normalizeTimeValue(localData.step2.closingTime),
-              openDays: localData.step2.openDays || [],
-            }))
-          }
-
-          if (localData.step3) {
-            setStep3((prev) => ({
-              ...prev,
-              panNumber: localData.step3.panNumber || "",
-              nameOnPan: localData.step3.nameOnPan || "",
-              panImage: restoredPanImage || localData.step3.panImage || null,
-              gstRegistered: localData.step3.gstRegistered || false,
-              gstNumber: localData.step3.gstNumber || "",
-              gstLegalName: localData.step3.gstLegalName || "",
-              gstAddress: localData.step3.gstAddress || "",
-              gstImage: restoredGstImage || localData.step3.gstImage || null,
-              fssaiNumber: localData.step3.fssaiNumber || "",
-              fssaiExpiry: localData.step3.fssaiExpiry || "",
-              fssaiImage: restoredFssaiImage || localData.step3.fssaiImage || null,
-              accountNumber: localData.step3.accountNumber || "",
-              confirmAccountNumber: localData.step3.confirmAccountNumber || "",
-              ifscCode: (localData.step3.ifscCode || "").toUpperCase(),
-              accountHolderName: localData.step3.accountHolderName || "",
-              accountType: normalizeAccountTypeValue(localData.step3.accountType || ""),
-            }))
-          }
-
-          // Only set step from localStorage if URL doesn't have a step parameter
-          if (localData.currentStep && !stepParam) {
-            const restoredStep = Number(localData.currentStep) || 1
-            setStep(Math.min(3, Math.max(1, restoredStep)))
           }
         }
+
+        // 4. Finally re-hydrate heavy files from IndexedDB if they exist 
+        // (IndexedDB is reliable for large files which don't fit in localStorage)
+        const [prof, pan, gst, fs, pdf] = await Promise.all([
+          getFileFromDB("profileImage"),
+          getFileFromDB("panImage"),
+          getFileFromDB("gstImage"),
+          getFileFromDB("fssaiImage"),
+          getFileFromDB("menuPdf")
+        ]);
+
+        if (prof) setStep2(p => ({ ...p, profileImage: prof }));
+        if (pan) setStep3(p => ({ ...p, panImage: pan }));
+        if (gst) setStep3(p => ({ ...p, gstImage: gst }));
+        if (fs) setStep3(p => ({ ...p, fssaiImage: fs }));
+        if (pdf) setStep2(p => ({ ...p, menuPdf: pdf }));
+
+        const restoredMenuImages = []
+        for (let i = 0; i < 10; i++) {
+          const img = await getFileFromDB(`menuImage_${i}`)
+          if (img) restoredMenuImages.push(img)
+        }
+        if (restoredMenuImages.length) {
+          setStep2(p => ({ ...p, menuImages: [...p.menuImages.filter(im => !isUploadableFile(im)), ...restoredMenuImages] }));
+        }
+
+        // If step is explicitly in URL, use it
+        if (stepParam) {
+          const s = parseInt(stepParam, 10);
+          if (s >= 1 && s <= 3) setStep(s);
+        }
+
+      } catch (err) {
+        debugError("Onboarding hydration failed:", err)
       } finally {
         setIsOnboardingHydrated(true)
+        setLoading(false)
       }
     }
 
@@ -1023,168 +1087,8 @@ export default function RestaurantOnboarding() {
     }
   }, [])
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-        // Use restaurantAPI.getCurrentRestaurant() to fetch real data
-        const res = await restaurantAPI.getCurrentRestaurant()
-        const data = res?.data?.data?.restaurant || res?.data?.restaurant
-        
-          if (data) {
-            setHasExistingRestaurantProfile(true)
-            const onboardingData = data.onboarding || {}
-            const step1Data = onboardingData.step1 || {}
-            const step2Data = onboardingData.step2 || {}
-            const step3Data = onboardingData.step3 || {}
-            const panData = step3Data.pan || {}
-            const gstData = step3Data.gst || {}
-            const fssaiData = step3Data.fssai || {}
-            const bankData = step3Data.bank || {}
-            const locationData = step1Data.location || data.location || {}
-            const deliveryTimings = step2Data.deliveryTimings || data.deliveryTimings || {}
-
-            setIsEditing(true)
-            // Map Step 1 (Merging with local state)
-            setStep1((prev) => ({
-              ...prev,
-              restaurantName: step1Data.restaurantName || data.name || data.restaurantName || prev.restaurantName || "",
-              pureVegRestaurant:
-                typeof step1Data.pureVegRestaurant === "boolean"
-                  ? step1Data.pureVegRestaurant
-                  : typeof data.pureVegRestaurant === "boolean"
-                  ? data.pureVegRestaurant
-                  : prev.pureVegRestaurant,
-              ownerName: step1Data.ownerName || data.ownerName || prev.ownerName || "",
-              ownerEmail: step1Data.ownerEmail || data.ownerEmail || data.email || prev.ownerEmail || "",
-              ownerPhone: step1Data.ownerPhone || data.ownerPhone || data.phone || prev.ownerPhone || "",
-              zoneId: step1Data.zoneId || data.zoneId || prev.zoneId || "",
-              primaryContactNumber:
-                step1Data.primaryContactNumber ||
-                data.primaryContactNumber ||
-                data.ownerPhone ||
-                data.phone ||
-                prev.primaryContactNumber ||
-                "",
-              location: {
-                ...prev.location,
-                formattedAddress:
-                  locationData.formattedAddress ||
-                  locationData.address ||
-                  data.address ||
-                  prev.location?.formattedAddress ||
-                  "",
-                addressLine1: locationData.addressLine1 || data.addressLine1 || prev.location?.addressLine1 || "",
-                addressLine2: locationData.addressLine2 || data.addressLine2 || prev.location?.addressLine2 || "",
-                area: locationData.area || data.area || prev.location?.area || "",
-                city: locationData.city || data.city || prev.location?.city || "",
-                state: locationData.state || data.state || prev.location?.state || "",
-                pincode: locationData.pincode || data.pincode || prev.location?.pincode || "",
-                landmark: locationData.landmark || data.landmark || prev.location?.landmark || "",
-                latitude: locationData.latitude ?? prev.location?.latitude ?? "",
-                longitude: locationData.longitude ?? prev.location?.longitude ?? "",
-              },
-            }))
-
-            // Map Step 2
-            setStep2((prev) => ({
-              ...prev,
-              menuImages:
-                (step2Data.menuImageUrls && step2Data.menuImageUrls.length > 0)
-                  ? step2Data.menuImageUrls
-                  : (data.menuImages && data.menuImages.length > 0)
-                  ? data.menuImages
-                  : prev.menuImages,
-              menuPdf: step2Data.menuPdfUrl || data.menuPdf || prev.menuPdf,
-              profileImage: step2Data.profileImageUrl || data.profileImage || prev.profileImage,
-              cuisines:
-                (step2Data.cuisines && step2Data.cuisines.length > 0)
-                  ? step2Data.cuisines
-                  : (data.cuisines && data.cuisines.length > 0)
-                  ? data.cuisines
-                  : prev.cuisines,
-              estimatedDeliveryTime:
-                step2Data.estimatedDeliveryTime ||
-                data.estimatedDeliveryTime ||
-                prev.estimatedDeliveryTime ||
-                "",
-              openingTime: normalizeTimeValue(deliveryTimings.openingTime || data.openingTime) || prev.openingTime,
-              closingTime: normalizeTimeValue(deliveryTimings.closingTime || data.closingTime) || prev.closingTime,
-              openDays:
-                (step2Data.openDays && step2Data.openDays.length > 0)
-                  ? step2Data.openDays
-                  : (data.openDays && data.openDays.length > 0)
-                  ? data.openDays
-                  : prev.openDays,
-            }))
-
-            // Map Step 3
-            setStep3((prev) => ({
-              ...prev,
-              panNumber: panData.panNumber || data.panNumber || prev.panNumber || "",
-              nameOnPan: panData.nameOnPan || data.nameOnPan || prev.nameOnPan || "",
-              panImage: panData.image || data.panImage || prev.panImage || null,
-              gstRegistered:
-                typeof gstData.isRegistered === "boolean"
-                  ? gstData.isRegistered
-                  : typeof data.gstRegistered === "boolean"
-                  ? data.gstRegistered
-                  : (prev.gstRegistered || false),
-              gstNumber: gstData.gstNumber || data.gstNumber || prev.gstNumber || "",
-              gstLegalName: gstData.legalName || data.gstLegalName || prev.gstLegalName || "",
-              gstAddress: gstData.address || data.gstAddress || prev.gstAddress || "",
-              gstImage: gstData.image || data.gstImage || prev.gstImage || null,
-              fssaiNumber: fssaiData.registrationNumber || data.fssaiNumber || prev.fssaiNumber || "",
-              fssaiExpiry:
-                fssaiData.expiryDate
-                  ? String(fssaiData.expiryDate).split("T")[0]
-                  : data.fssaiExpiry
-                  ? String(data.fssaiExpiry).split("T")[0]
-                  : prev.fssaiExpiry,
-              fssaiImage: fssaiData.image || data.fssaiImage || prev.fssaiImage || null,
-              accountNumber: bankData.accountNumber || data.accountNumber || prev.accountNumber || "",
-              confirmAccountNumber:
-                bankData.accountNumber || data.accountNumber || prev.confirmAccountNumber || "",
-              ifscCode: (bankData.ifscCode || data.ifscCode || prev.ifscCode || "").toUpperCase(),
-              accountHolderName:
-                bankData.accountHolderName || data.accountHolderName || prev.accountHolderName || "",
-              accountType: normalizeAccountTypeValue(bankData.accountType || data.accountType || prev.accountType || ""),
-            }))
-
-          // Only determine step automatically if not specified in URL
-          const stepParam = searchParams.get("step")
-          if (!stepParam) {
-            // If already registered/pending, stay on step 1 for editing
-            if (data.status === "approved" || data.status === "pending") {
-               setStep(1)
-            } else {
-               const stepToShow = determineStepToShow({ step1: data, step2: data, step3: data })
-               // Only overwrite if backend says we are further along (step > 1) 
-               // or if we are currently at step 1 and backend has data
-               if (stepToShow > 1) {
-                  setStep(stepToShow)
-               }
-            }
-          }
-        } else {
-          setIsEditing(true)
-          setHasExistingRestaurantProfile(false)
-        }
-      } catch (err) {
-        setIsEditing(true)
-        setHasExistingRestaurantProfile(false)
-        if (err?.response?.status === 401) {
-          debugError("Authentication error fetching onboarding:", err)
-        } else {
-          debugError("Error fetching onboarding data:", err)
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [searchParams])
+  // REMOVED redundancy: The hydration is now handled in a single loadData effect above 
+  // to avoid race conditions between localStorage and API data.
 
   const handleUpload = async (file, folder) => {
     try {
@@ -1252,12 +1156,18 @@ export default function RestaurantOnboarding() {
       errors.push("Owner email is required")
     } else if (!EMAIL_REGEX.test(step1.ownerEmail.trim())) {
       errors.push("Please enter a valid email address")
+    } else if (step1.ownerEmail.toLowerCase().includes("@gnail.com") || step1.ownerEmail.toLowerCase().includes("@gnil.com")) {
+      errors.push("Invalid email domain. Did you mean '@gmail.com'?")
     }
     if (!step1.ownerPhone?.trim()) {
       errors.push("Owner phone number is required")
+    } else if (!/^\d{10}$/.test(normalizePhoneDigits(step1.ownerPhone))) {
+      errors.push("Owner phone number must be exactly 10 digits")
     }
     if (!step1.primaryContactNumber?.trim()) {
       errors.push("Primary contact number is required")
+    } else if (!/^\d{10}$/.test(normalizePhoneDigits(step1.primaryContactNumber))) {
+       errors.push("Primary contact number must be exactly 10 digits")
     }
     if (!step1.zoneId?.trim()) {
       errors.push("Service zone is required")
@@ -1267,6 +1177,11 @@ export default function RestaurantOnboarding() {
     }
     if (!step1.location?.city?.trim()) {
       errors.push("City is required")
+    }
+    if (!step1.location?.pincode?.trim()) {
+      errors.push("Pincode is required")
+    } else if (!/^\d{6}$/.test(normalizePincode(step1.location.pincode))) {
+      errors.push("Pincode must be exactly 6 digits")
     }
 
     return errors
@@ -1694,8 +1609,8 @@ export default function RestaurantOnboarding() {
             <Label className="text-xs text-gray-700">Restaurant name*</Label>
             <Input
               value={step1.restaurantName || ""}
-              onChange={(e) => setStep1({ ...step1, restaurantName: e.target.value })}
-              className="mt-1 bg-white text-sm text-black placeholder-black"
+              onChange={(e) => setStep1({ ...step1, restaurantName: formatNameToCapital(e.target.value) })}
+              className="mt-1 bg-white text-sm"
               placeholder="Customers will see this name"
               disabled={!isEditing}
             />
@@ -1746,10 +1661,10 @@ export default function RestaurantOnboarding() {
               onChange={(e) =>
                 setStep1({
                   ...step1,
-                  ownerName: e.target.value.replace(/[^A-Za-z ]/g, ""),
+                  ownerName: formatNameToCapital(e.target.value.replace(/[^A-Za-z ]/g, "")),
                 })
               }
-              className="mt-1 bg-white text-sm text-black placeholder-black"
+              className="mt-1 bg-white text-sm"
               placeholder="Owner full name"
               disabled={!isEditing}
             />
@@ -1759,9 +1674,9 @@ export default function RestaurantOnboarding() {
             <Input
               type="email"
               value={step1.ownerEmail || ""}
-              onChange={(e) => setStep1({ ...step1, ownerEmail: e.target.value })}
-              className="mt-1 bg-white text-sm text-black placeholder-black"
-              placeholder="owner@example.com"
+              onChange={(e) => setStep1({ ...step1, ownerEmail: normalizeEmail(e.target.value) })}
+              className="mt-1 bg-white text-sm"
+              placeholder="ritu@gmail.com"
               disabled={!isEditing}
             />
           </div>
@@ -1769,10 +1684,13 @@ export default function RestaurantOnboarding() {
             <Label className="text-xs text-gray-700">Phone number*</Label>
             <Input
               value={step1.ownerPhone || ""}
-              onChange={(e) => setStep1({ ...step1, ownerPhone: e.target.value })}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, "").slice(0, 10)
+                setStep1({ ...step1, ownerPhone: val })
+              }}
               readOnly={Boolean(verifiedPhoneNumber)}
-              className="mt-1 bg-white text-sm text-black placeholder-black"
-              placeholder="+91 98XXXXXX"
+              className="mt-1 bg-white text-sm"
+              placeholder="10 digit mobile number"
               disabled={!isEditing}
             />
           </div>
@@ -1800,7 +1718,7 @@ export default function RestaurantOnboarding() {
               setStep1({ ...step1, primaryContactNumber: pasted })
             }}
             inputMode="numeric"
-            className="mt-1 bg-white text-sm text-black placeholder-black"
+            className="mt-1 bg-white text-sm"
             placeholder="Restaurant's primary contact number"
             disabled={!isEditing}
           />
@@ -1941,17 +1859,33 @@ export default function RestaurantOnboarding() {
             className="bg-white text-sm"
             placeholder="Area / Sector / Locality*"
           />
-          <Input
+          <Select
             value={step1.location?.city || ""}
-            onChange={(e) =>
+            onValueChange={(value) =>
               setStep1({
                 ...step1,
-                location: { ...step1.location, city: e.target.value },
+                location: { ...step1.location, city: value },
               })
             }
-            className="bg-white text-sm"
-            placeholder="City"
-          />
+          >
+            <SelectTrigger className="bg-white text-sm text-gray-700">
+              <SelectValue placeholder="Select City*" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Indore">Indore</SelectItem>
+              <SelectItem value="Bhopal">Bhopal</SelectItem>
+              <SelectItem value="Gwalior">Gwalior</SelectItem>
+              <SelectItem value="Jabalpur">Jabalpur</SelectItem>
+              <SelectItem value="Mumbai">Mumbai</SelectItem>
+              <SelectItem value="Pune">Pune</SelectItem>
+              <SelectItem value="Delhi">Delhi</SelectItem>
+              <SelectItem value="Bangalore">Bangalore</SelectItem>
+              <SelectItem value="Ahmedabad">Ahmedabad</SelectItem>
+              <SelectItem value="Hyderabad">Hyderabad</SelectItem>
+              <SelectItem value="Chennai">Chennai</SelectItem>
+              <SelectItem value="Kolkata">Kolkata</SelectItem>
+            </SelectContent>
+          </Select>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               value={step1.location?.state || ""}
@@ -1969,7 +1903,7 @@ export default function RestaurantOnboarding() {
               onChange={(e) =>
                 setStep1({
                   ...step1,
-                  location: { ...step1.location, pincode: e.target.value },
+                  location: { ...step1.location, pincode: normalizePincode(e.target.value) },
                 })
               }
               className="bg-white text-sm"
@@ -2573,14 +2507,8 @@ export default function RestaurantOnboarding() {
             <Label className="text-xs text-gray-700">PAN number</Label>
             <Input
               value={step3.panNumber || ""}
-              onChange={(e) => {
-                const normalized = e.target.value
-                  .toUpperCase()
-                  .replace(/[^A-Z0-9]/g, "")
-                  .slice(0, 10)
-                setStep3({ ...step3, panNumber: normalized })
-              }}
-              className="mt-1 bg-white text-sm text-black placeholder-black"
+              onChange={(e) => setStep3({ ...step3, panNumber: normalizePAN(e.target.value) })}
+              className="mt-1 bg-white text-sm"
               placeholder="ABCDE1234F"
             />
           </div>
@@ -2591,10 +2519,10 @@ export default function RestaurantOnboarding() {
               onChange={(e) =>
                 setStep3({
                   ...step3,
-                  nameOnPan: e.target.value.replace(/[^A-Za-z ]/g, ""),
+                  nameOnPan: formatNameToCapital(e.target.value.replace(/[^A-Za-z ]/g, "")),
                 })
               }
-              className="mt-1 bg-white text-sm text-black placeholder-black"
+              className="mt-1 bg-white text-sm"
             />
           </div>
         </div>
@@ -2680,12 +2608,7 @@ export default function RestaurantOnboarding() {
           <div className="space-y-3">
             <Input
               value={step3.gstNumber || ""}
-              onChange={(e) =>
-                setStep3({
-                  ...step3,
-                  gstNumber: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 15),
-                })
-              }
+              onChange={(e) => setStep3({ ...step3, gstNumber: normalizeGST(e.target.value) })}
               className="bg-white text-sm"
               placeholder="GST number (15 characters)"
             />
@@ -2694,7 +2617,7 @@ export default function RestaurantOnboarding() {
               onChange={(e) =>
                 setStep3({
                   ...step3,
-                  gstLegalName: e.target.value.replace(/[^A-Za-z ]/g, ""),
+                  gstLegalName: formatNameToCapital(e.target.value.replace(/[^A-Za-z ]/g, "")),
                 })
               }
               className="bg-white text-sm"
@@ -2876,20 +2799,13 @@ export default function RestaurantOnboarding() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             value={step3.accountNumber || ""}
-            onChange={(e) =>
-              setStep3({ ...step3, accountNumber: e.target.value.replace(/\D/g, "").slice(0, 18) })
-            }
+            onChange={(e) => setStep3({ ...step3, accountNumber: normalizeBankAcc(e.target.value) })}
             className="bg-white text-sm"
             placeholder="Account number"
           />
           <Input
             value={step3.confirmAccountNumber || ""}
-            onChange={(e) =>
-              setStep3({
-                ...step3,
-                confirmAccountNumber: e.target.value.replace(/\D/g, "").slice(0, 18),
-              })
-            }
+            onChange={(e) => setStep3({ ...step3, confirmAccountNumber: normalizeBankAcc(e.target.value) })}
             className="bg-white text-sm"
             placeholder="Re-enter account number"
           />
@@ -2897,12 +2813,7 @@ export default function RestaurantOnboarding() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             value={step3.ifscCode || ""}
-            onChange={(e) =>
-              setStep3({
-                ...step3,
-                ifscCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 11),
-              })
-            }
+            onChange={(e) => setStep3({ ...step3, ifscCode: normalizeIFSC(e.target.value) })}
             className="bg-white text-sm"
             placeholder="IFSC code"
           />
@@ -2924,7 +2835,7 @@ export default function RestaurantOnboarding() {
           onChange={(e) =>
             setStep3({
               ...step3,
-              accountHolderName: e.target.value.replace(/[^A-Za-z ]/g, ""),
+              accountHolderName: formatNameToCapital(e.target.value.replace(/[^A-Za-z ]/g, "")),
             })
           }
           className="bg-white text-sm"

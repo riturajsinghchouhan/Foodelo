@@ -31,9 +31,9 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import { DatePicker } from '@mui/x-date-pickers/DatePicker'
 import dayjs from 'dayjs'
-const debugLog = (...args) => {}
-const debugWarn = (...args) => {}
-const debugError = (...args) => {}
+const debugLog = (...args) => { }
+const debugWarn = (...args) => { }
+const debugError = (...args) => { }
 const EDIT_PROFILE_DRAFT_KEY = "user_edit_profile_draft"
 
 
@@ -625,8 +625,8 @@ export default function EditProfile() {
           onClick={handleUpdate}
           disabled={!hasChanges || isSaving || isUploadingImage}
           className={`w-full h-14 rounded-xl font-semibold text-base transition-all mb-2 ${hasChanges && !isSaving && !isUploadingImage
-              ? 'bg-primary hover:bg-[#55254b] text-white'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            ? 'bg-primary hover:bg-[#55254b] text-white'
+            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             }`}
         >
           {isSaving ? (

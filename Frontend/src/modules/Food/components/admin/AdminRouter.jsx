@@ -95,8 +95,8 @@ const EmailTemplate = lazy(() => import("@food/pages/admin/settings/EmailTemplat
 const ThemeSettings = lazy(() => import("@food/pages/admin/settings/ThemeSettings"));
 const Gallery = lazy(() => import("@food/pages/admin/settings/Gallery"));
 const LoginSetup = lazy(() => import("@food/pages/admin/settings/LoginSetup"));
-const TermsAndCondition = lazy(() => import("@food/pages/admin/settings/TermsAndCondition"));
-const PrivacyPolicy = lazy(() => import("@food/pages/admin/settings/PrivacyPolicy"));
+const TermsAndCondition = lazy(() => import("@food/pages/admin/settings/LegalTerms"));
+const PrivacyPolicy = lazy(() => import("@food/pages/admin/settings/LegalPrivacy"));
 const AboutUs = lazy(() => import("@food/pages/admin/settings/AboutUs"));
 const RefundPolicy = lazy(() => import("@food/pages/admin/settings/RefundPolicy"));
 const ShippingPolicy = lazy(() => import("@food/pages/admin/settings/ShippingPolicy"));

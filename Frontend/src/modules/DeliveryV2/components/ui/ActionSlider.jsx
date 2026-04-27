@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react';
 
 /**
  * ActionSlider - Professional "Swipe to Confirm" UI Component.
+ * Race-condition safe: isAcceptingRef prevents double-fire from rapid slides.
  */
 export const ActionSlider = ({ 
   label = "Slide to Confirm", 
@@ -16,17 +17,20 @@ export const ActionSlider = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const containerRef = useRef(null);
   const controls = useAnimation();
+  // Atomic lock: prevents double-fire when user slides rapidly or two people slide at the same time
+  const isAcceptingRef = useRef(false);
 
-  // Reset when disabled state changes
+  // Reset when disabled state changes (e.g. order was claimed by another - parent sets disabled=true)
   useEffect(() => {
     if (disabled) {
       setProgress(0);
       setIsSuccess(false);
+      isAcceptingRef.current = false;
     }
   }, [disabled]);
 
   const handleDrag = (event, info) => {
-    if (disabled || isSuccess) return;
+    if (disabled || isSuccess || isAcceptingRef.current) return;
     
     const containerWidth = containerRef.current?.offsetWidth || 300;
     const handleWidth = 56; // w-14
@@ -37,15 +41,20 @@ export const ActionSlider = ({
   };
 
   const handleDragEnd = async (event, info) => {
-    if (disabled || isSuccess) return;
+    // Guard: if already processing or already succeeded, do nothing
+    if (disabled || isSuccess || isAcceptingRef.current) return;
 
     if (progress > 0.8 || info.offset.x > 150) {
+      // Atomically lock BEFORE any async work to prevent race conditions
+      isAcceptingRef.current = true;
       setIsSuccess(true);
       setProgress(1);
       if (onConfirm) {
         try {
           await onConfirm();
         } catch (error) {
+          // On failure, reset so the delivery boy can retry
+          isAcceptingRef.current = false;
           setIsSuccess(false);
           setProgress(0);
           controls.start({ x: 0 });
@@ -98,7 +107,7 @@ export const ActionSlider = ({
 
       {/* The Handle */}
       <motion.div
-        drag={disabled || isSuccess ? false : "x"}
+        drag={disabled || isSuccess || isAcceptingRef.current ? false : "x"}
         dragConstraints={{ left: 0, right: containerRef.current?.offsetWidth ? containerRef.current.offsetWidth - 68 : 250 }}
         dragElastic={0.1}
         onDrag={handleDrag}

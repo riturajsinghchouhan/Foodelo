@@ -249,7 +249,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                     <Mail className="w-4 h-4" />
                     Email
                   </p>
-                  <p className="text-sm font-medium text-slate-900">{order.customerEmail}</p>
+                  <p className="text-sm font-medium text-slate-900">{order.customerEmail || "NA"}</p>
                 </div>
               )}
             </div>

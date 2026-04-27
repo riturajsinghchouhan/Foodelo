@@ -100,13 +100,13 @@ export default function DeliverymanList() {
           return {
             ...partner,
             walletSummary: wallet || null,
-pocketBalance: wallet?.pocketBalance || 0,
-cashInHand: wallet?.cashCollected || 0,
-remainingCashLimit: wallet?.remainingCashLimit || 0,
-totalEarning: wallet?.totalEarning || 0,
-bonus: wallet?.bonus || 0,
-totalWithdrawn: wallet?.totalWithdrawn || 0,
-availableCashLimit: wallet?.availableCashLimit || 0,
+            pocketBalance: wallet?.pocketBalance || 0,
+            cashInHand: wallet?.cashInHand || 0,
+            remainingCashLimit: wallet?.remainingCashLimit || 0,
+            totalEarning: wallet?.totalEarning || 0,
+            bonus: wallet?.bonus || 0,
+            totalWithdrawn: wallet?.totalWithdrawn || 0,
+            availableCashLimit: wallet?.availableCashLimit || 0,
           }
         })
 
@@ -140,10 +140,58 @@ availableCashLimit: wallet?.availableCashLimit || 0,
     }
   }
 
-  // Fetch on mount
+  // Fetch on mount and setup polling for real-time updates
   useEffect(() => {
     fetchDeliverymen()
+    
+    // Polling interval: every 8 seconds refresh data (real-time request)
+    const interval = setInterval(() => {
+      // Pass a flag or just call fetchDeliverymen
+      // To avoid showing loading spinner on every poll, we could add a quietFetch
+      fetchDeliverymenQuietly()
+    }, 8000)
+
+    return () => clearInterval(interval)
   }, [])
+
+  const fetchDeliverymenQuietly = async () => {
+    try {
+      const params = { page: 1, limit: 1000 }
+      if (searchQuery.trim()) {
+        params.search = searchQuery.trim()
+      }
+
+      const [partnersResponse, walletRowsResult] = await Promise.allSettled([
+        adminAPI.getDeliveryPartners(params),
+        fetchAllWalletRows(searchQuery.trim()),
+      ])
+
+      if (partnersResponse.status === "fulfilled" && partnersResponse.value?.data?.success) {
+        const partners = partnersResponse.value.data.data.deliveryPartners || []
+        const walletRows = walletRowsResult.status === "fulfilled" ? walletRowsResult.value || [] : []
+        const walletMap = new Map(walletRows.map((wallet) => [String(wallet.deliveryId), wallet]))
+
+        const mergedPartners = partners.map((partner) => {
+          const wallet = walletMap.get(String(partner._id))
+          return {
+            ...partner,
+            walletSummary: wallet || null,
+            pocketBalance: wallet?.pocketBalance || 0,
+            cashInHand: wallet?.cashInHand || 0,
+            remainingCashLimit: wallet?.remainingCashLimit || 0,
+            totalEarning: wallet?.totalEarning || 0,
+            bonus: wallet?.bonus || 0,
+            totalWithdrawn: wallet?.totalWithdrawn || 0,
+            availableCashLimit: wallet?.availableCashLimit || 0,
+          }
+        })
+
+        setDeliverymen(mergedPartners)
+      }
+    } catch (err) {
+      debugError("Quiet fetch failed", err)
+    }
+  }
 
   // Debounced search effect
   useEffect(() => {

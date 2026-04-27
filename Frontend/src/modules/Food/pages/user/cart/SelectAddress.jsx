@@ -38,7 +38,7 @@ const toBackendLabel = (label) => {
 export default function SelectAddress() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { addresses = [], addAddress, setDefaultAddress, getDefaultAddress } = useProfile()
+  const { addresses = [], addAddress, setDefaultAddress, getDefaultAddress, isAuthenticated } = useProfile()
 
   const from = location?.state?.from || "/user/cart"
   const defaultAddress = getDefaultAddress?.() || null
@@ -99,6 +99,12 @@ export default function SelectAddress() {
     const street = String(form.street || "").trim()
     const city = String(form.city || "").trim()
     const state = String(form.state || "").trim()
+    if (!isAuthenticated) {
+      toast.info("Please login to save an address")
+      navigate("/user/auth/login")
+      return
+    }
+
     if (!street || !city || !state) {
       toast.error("Please fill Street, City and State")
       return

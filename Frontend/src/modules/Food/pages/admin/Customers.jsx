@@ -35,9 +35,9 @@ export default function Customers() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim()
       result = result.filter(customer =>
-        customer.name.toLowerCase().includes(query) ||
-        customer.email.toLowerCase().includes(query) ||
-        customer.phone.includes(query)
+        customer.name?.toLowerCase().includes(query) ||
+        (customer.email || "NA").toLowerCase().includes(query) ||
+        customer.phone?.includes(query)
       )
     }
 
@@ -482,7 +482,7 @@ export default function Customers() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="text-sm text-slate-700">{customer.email}</span>
+                          <span className="text-sm text-slate-700">{customer.email || "NA"}</span>
                           <span className="text-xs text-slate-500">{customer.phone}</span>
                         </div>
                       </td>
@@ -565,7 +565,7 @@ export default function Customers() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                       <div className="flex items-center gap-2 text-sm text-slate-600 min-w-0">
                         <Mail className="w-4 h-4" />
-                        <span className="truncate">{userDetails.email}</span>
+                        <span className="truncate">{userDetails.email || "NA"}</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-slate-600 min-w-0">
                         <Phone className="w-4 h-4" />

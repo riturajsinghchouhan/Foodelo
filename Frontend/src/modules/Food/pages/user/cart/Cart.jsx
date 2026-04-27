@@ -127,17 +127,6 @@ export default function Cart() {
   const [showPaymentSheet, setShowPaymentSheet] = useState(false)
   const [walletBalance, setWalletBalance] = useState(0)
   const [isLoadingWallet, setIsLoadingWallet] = useState(false)
-  const [note, setNote] = useState(() => {
-    try {
-      if (typeof window === "undefined") return ""
-      const raw = window.localStorage.getItem(CART_ORDER_NOTE_STORAGE_KEY)
-      if (!raw) return ""
-      const stored = JSON.parse(raw)
-      return String(stored?.note || "")
-    } catch {
-      return ""
-    }
-  })
   const [restaurantNote, setRestaurantNote] = useState(() => {
     try {
       if (typeof window === "undefined") return ""
@@ -147,18 +136,6 @@ export default function Cart() {
       return String(stored?.restaurantNote || "")
     } catch {
       return ""
-    }
-  })
-  const [showNoteInput, setShowNoteInput] = useState(() => {
-    try {
-      if (typeof window === "undefined") return false
-      const raw = window.localStorage.getItem(CART_ORDER_NOTE_STORAGE_KEY)
-      if (!raw) return false
-      const stored = JSON.parse(raw)
-      const storedNote = String(stored?.note || "")
-      return Boolean(stored?.showNoteInput) || storedNote.trim().length > 0
-    } catch {
-      return false
     }
   })
   const [showRestaurantNoteInput, setShowRestaurantNoteInput] = useState(() => {
@@ -501,16 +478,14 @@ export default function Cart() {
       window.localStorage.setItem(
         CART_ORDER_NOTE_STORAGE_KEY,
         JSON.stringify({
-          note,
           restaurantNote,
-          showNoteInput,
           showRestaurantNoteInput,
         })
       )
     } catch {
       // Ignore storage errors and keep note flow working.
     }
-  }, [note, restaurantNote, showNoteInput, showRestaurantNoteInput])
+  }, [restaurantNote, showRestaurantNoteInput])
 
   useEffect(() => {
     if (deliveryAddressMode === "current") {
@@ -1765,7 +1740,7 @@ export default function Cart() {
         restaurantId: finalRestaurantId,
         restaurantName: finalRestaurantName || undefined,
         pricing: orderPricing,
-        note: note || "",
+        note: "",
         restaurantNote: restaurantNote || "",
         sendCutlery: sendCutlery !== false,
         paymentMethod: selectedPaymentMethod,
@@ -1811,9 +1786,7 @@ export default function Cart() {
         }
         window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
         clearCart()
-        setNote("")
         setRestaurantNote("")
-        setShowNoteInput(false)
         setShowRestaurantNoteInput(false)
         try {
           window.localStorage.removeItem(CART_ORDER_NOTE_STORAGE_KEY)
@@ -1839,9 +1812,7 @@ export default function Cart() {
         }
         window.dispatchEvent(new CustomEvent('order-placed', { detail: { order } }))
         clearCart()
-        setNote("")
         setRestaurantNote("")
-        setShowNoteInput(false)
         setShowRestaurantNoteInput(false)
         try {
           window.localStorage.removeItem(CART_ORDER_NOTE_STORAGE_KEY)
@@ -2182,13 +2153,6 @@ export default function Cart() {
               <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-4 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800 flex flex-col sm:flex-row gap-3">
                 <div className="flex-1 flex flex-col gap-2">
                   <button
-                    onClick={() => setShowNoteInput(!showNoteInput)}
-                    className="flex-1 flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    <FileText className="h-4 w-4 md:h-5 md:w-5" />
-                    <span className="truncate">{note || "Add note for delivery partner"}</span>
-                  </button>
-                  <button
                     onClick={() => setShowRestaurantNoteInput(!showRestaurantNoteInput)}
                     className="flex-1 flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl text-sm md:text-base text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
@@ -2206,30 +2170,6 @@ export default function Cart() {
                   </span>
                 </button>
               </div>
-
-              {/* Note Input */}
-              {showNoteInput && (
-                <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl border border-slate-100 dark:border-gray-800">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    Delivery instructions
-                  </p>
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Eg. Call when outside, ring bell once, leave at gate"
-                     className="w-full border border-gray-200 dark:border-gray-700 rounded-lg md:rounded-xl p-3 md:p-4 text-sm md:text-base resize-none h-20 md:h-24 focus:outline-none focus:border-[#7e3866] dark:focus:border-[#7e3866] bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-gray-100"
-                    maxLength={240}
-                  />
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Note for delivery partner.
-                    </p>
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                      {note.length}/240
-                    </span>
-                  </div>
-                </div>
-              )}
 
               {/* Restaurant Note Input */}
               {showRestaurantNoteInput && (

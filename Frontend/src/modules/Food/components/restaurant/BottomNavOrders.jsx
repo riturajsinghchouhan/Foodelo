@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom"
-import { useMemo } from "react"
-import { motion } from "framer-motion"
+import { useMemo, useState, useEffect } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   FileText,
   Package,
@@ -26,6 +26,33 @@ const findActiveTab = (tabs, pathname) =>
 export default function BottomNavOrders() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
+
+  // Hide bottom nav when keyboard is open (standard mobile UX)
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.visualViewport) {
+        // If the visual viewport is significantly smaller than innerHeight, keyboard is open
+        const isKeyboardOpen = window.visualViewport.height < window.innerHeight * 0.85
+        setIsKeyboardVisible(isKeyboardOpen)
+      }
+    }
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize)
+      // Initial check
+      handleResize()
+      return () => window.visualViewport.removeEventListener('resize', handleResize)
+    } else {
+      // Fallback for older browsers
+      const handleWindowResize = () => {
+        setIsKeyboardVisible(window.innerHeight < 550)
+      }
+      window.addEventListener('resize', handleWindowResize)
+      return () => window.removeEventListener('resize', handleWindowResize)
+    }
+  }, [])
+
 
   const basePath = pathname.includes("/food/restaurant")
     ? "/food/restaurant"
@@ -39,7 +66,7 @@ export default function BottomNavOrders() {
   const tabs = useMemo(() => getOrdersTabs(basePath), [basePath])
 
   const isInternalPage = pathname.includes("/create-offers")
-  if (isInternalPage) {
+  if (isInternalPage || isKeyboardVisible) {
     return null
   }
 

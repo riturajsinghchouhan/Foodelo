@@ -96,17 +96,17 @@ export default function UserOrderDetails() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-600 text-sm">Loading order details...</p>
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] flex items-center justify-center">
+        <p className="text-gray-600 dark:text-gray-400 text-sm">Loading order details...</p>
       </div>
     )
   }
 
   if (!order) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] flex items-center justify-center">
         <div className="text-center space-y-3">
-          <p className="text-gray-700 text-sm font-medium">Order not found</p>
+          <p className="text-gray-700 dark:text-gray-300 text-sm font-medium">Order not found</p>
           <button
             onClick={() => navigate("/user/orders")}
             className="px-4 py-2 rounded-lg bg-[#7e3866] text-white text-sm font-semibold hover:bg-[#55254b] transition-all active:scale-95 shadow-md"
@@ -357,30 +357,30 @@ export default function UserOrderDetails() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 font-sans relative">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] pb-24 font-sans relative">
       {/* Header */}
-      <div className="bg-white p-4 flex items-center sticky top-0 z-20 shadow-sm">
+      <div className="bg-white dark:bg-[#121212] p-4 flex items-center sticky top-0 z-20 shadow-sm border-b dark:border-gray-800">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={goBack}
-            className="p-1 rounded-full hover:bg-gray-100"
+            className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            <ArrowLeft className="w-6 h-6 text-gray-700 cursor-pointer" />
+            <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-300 cursor-pointer" />
           </button>
-          <h1 className="text-lg font-semibold text-gray-800">Order Details</h1>
+          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Order Details</h1>
         </div>
       </div>
 
       {/* Scrollable Content */}
       <div className="p-4 space-y-4">
         {/* Status Card */}
-        <div className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm">
-          <div className="bg-gray-100 p-2 rounded-lg">
-            <ShoppingBag className="w-6 h-6 text-gray-600" />
+        <div className="bg-white dark:bg-[#121212] p-4 rounded-xl flex items-center gap-3 shadow-sm border dark:border-gray-800">
+          <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded-lg">
+            <ShoppingBag className="w-6 h-6 text-gray-600 dark:text-gray-400" />
           </div>
           <div>
-            <h2 className="font-semibold text-gray-800">
+            <h2 className="font-semibold text-gray-800 dark:text-gray-100">
               {order.status === "delivered"
                 ? "Order was delivered"
                 : (order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled" || order.status?.includes('cancel')) 
@@ -388,19 +388,19 @@ export default function UserOrderDetails() {
                   : "Order status: " + (order.status || "Processing")}
             </h2>
             {(order.status === "cancelled" || order.status === "cancelled_by_restaurant" || order.status === "restaurant_cancelled" || order.status?.includes('cancel')) && (
-              <div className="mt-2 p-3 bg-red-50 border border-red-100 rounded-xl">
-                  <p className="text-sm text-red-700 font-bold mb-1">Cancellation Reason:</p>
-                  <p className="text-sm text-red-600 font-medium">
+              <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl">
+                  <p className="text-sm text-red-700 dark:text-red-400 font-bold mb-1">Cancellation Reason:</p>
+                  <p className="text-sm text-red-600 dark:text-red-300 font-medium">
                     {order.cancellationReason || "The restaurant was unable to fulfill this order."}
                   </p>
-                <p className="text-[10px] text-gray-500 mt-2">Refund will be initiated to your source payment method.</p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2">Refund will be initiated to your source payment method.</p>
               </div>
             )}
           </div>
         </div>
 
         {/* Restaurant Info Card */}
-        <div className="bg-white p-4 rounded-xl shadow-sm">
+        <div className="bg-white dark:bg-[#121212] p-4 rounded-xl shadow-sm border dark:border-gray-800">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <img
@@ -416,8 +416,8 @@ export default function UserOrderDetails() {
                 className="w-10 h-10 rounded-lg object-cover"
               />
               <div>
-                <h3 className="font-semibold text-gray-800">{restaurantName}</h3>
-                <p className="text-xs text-gray-500">{restaurantLocation}</p>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100">{restaurantName}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{restaurantLocation}</p>
               </div>
             </div>
 
@@ -431,31 +431,31 @@ export default function UserOrderDetails() {
           </div>
 
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
+            <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">
               Order ID: #{orderIdDisplay}
             </span>
             <button type="button" onClick={handleCopyOrderId}>
-              <Copy className="w-3 h-3 text-gray-400 cursor-pointer" />
+              <Copy className="w-3 h-3 text-gray-400 dark:text-gray-500 cursor-pointer" />
             </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <span
               className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${sendsCutlery
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-orange-50 text-orange-700 border border-orange-200"
+                  ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                  : "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800"
                 }`}
             >
               {sendsCutlery ? "Send cutlery" : "Don't send cutlery"}
             </span>
             {order.note && (
-              <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+              <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
                 Note: {order.note}
               </span>
             )}
           </div>
 
-          <div className="border-t border-dashed border-gray-200 my-3" />
+          <div className="border-t border-dashed border-gray-200 dark:border-gray-800 my-3" />
 
           {/* Items */}
           {items.map((item, idx) => (
@@ -470,11 +470,11 @@ export default function UserOrderDetails() {
                       }`}
                   />
                 </div>
-                <span className="text-sm text-gray-700 font-medium">
+                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
                   {item.quantity || item.qty || 1} x {item.name}{item.variantName ? ` (${item.variantName})` : ""}
                 </span>
               </div>
-              <span className="text-sm text-gray-800 font-medium">
+              <span className="text-sm text-gray-800 dark:text-gray-200 font-medium">
                 ₹{(item.price || 0).toFixed(2)}
               </span>
             </div>
@@ -482,11 +482,11 @@ export default function UserOrderDetails() {
         </div>
 
         {/* Bill Summary Card */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="p-4 flex justify-between items-center border-b border-gray-100">
+        <div className="bg-white dark:bg-[#121212] rounded-xl shadow-sm overflow-hidden border dark:border-gray-800">
+          <div className="p-4 flex justify-between items-center border-b border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-gray-600" />
-              <h3 className="font-semibold text-gray-800">Bill Summary</h3>
+              <FileText className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Bill Summary</h3>
             </div>
             <button
               type="button"
@@ -499,51 +499,51 @@ export default function UserOrderDetails() {
 
           <div className="p-4 space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500">Item total</span>
+              <span className="text-gray-500 dark:text-gray-400">Item total</span>
               <div>
                 {pricing.originalItemTotal && (
-                  <span className="text-gray-400 line-through mr-1">
+                  <span className="text-gray-400 dark:text-gray-500 line-through mr-1">
                     ₹{Number(pricing.originalItemTotal).toFixed(2)}
                   </span>
                 )}
-                <span className="text-gray-800">
+                <span className="text-gray-800 dark:text-gray-200">
                   ₹{Number(pricing.subtotal || pricing.total || 0).toFixed(2)}
                 </span>
               </div>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">GST (govt. taxes)</span>
-              <span className="text-gray-800">
+              <span className="text-gray-500 dark:text-gray-400">GST (govt. taxes)</span>
+              <span className="text-gray-800 dark:text-gray-200">
                 ₹{Number(pricing.tax || 0).toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400 font-medium">Delivery fee</span>
+              <span className="text-gray-400 dark:text-gray-500 font-medium">Delivery fee</span>
               {pricing.deliveryFee === 0 && (
                 <span className="text-[#7e3866] text-[10px] font-bold border border-[#7e3866] px-1 rounded ml-1">
                   FREE
                 </span>
               )}
-              <span className="text-[#7e3866] font-medium uppercase">
+              <span className="text-[#7e3866] dark:text-[#a04882] font-medium uppercase">
                 {pricing.deliveryFee ? `₹${Number(pricing.deliveryFee).toFixed(2)}` : "Free"}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Platform fee</span>
-              <span className="text-gray-800">
+              <span className="text-gray-500 dark:text-gray-400">Platform fee</span>
+              <span className="text-gray-800 dark:text-gray-200">
                 ₹{Number(pricing.platformFee || 0).toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Subscription / other fees</span>
-              <span className="text-gray-800">
+              <span className="text-gray-500 dark:text-gray-400">Subscription / other fees</span>
+              <span className="text-gray-800 dark:text-gray-200">
                 ₹{Number(pricing.subscriptionFee || 0).toFixed(2)}
               </span>
             </div>
 
-            <div className="border-t border-gray-100 my-2 pt-2 flex justify-between items-center">
-              <span className="font-bold text-gray-800">Paid</span>
-              <span className="font-bold text-gray-800">
+            <div className="border-t border-gray-100 dark:border-gray-800 my-2 pt-2 flex justify-between items-center">
+              <span className="font-bold text-gray-800 dark:text-gray-100">Paid</span>
+              <span className="font-bold text-gray-800 dark:text-gray-100">
                 ₹{Number(pricing.total || 0).toFixed(2)}
               </span>
             </div>
@@ -578,30 +578,30 @@ export default function UserOrderDetails() {
         </div>
 
         {/* User & Delivery Details */}
-        <div className="bg-white p-4 rounded-xl shadow-sm space-y-5">
+        <div className="bg-white dark:bg-[#121212] p-4 rounded-xl shadow-sm space-y-5 border dark:border-gray-800">
           {/* User */}
           <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-              <User className="w-5 h-5 text-gray-500" />
+            <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
+              <User className="w-5 h-5 text-gray-500 dark:text-gray-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800 text-sm">
+              <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
                 {userName || "Customer"}
               </h4>
-              <p className="text-gray-500 text-xs">{userPhone}</p>
+              <p className="text-gray-500 dark:text-gray-400 text-xs">{userPhone}</p>
             </div>
           </div>
 
           {/* Payment */}
           <div className="flex gap-3">
             <div className="mt-0.5">
-              <CreditCard className="w-5 h-5 text-gray-500" />
+              <CreditCard className="w-5 h-5 text-gray-500 dark:text-gray-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800 text-sm">
+              <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
                 Payment method
               </h4>
-              <p className="text-gray-500 text-xs mt-0.5">
+              <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
                 Paid via: {paymentMethod.toUpperCase()}
               </p>
             </div>
@@ -610,26 +610,26 @@ export default function UserOrderDetails() {
           {/* Date */}
           <div className="flex gap-3">
             <div className="mt-0.5">
-              <Calendar className="w-5 h-5 text-gray-500" />
+              <Calendar className="w-5 h-5 text-gray-500 dark:text-gray-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800 text-sm">
+              <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
                 Payment date
               </h4>
-              <p className="text-gray-500 text-xs mt-0.5">{paymentDate}</p>
+              <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">{paymentDate}</p>
             </div>
           </div>
 
           {/* Address */}
           <div className="flex gap-3">
             <div className="mt-0.5">
-              <MapPin className="w-5 h-5 text-gray-500" />
+              <MapPin className="w-5 h-5 text-gray-500 dark:text-gray-400" />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800 text-sm">
+              <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
                 Delivery address
               </h4>
-              <p className="text-gray-500 text-xs mt-0.5 leading-relaxed">
+              <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5 leading-relaxed">
                 {addressText || "Address not available"}
               </p>
             </div>
@@ -638,7 +638,7 @@ export default function UserOrderDetails() {
       </div>
 
       {/* Fixed Bottom Buttons */}
-      <div className="fixed bottom-0 w-full bg-white border-t border-gray-200 p-4 flex gap-3 z-20">
+      <div className="fixed bottom-0 w-full bg-white dark:bg-[#121212] border-t border-gray-200 dark:border-gray-800 p-4 flex gap-3 z-20">
         <button
           type="button"
           onClick={() => handleReorder(order)}
@@ -650,7 +650,7 @@ export default function UserOrderDetails() {
         <button
           type="button"
           onClick={handleDownloadSummary}
-          className="flex-1 bg-white border border-[#7e3866] text-[#7e3866] py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#7e3866]/5 transition-colors"
+          className="flex-1 bg-white dark:bg-[#1a1a1a] border border-[#7e3866] text-[#7e3866] py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#7e3866]/5 transition-colors"
         >
           <Download className="w-4 h-4" />
           Invoice

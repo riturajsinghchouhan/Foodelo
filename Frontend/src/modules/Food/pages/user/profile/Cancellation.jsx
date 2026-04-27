@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 import { useState, useEffect } from "react"
 import { ArrowLeft, XCircle, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
@@ -10,6 +10,7 @@ import { API_ENDPOINTS } from "@food/api/config"
 
 export default function Cancellation() {
   const navigate = useNavigate()
+  const location = useLocation()
   const goBack = useAppBackNavigation()
   const [loading, setLoading] = useState(true)
   const [cancellationData, setCancellationData] = useState({
@@ -37,7 +38,10 @@ export default function Cancellation() {
 
   const handleBack = () => {
     if (location.state?.returnTo) {
-      navigate(location.state.returnTo, { state: location.state?.originalState })
+      navigate(location.state.returnTo, { 
+        state: location.state?.originalState,
+        replace: true 
+      })
     } else if (window.history.length > 2) {
       goBack()
     } else {

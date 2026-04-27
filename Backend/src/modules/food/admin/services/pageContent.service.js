@@ -47,7 +47,12 @@ export const getAdminPageByKey = async (key) => getPublicPageByKey(key);
 
 export const upsertLegalPage = async (key, payload, updatedBy) => {
     const k = normalizeKey(key);
-    if (!['terms', 'privacy', 'refund', 'shipping', 'cancellation'].includes(k)) {
+    const allowedKeys = [
+        'terms', 'terms_user', 'terms_restaurant', 'terms_delivery',
+        'privacy', 'privacy_user', 'privacy_restaurant', 'privacy_delivery',
+        'refund', 'shipping', 'cancellation'
+    ];
+    if (!allowedKeys.includes(k)) {
         throw new ValidationError('Invalid page key');
     }
     const title = String(payload?.title || '').trim();

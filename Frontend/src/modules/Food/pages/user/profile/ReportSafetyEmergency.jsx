@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
+import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import { ArrowLeft, AlertTriangle, Phone, Shield, Loader2 } from "lucide-react"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Button } from "@food/components/ui/button"
@@ -20,6 +21,7 @@ const debugError = (...args) => {}
 
 
 export default function ReportSafetyEmergency() {
+  const goBack = useAppBackNavigation()
   const [report, setReport] = useState("")
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -130,11 +132,9 @@ export default function ReportSafetyEmergency() {
       <div className="max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
         {/* Header */}
         <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6 lg:mb-8">
-          <Link to="/user/profile">
-            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 p-0">
-              <ArrowLeft className="h-4 w-4 md:h-5 md:w-5 text-black dark:text-white" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={goBack} className="h-8 w-8 md:h-10 md:w-10 p-0">
+            <ArrowLeft className="h-4 w-4 md:h-5 md:w-5 text-black dark:text-white" />
+          </Button>
           <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-black dark:text-white">Report a safety emergency</h1>
         </div>
 

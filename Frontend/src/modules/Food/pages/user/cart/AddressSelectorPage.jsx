@@ -49,7 +49,7 @@ export default function AddressSelectorPage() {
   const navigate = useNavigate()
   const goBack = useAppBackNavigation()
   const { location, loading, requestLocation } = useGeoLocation()
-  const { addresses = [], addAddress, updateAddress, setDefaultAddress, userProfile } = useProfile()
+  const { addresses = [], addAddress, updateAddress, setDefaultAddress, userProfile, isAuthenticated } = useProfile()
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [mapPosition, setMapPosition] = useState([22.7196, 75.8577]) // Default Indore coordinates [lat, lng]
   const [addressFormData, setAddressFormData] = useState({
@@ -243,6 +243,11 @@ export default function AddressSelectorPage() {
   }
 
   const handleAddAddressClick = () => {
+    if (!isAuthenticated) {
+      toast.info("Please login to add an address")
+      navigate("/user/auth/login")
+      return
+    }
     setShowAddressForm(true)
   }
 
@@ -337,6 +342,11 @@ export default function AddressSelectorPage() {
 
   const handleAddressFormSubmit = async (e) => {
     e.preventDefault()
+    if (!isAuthenticated) {
+       toast.info("Please login to save an address")
+       navigate("/user/auth/login")
+       return
+    }
     if (!addressFormData.street || !addressFormData.city) {
       toast.error("Please fill required fields")
       return

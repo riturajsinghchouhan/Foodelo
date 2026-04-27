@@ -3390,6 +3390,36 @@ export async function rejectRestaurant(id, reason) {
     return updated;
 }
 
+export async function deleteRestaurant(id) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const restaurantId = new mongoose.Types.ObjectId(id);
+
+    const restaurant = await FoodRestaurant.findById(restaurantId).lean();
+    if (!restaurant) return null;
+
+    // Cascading deletion
+    await Promise.all([
+        // Delete all food items
+        FoodItem.deleteMany({ restaurantId }),
+        // Delete all addons
+        FoodAddon.deleteMany({ restaurantId }),
+        // Delete restaurant-specific categories
+        FoodCategory.deleteMany({ restaurantId }),
+        // Delete commissions
+        FoodRestaurantCommission.deleteMany({ restaurantId }),
+        // Delete withdrawals
+        FoodRestaurantWithdrawal.deleteMany({ restaurantId }),
+        // Delete support tickets
+        FoodRestaurantSupportTicket.deleteMany({ restaurantId }),
+        // Delete offers linked to this restaurant
+        FoodOffer.deleteMany({ restaurantId, restaurantScope: 'selected' }),
+        // Finally delete the restaurant
+        FoodRestaurant.findByIdAndDelete(restaurantId)
+    ]);
+
+    return { id: restaurantId };
+}
+
 // ----- Offers & Coupons -----
 export async function getAllOffers(_query = {}) {
     const list = await FoodOffer.find({})
@@ -3699,6 +3729,27 @@ export async function getDeliveryPartners(query) {
         FoodDeliveryPartner.countDocuments(filter)
     ]);
 
+    // Fetch total orders for these partners in real-time
+    const partnerIds = list.map((p) => p._id);
+    const orderCounts = await FoodOrder.aggregate([
+        {
+            $match: {
+                'dispatch.deliveryPartnerId': { $in: partnerIds },
+                orderStatus: 'delivered'
+            }
+        },
+        {
+            $group: {
+                _id: '$dispatch.deliveryPartnerId',
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const countsMap = new Map(
+        (orderCounts || []).map((c) => [String(c._id), c.count])
+    );
+
     const deliveryPartners = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
@@ -3709,6 +3760,7 @@ export async function getDeliveryPartners(query) {
         zone: doc.city || doc.state || doc.address || '',
         vehicleType: doc.vehicleType || '',
         status: doc.status,
+        totalOrders: countsMap.get(String(doc._id)) || 0,
         profilePhoto: doc.profilePhoto || null,
         profileImage: doc.profilePhoto ? { url: doc.profilePhoto } : null
     }));
@@ -4837,16 +4889,14 @@ export async function getDeliveryWallets(query = {}) {
             ])
         ]);
 
-        const totalEarned = Number(wallet?.totalEarnings ?? earningsAgg?.[0]?.totalEarned) || 0;
+        const totalEarned = Number(earningsAgg?.[0]?.totalEarned) || 0;
         const grossCashCollected = Number(cashCollectedAgg?.[0]?.cashCollected) || 0;
         const totalDepositedCash = Number(cashDepositsAgg?.[0]?.depositedCash) || 0;
-        const calculatedCashInHand = Math.max(0, grossCashCollected - totalDepositedCash);
-        const cashInHand = Number(wallet?.cashInHand ?? calculatedCashInHand) || 0;
-        const totalBonus = Number(wallet?.totalBonus ?? bonusAgg?.[0]?.total) || 0;
-        const totalWithdrawn = Number(wallet?.totalSettled ?? withdrawalAgg?.[0]?.totalWithdrawn) || 0;
-        const pendingWithdrawals = Number(wallet?.lockedAmount ?? withdrawalAgg?.[0]?.pendingWithdrawals) || 0;
-        const calculatedPocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
-        const pocketBalance = Number(wallet?.balance ?? calculatedPocketBalance) || 0;
+        const cashInHand = Math.max(0, grossCashCollected - totalDepositedCash);
+        const totalBonus = Number(bonusAgg?.[0]?.total) || 0;
+        const totalWithdrawn = Number(withdrawalAgg?.[0]?.totalWithdrawn) || 0;
+        const pendingWithdrawals = Number(withdrawalAgg?.[0]?.pendingWithdrawals) || 0;
+        const pocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
 
         return {
             walletId: wallet?._id,

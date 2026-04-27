@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
+import { toast } from "sonner"
 
 const formatAddress = (restaurant) =>
   restaurant?.location?.formattedAddress ||
@@ -238,15 +239,26 @@ export default function DiningRestaurantDetails() {
   ]
 
   const handleShare = async () => {
+    const shareData = {
+      title: restaurantName,
+      text: `Check out ${restaurantName} on Foodelo!`,
+      url: window.location.href,
+    }
+
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: restaurantName,
-          text: `Check out ${restaurantName}`,
-          url: window.location.href,
-        })
+        await navigator.share(shareData)
+        return
       }
-    } catch {}
+      
+      // Fallback for desktop
+      await navigator.clipboard.writeText(window.location.href)
+      toast.success("Link copied to clipboard!")
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        toast.error("Sharing failed. Please try again.")
+      }
+    }
   }
 
   const restaurantFavoriteSlug =
@@ -310,9 +322,16 @@ export default function DiningRestaurantDetails() {
           <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-3 pt-3">
             <button
               onClick={handleBack}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#51586a]/75 text-white backdrop-blur-md"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#51586a]/75 text-white backdrop-blur-md transition-all active:scale-90"
             >
               <ArrowLeft className="h-5 w-5" />
+            </button>
+
+            <button
+              onClick={handleShare}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#51586a]/75 text-white backdrop-blur-md transition-all active:scale-90"
+            >
+              <Share2 className="h-5 w-5" />
             </button>
           </div>
 

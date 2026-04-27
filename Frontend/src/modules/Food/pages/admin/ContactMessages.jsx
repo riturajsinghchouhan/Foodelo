@@ -237,10 +237,10 @@ export default function ContactMessages() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm font-medium text-slate-900">{feedback.customer?.name || 'N/A'}</span>
+                      <span className="text-sm font-medium text-slate-900">{feedback.customer?.name || 'NA'}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-slate-700">{feedback.customer?.email || 'N/A'}</span>
+                      <span className="text-sm text-slate-700">{feedback.customer?.email || 'NA'}</span>
                     </td>
                     <td className="px-6 py-4 max-w-md">
                       <span className="text-sm text-slate-700 line-clamp-2">
@@ -320,11 +320,11 @@ export default function ContactMessages() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Customer Name</label>
-                    <p className="text-base font-semibold text-slate-900 dark:text-white">{selectedFeedback.customer?.name || 'N/A'}</p>
+                    <p className="text-base font-semibold text-slate-900 dark:text-white">{selectedFeedback.customer?.name || 'NA'}</p>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Email Address</label>
-                    <p className="text-base font-semibold text-slate-900 dark:text-white break-all">{selectedFeedback.customer?.email || 'N/A'}</p>
+                    <p className="text-base font-semibold text-slate-900 dark:text-white break-all">{selectedFeedback.customer?.email || 'NA'}</p>
                   </div>
                   {selectedFeedback.customer?.phone && (
                     <div className="space-y-1">

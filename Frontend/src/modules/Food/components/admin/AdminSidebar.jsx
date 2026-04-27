@@ -140,6 +140,8 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     if (l.includes("safety emergency reports")) return badges.safetyReports
     if (l === "deliveryman" && !p.includes("join-request")) return badges.deliveryPartners // expandable parent
     if (l.includes("join-request")) return badges.deliveryPartners
+    if (l === "user feedback" || p.includes("contact-messages")) return badges.contactMessages
+    if (l.includes("support tickets")) return badges.supportTickets || (l.includes("delivery") ? badges.deliverySupportTickets : badges.userSupportTickets)
     return 0
   }
   const [logoUrl, setLogoUrl] = useState(() => getCachedSettings()?.logo?.url || null)
@@ -443,7 +445,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
             </div>
           )}
           {isCollapsed && getBadgeCount(item.label, item.path) > 0 && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-neutral-950" />
+            <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-neutral-950 animate-pulse" />
           )}
         </Link>
       )
@@ -468,7 +470,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
               <div className="relative">
                 <Icon className="w-4 h-4 shrink-0 text-neutral-300 transition-transform duration-300" />
                 {getBadgeCount(item.label, item.path) > 0 && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-neutral-950" />
+                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-neutral-950 animate-pulse" />
                 )}
               </div>
             </button>
@@ -749,13 +751,21 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                     )}
                     style={{ animationDelay: `${index * 0.1}s` }}
                   >
-                    {!isCollapsed && (
-                      <div className="px-3 py-2 mb-2">
+                      <div className="px-3 py-2 mb-2 flex items-center justify-between">
                         <span className="text-neutral-400 font-bold text-sm uppercase tracking-wider text-left">
                           {item.label}
                         </span>
+                        {item.items.some(subItem => {
+                          const count = getBadgeCount(subItem.label, subItem.path);
+                          if (count > 0) return true;
+                          if (subItem.type === "expandable" && subItem.subItems) {
+                            return subItem.subItems.some(si => getBadgeCount(si.label, si.path) > 0);
+                          }
+                          return false;
+                        }) && (
+                          <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse shadow-[0_0_8px_rgba(220,38,38,0.5)]" />
+                        )}
                       </div>
-                    )}
                     <div className="space-y-1">
                       {item.items.map((subItem, subIndex) => renderMenuItem(subItem, `${index}-${subIndex}`, true))}
                     </div>

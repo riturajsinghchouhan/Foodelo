@@ -505,6 +505,7 @@ export function ProfileProvider({ children }) {
       removeDishFavorite,
       isDishFavorite,
       getDishFavorites,
+      isAuthenticated,
     }),
     [
       userProfile,
@@ -536,6 +537,7 @@ export function ProfileProvider({ children }) {
       removeDishFavorite,
       isDishFavorite,
       getDishFavorites,
+      isAuthenticated,
     ]
   )
 
@@ -577,7 +579,8 @@ export function useProfile() {
       isDishFavorite: () => false,
       getDishFavorites: () => [],
       vegMode: false,
-      setVegMode: () => debugWarn("ProfileProvider not available")
+      setVegMode: () => debugWarn("ProfileProvider not available"),
+      isAuthenticated: false
     }
   }
   return context
