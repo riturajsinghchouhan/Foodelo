@@ -3324,7 +3324,8 @@ export async function approveRestaurant(id) {
                 status: 'approved',
                 approvedAt: new Date(),
                 rejectedAt: undefined,
-                rejectionReason: undefined
+                rejectionReason: undefined,
+                pendingUpdateReason: undefined
             }
         },
         { new: true, runValidators: false }
@@ -3361,7 +3362,8 @@ export async function rejectRestaurant(id, reason) {
                 status: 'rejected',
                 rejectedAt: new Date(),
                 rejectionReason: typeof reason === 'string' ? reason.trim() : undefined,
-                approvedAt: null
+                approvedAt: null,
+                pendingUpdateReason: undefined
             }
         },
         { new: true, runValidators: false }

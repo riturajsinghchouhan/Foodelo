@@ -383,13 +383,15 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     }
   }
 
-  // If restaurant approval status is used, only allow login for approved restaurants.
+  // If restaurant approval status is used, handle pending/rejected states by returning info instead of throwing errors.
   if (restaurant.status && restaurant.status !== "approved") {
-    throw new AuthError(
-      restaurant.status === "pending"
-        ? "Your restaurant registration is pending approval."
-        : "Your restaurant registration has been rejected. Please contact support.",
-    );
+    return {
+      pendingApproval: true,
+      status: restaurant.status,
+      isRejected: restaurant.status === "rejected",
+      rejectionReason: restaurant.rejectionReason || null,
+      phone,
+    };
   }
 
   const payload = { userId: restaurant._id.toString(), role: ROLES.RESTAURANT };

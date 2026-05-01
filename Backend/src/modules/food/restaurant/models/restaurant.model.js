@@ -256,6 +256,10 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    pendingUpdateReason: {
+      type: String,
+      trim: true,
+    },
   },
   {
     collection: "food_restaurants",

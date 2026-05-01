@@ -928,12 +928,15 @@ export default function ExploreMore() {
             ease: [0.25, 0.1, 0.25, 1]
           }}
         >
-          <Card className="bg-white border-gray-200 py-3 mb-6 rounded-lg shadow-0">
+          <Card 
+            className="bg-white border-gray-200 py-3 mb-6 rounded-lg shadow-0 hover:border-[#7e3866]/30 hover:bg-[#7e3866]/5 transition-all active:scale-[0.99] cursor-pointer"
+            onClick={() => navigate("/food/restaurant/outlet-info")}
+          >
             <CardContent className="px-4">
               <div className="w-full flex items-center justify-between">
                 <div className="flex items-center gap-3 flex-1">
-                  <div className="p-2 bg-gray-100 rounded-lg">
-                    <Store className="w-5 h-5 text-gray-900" />
+                  <div className="p-2 bg-gray-100 rounded-lg group-hover:bg-[#7e3866]/10 transition-colors">
+                    <Store className="w-5 h-5 text-gray-900 group-hover:text-[#7e3866]" />
                   </div>
                   <div className="flex-1 min-w-0 text-left">
                     <h2 className="text-base font-semibold text-gray-900 mb-0.5">
@@ -946,6 +949,7 @@ export default function ExploreMore() {
                     )}
                   </div>
                 </div>
+                <ChevronRight className="w-5 h-5 text-gray-300" />
               </div>
             </CardContent>
           </Card>
@@ -1230,7 +1234,7 @@ export default function ExploreMore() {
                 <button 
                   onClick={() => {
                     setProfileOpen(false)
-                    navigate("/food/restaurant/onboarding?step=1")
+                    navigate("/food/restaurant/edit-owner")
                   }}
                   className="w-full flex items-start gap-4 text-left p-2 -m-2 hover:bg-gray-50 rounded-xl transition-colors group"
                 >

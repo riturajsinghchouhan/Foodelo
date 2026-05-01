@@ -185,6 +185,8 @@ const toRestaurantProfile = (doc) => {
         status: doc.status || null,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
+        approvedAt: doc.approvedAt,
+        pendingUpdateReason: doc.pendingUpdateReason,
         rating: normalizeRatingValue(doc.rating),
         totalRatings: normalizeTotalRatingsValue(doc.totalRatings)
     };
@@ -339,6 +341,24 @@ export const registerRestaurant = async (payload, files) => {
     try {
         const latNum = toFiniteNumber(latitude);
         const lngNum = toFiniteNumber(longitude);
+
+        // Allow retry: If a restaurant with the same name and phone exists but was rejected,
+        // delete it so the user can re-register without "number blocked" errors.
+        const existingRejected = await FoodRestaurant.findOne({
+            $or: [
+                { ownerPhoneDigits },
+                { restaurantNameNormalized, ownerPhoneLast10 }
+            ]
+        });
+
+        if (existingRejected) {
+            if (existingRejected.status === 'rejected') {
+                await FoodRestaurant.deleteOne({ _id: existingRejected._id });
+            } else {
+                throw new ValidationError('Restaurant with this name and owner phone already exists');
+            }
+        }
+
         const restaurant = await FoodRestaurant.create({
             restaurantName,
             restaurantNameNormalized,
@@ -389,6 +409,7 @@ export const registerRestaurant = async (payload, files) => {
             accountType,
             menuImages,
             menuPdf,
+            pendingUpdateReason: 'New Registration',
             ...images
         });
 
@@ -454,6 +475,8 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
                 'diningSettings',
                 'isAcceptingOrders',
                 'status',
+                'approvedAt',
+                'pendingUpdateReason',
                 'createdAt',
                 'updatedAt'
             ].join(' ')
@@ -504,6 +527,8 @@ export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingO
                 'diningSettings',
                 'isAcceptingOrders',
                 'status',
+                'approvedAt',
+                'pendingUpdateReason',
                 'createdAt',
                 'updatedAt'
             ].join(' ')
@@ -608,6 +633,8 @@ export const updateCurrentRestaurantDiningSettings = async (restaurantId, body =
                 'diningSettings',
                 'isAcceptingOrders',
                 'status',
+                'approvedAt',
+                'pendingUpdateReason',
                 'createdAt',
                 'updatedAt'
             ].join(' ')
@@ -923,6 +950,33 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
         return getCurrentRestaurantProfile(restaurantId);
     }
 
+    // Determine the reason for the update to show to the admin
+    const updatedFields = Object.keys(update);
+    let reason = 'Profile Update';
+
+    if (updatedFields.includes('zoneId')) {
+        reason = 'Zone Update';
+    } else if (updatedFields.some(f => ['accountNumber', 'ifscCode', 'accountHolderName', 'upiId'].includes(f))) {
+        reason = 'Financial Details Update';
+    } else if (updatedFields.some(f => ['panNumber', 'nameOnPan', 'panImage', 'gstNumber', 'fssaiNumber', 'fssaiExpiry'].includes(f))) {
+        reason = 'Regulatory Documents Update';
+    } else if (updatedFields.some(f => ['addressLine1', 'area', 'city', 'pincode'].includes(f))) {
+        reason = 'Location/Address Update';
+    } else if (updatedFields.some(f => ['menuImages', 'menuPdf'].includes(f))) {
+        reason = 'Menu Update';
+    } else if (updatedFields.some(f => ['openingTime', 'closingTime', 'openDays'].includes(f))) {
+        reason = 'Timings Update';
+    } else if (updatedFields.some(f => ['profileImage', 'coverImages'].includes(f))) {
+        reason = 'Photo/Banner Update';
+    } else if (updatedFields.some(f => ['ownerName', 'ownerEmail', 'ownerPhone', 'primaryContactNumber'].includes(f))) {
+        reason = 'Owner Details Update';
+    } else if (updatedFields.includes('pureVegRestaurant')) {
+        reason = 'Dietary Category Update';
+    } else if (updatedFields.includes('restaurantName')) {
+        reason = 'Restaurant Name Change';
+    }
+
+    update.pendingUpdateReason = reason;
     update.status = 'pending';
 
     try {
@@ -931,7 +985,6 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
             {
                 $set: update,
                 $unset: {
-                    approvedAt: 1,
                     rejectedAt: 1,
                     rejectionReason: 1
                 }
@@ -1021,12 +1074,11 @@ export const uploadRestaurantProfileImage = async (restaurantId, file) => {
                 status: 'pending'
             },
             $unset: {
-                approvedAt: 1,
                 rejectedAt: 1,
                 rejectionReason: 1
             }
         },
-        { new: true, projection: 'profileImage coverImages restaurantName cuisines location menuImages addressLine1 addressLine2 area city state pincode landmark ownerName ownerEmail ownerPhone primaryContactNumber pureVegRestaurant openingTime closingTime openDays status createdAt updatedAt' }
+        { new: true, projection: 'profileImage coverImages restaurantName cuisines location menuImages addressLine1 addressLine2 area city state pincode landmark ownerName ownerEmail ownerPhone primaryContactNumber pureVegRestaurant openingTime closingTime openDays status approvedAt pendingUpdateReason createdAt updatedAt' }
     ).lean();
 
     if (!doc) throw new ValidationError('Restaurant not found');
@@ -1086,7 +1138,6 @@ export const uploadRestaurantCoverImages = async (restaurantId, files = []) => {
         {
             $set: update,
             $unset: {
-                approvedAt: 1,
                 rejectedAt: 1,
                 rejectionReason: 1
             }
@@ -1140,7 +1191,6 @@ export const uploadRestaurantMenuImages = async (restaurantId, files = []) => {
                 status: 'pending'
             },
             $unset: {
-                approvedAt: 1,
                 rejectedAt: 1,
                 rejectionReason: 1
             }

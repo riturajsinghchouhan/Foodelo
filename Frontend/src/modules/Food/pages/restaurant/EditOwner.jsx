@@ -7,6 +7,13 @@ import {
   User,
   Edit,
   Trash2,
+  Clock,
+  Loader2,
+  MapPin,
+  Search,
+  Save,
+  Check,
+  ChevronDown
 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
@@ -18,10 +25,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@food/components/ui/dialog"
-import { restaurantAPI } from "@food/api"
+import { restaurantAPI, zoneAPI } from "@food/api"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { clearModuleAuth } from "@food/utils/auth"
 import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
+import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@food/components/ui/select"
 
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
@@ -37,17 +52,59 @@ export default function EditOwner() {
   const navigate = useNavigate()
   const goBack = useRestaurantBackNavigation()
   const [ownerData, setOwnerData] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    photo: null
+    restaurantName: "",
+    primaryContactNumber: "",
+    pureVegRestaurant: false,
+    panNumber: "",
+    nameOnPan: "",
+    accountNumber: "",
+    ifscCode: "",
+    accountHolderName: "",
+    accountType: "",
+    upiId: "",
+    zoneId: "",
+    location: {
+      formattedAddress: "",
+      addressLine1: "",
+      addressLine2: "",
+      area: "",
+      city: "",
+      state: "",
+      pincode: "",
+      landmark: "",
+      latitude: "",
+      longitude: "",
+    }
   })
   
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
     email: "",
-    photo: null
+    photo: null,
+    restaurantName: "",
+    primaryContactNumber: "",
+    pureVegRestaurant: false,
+    panNumber: "",
+    nameOnPan: "",
+    accountNumber: "",
+    ifscCode: "",
+    accountHolderName: "",
+    accountType: "",
+    upiId: "",
+    zoneId: "",
+    location: {
+      formattedAddress: "",
+      addressLine1: "",
+      addressLine2: "",
+      area: "",
+      city: "",
+      state: "",
+      pincode: "",
+      landmark: "",
+      latitude: "",
+      longitude: "",
+    }
   })
   const [hasChanges, setHasChanges] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -57,6 +114,19 @@ export default function EditOwner() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isPhotoPickerOpen, setIsPhotoPickerOpen] = useState(false)
+  const [zones, setZones] = useState([])
+  const [zonesLoading, setZonesLoading] = useState(false)
+  const [restaurantStatus, setRestaurantStatus] = useState({
+    status: '',
+    pendingUpdateReason: '',
+    approvedAt: null
+  })
+  
+  const locationSearchInputRef = useRef(null)
+  const mapsScriptLoadedRef = useRef(false)
+  const [locationSearchValue, setLocationSearchValue] = useState("")
+  const [locationSuggestions, setLocationSuggestions] = useState([])
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false)
 
   // Lenis smooth scrolling
   useEffect(() => {
@@ -90,10 +160,38 @@ export default function EditOwner() {
             name: data.ownerName || data.name || "",
             phone: data.ownerPhone || data.primaryContactNumber || data.phone || "",
             email: data.ownerEmail || data.email || "",
-            photo: data.profileImage?.url || null
+            photo: data.profileImage?.url || null,
+            restaurantName: data.restaurantName || "",
+            primaryContactNumber: data.primaryContactNumber || "",
+            pureVegRestaurant: !!data.pureVegRestaurant,
+            panNumber: data.panNumber || "",
+            nameOnPan: data.nameOnPan || "",
+            accountNumber: data.accountNumber || "",
+            ifscCode: data.ifscCode || "",
+            accountHolderName: data.accountHolderName || "",
+            accountType: data.accountType || "",
+            upiId: data.upiId || "",
+            zoneId: data.zoneId || "",
+            location: {
+              formattedAddress: data.location?.formattedAddress || data.address || "",
+              addressLine1: data.location?.addressLine1 || "",
+              addressLine2: data.location?.addressLine2 || "",
+              area: data.location?.area || data.area || "",
+              city: data.location?.city || data.city || "",
+              state: data.location?.state || data.state || "",
+              pincode: data.location?.pincode || data.pincode || "",
+              landmark: data.location?.landmark || data.landmark || "",
+              latitude: data.location?.latitude || "",
+              longitude: data.location?.longitude || "",
+            }
           }
           setOwnerData(ownerDataFromBackend)
           setFormData(ownerDataFromBackend)
+          setRestaurantStatus({
+            status: data.status || '',
+            pendingUpdateReason: data.pendingUpdateReason || '',
+            approvedAt: data.approvedAt || null
+          })
         }
       } catch (error) {
         // Only log error if it's not a network/timeout error (backend might be down/slow)
@@ -119,14 +217,166 @@ export default function EditOwner() {
     fetchRestaurantData()
   }, [])
 
+  // Load zones
+  useEffect(() => {
+    let cancelled = false
+    setZonesLoading(true)
+    zoneAPI.getPublicZones()
+      .then((res) => {
+        const list = res?.data?.data?.zones || res?.data?.zones || []
+        if (!cancelled) setZones(Array.isArray(list) ? list : [])
+      })
+      .catch(() => {
+        if (!cancelled) setZones([])
+      })
+      .finally(() => {
+        if (!cancelled) setZonesLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // Google Maps Autocomplete logic
+  useEffect(() => {
+    let cancelled = false
+    const init = async () => {
+      let inputElement = null
+      for (let i = 0; i < 50; i++) {
+        if (locationSearchInputRef.current) {
+          inputElement = locationSearchInputRef.current
+          break
+        }
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      if (!inputElement || cancelled) return
+
+      const loadMaps = async () => {
+        if (window.google?.maps?.places?.Autocomplete) {
+          mapsScriptLoadedRef.current = true
+          return true
+        }
+        const apiKey = await getGoogleMapsApiKey()
+        if (!apiKey) return false
+
+        return new Promise((resolve) => {
+          if (document.getElementById("google-maps-sdk")) {
+             // Script exists but might not be loaded yet
+             let check = setInterval(() => {
+                if (window.google?.maps?.places?.Autocomplete) {
+                   clearInterval(check)
+                   resolve(true)
+                }
+             }, 100)
+             setTimeout(() => { clearInterval(check); resolve(false) }, 5000)
+             return
+          }
+          const script = document.createElement("script")
+          script.id = "google-maps-sdk"
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`
+          script.async = true
+          script.defer = true
+          script.onload = () => resolve(!!window.google?.maps?.places?.Autocomplete)
+          script.onerror = () => resolve(false)
+          document.head.appendChild(script)
+        })
+      }
+
+      const ok = await loadMaps()
+      if (!ok || cancelled) return
+
+      const autocomplete = new window.google.maps.places.Autocomplete(inputElement, {
+        componentRestrictions: { country: "in" },
+        fields: ["address_components", "geometry", "formatted_address"],
+      })
+
+      autocomplete.addListener("place_changed", () => {
+        const place = autocomplete.getPlace()
+        if (!place.geometry) return
+
+        const formattedAddress = place.formatted_address || ""
+        const lat = place.geometry.location.lat()
+        const lng = place.geometry.location.lng()
+        const comps = place.address_components || []
+        const get = (types) => comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name || ""
+
+        const area = get(["sublocality_level_1", "sublocality", "neighborhood"])
+        const city = get(["locality", "administrative_area_level_2"])
+        const state = get(["administrative_area_level_1"])
+        const pincode = get(["postal_code"])
+
+        setFormData((prev) => ({
+          ...prev,
+          location: {
+            ...prev.location,
+            formattedAddress,
+            addressLine1: formattedAddress,
+            area: area || prev.location.area,
+            city: city || prev.location.city,
+            state: state || prev.location.state,
+            pincode: pincode || prev.location.pincode,
+            latitude: lat,
+            longitude: lng,
+          },
+        }))
+        setLocationSearchValue(formattedAddress)
+      })
+    }
+
+    init()
+    return () => { cancelled = true }
+  }, [])
+
+  // Nominatim Fallback
+  useEffect(() => {
+    const q = String(locationSearchValue || "").trim()
+    if (q.length < 3 || mapsScriptLoadedRef.current) {
+      setLocationSuggestions([])
+      return
+    }
+
+    const t = setTimeout(async () => {
+      try {
+        setIsSearchingLocation(true)
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&q=${encodeURIComponent(q)}&countrycodes=in`
+        const res = await fetch(url, { headers: { Accept: "application/json" } })
+        const json = await res.json()
+        const mapped = (Array.isArray(json) ? json : []).map(r => ({
+          id: r.place_id,
+          display: r.display_name || "",
+          lat: Number(r.lat),
+          lng: Number(r.lon),
+          addr: r.address || {},
+        }))
+        setLocationSuggestions(mapped)
+      } catch (e) {
+        debugError("Nominatim search failed:", e)
+      } finally {
+        setIsSearchingLocation(false)
+      }
+    }, 600)
+
+    return () => clearTimeout(t)
+  }, [locationSearchValue])
+
   // Check for changes
   useEffect(() => {
     const changed = 
       formData.name !== ownerData.name ||
       formData.email !== ownerData.email ||
+      formData.restaurantName !== ownerData.restaurantName ||
+      formData.primaryContactNumber !== ownerData.primaryContactNumber ||
+      formData.pureVegRestaurant !== ownerData.pureVegRestaurant ||
+      formData.panNumber !== ownerData.panNumber ||
+      formData.nameOnPan !== ownerData.nameOnPan ||
+      formData.accountNumber !== ownerData.accountNumber ||
+      formData.ifscCode !== ownerData.ifscCode ||
+      formData.accountHolderName !== ownerData.accountHolderName ||
+      formData.accountType !== ownerData.accountType ||
+      formData.upiId !== ownerData.upiId ||
+      formData.zoneId !== ownerData.zoneId ||
+      JSON.stringify(formData.location) !== JSON.stringify(ownerData.location) ||
       profileImageFile !== null
     setHasChanges(changed)
-  }, [formData.name, formData.email, ownerData.name, ownerData.email, profileImageFile])
+  }, [formData.name, formData.email, formData.restaurantName, formData.primaryContactNumber, formData.pureVegRestaurant, formData.panNumber, formData.nameOnPan, formData.accountNumber, formData.ifscCode, formData.accountHolderName, formData.accountType, formData.upiId, formData.zoneId, formData.location, ownerData.name, ownerData.email, ownerData.restaurantName, ownerData.primaryContactNumber, ownerData.pureVegRestaurant, ownerData.panNumber, ownerData.nameOnPan, ownerData.accountNumber, ownerData.ifscCode, ownerData.accountHolderName, ownerData.accountType, ownerData.upiId, ownerData.zoneId, ownerData.location, profileImageFile])
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -192,6 +442,18 @@ export default function EditOwner() {
         ownerName: formData.name.trim(),
         ownerEmail: formData.email.trim(),
         ownerPhone: formData.phone.trim(),
+        restaurantName: formData.restaurantName.trim(),
+        primaryContactNumber: formData.primaryContactNumber.trim(),
+        pureVegRestaurant: formData.pureVegRestaurant,
+        panNumber: formData.panNumber.trim(),
+        nameOnPan: formData.nameOnPan.trim(),
+        accountNumber: formData.accountNumber.trim(),
+        ifscCode: formData.ifscCode.trim(),
+        accountHolderName: formData.accountHolderName.trim(),
+        accountType: formData.accountType,
+        upiId: formData.upiId.trim(),
+        zoneId: formData.zoneId,
+        ...formData.location
       }
 
       // If profile image was uploaded, include it
@@ -214,13 +476,16 @@ export default function EditOwner() {
         // Dispatch event to notify parent page
         window.dispatchEvent(new Event("ownerDataUpdated"))
         
+        toast.success("Update submitted for admin approval!")
+        
         // Update local state
         setOwnerData({ ...formData })
         setProfileImageFile(null)
         setHasChanges(false)
+        setRestaurantStatus(prev => ({ ...prev, status: 'pending' }))
         
-        // Navigate back
-        goBack()
+        // Navigate back after a short delay
+        setTimeout(() => goBack(), 1500)
       } else {
         throw new Error("Invalid response from server")
       }
@@ -304,6 +569,21 @@ export default function EditOwner() {
 
         {/* Content */}
         <div className="px-4 py-6 space-y-6">
+          {/* Pending Update Banner */}
+          {restaurantStatus.status === 'pending' && (restaurantStatus.approvedAt || (restaurantStatus.pendingUpdateReason && restaurantStatus.pendingUpdateReason !== 'New Registration')) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+              <div className="bg-amber-100 p-2 rounded-xl flex-shrink-0">
+                <Clock className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-amber-900">{restaurantStatus.pendingUpdateReason || "Update Pending"}</p>
+                <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                  Your restaurant <strong>{restaurantStatus.pendingUpdateReason || "profile update"}</strong> is pending approval. Please wait for admin response.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Profile Photo Section */}
           <div className="flex flex-col items-center gap-3">
             <div className="relative">
@@ -340,38 +620,88 @@ export default function EditOwner() {
 
           {/* Editable Fields */}
           <div className="space-y-4">
-            {/* Name Field */}
+            {/* Restaurant Name Field */}
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Name</label>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Restaurant Name</label>
               <div className="relative">
                 <Input
                   type="text"
-                  value={loading ? "Loading..." : formData.name}
-                  onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder="Enter name"
-                  className="w-full pr-10"
+                  value={loading ? "Loading..." : formData.restaurantName}
+                  onChange={(e) => handleInputChange("restaurantName", e.target.value)}
+                  placeholder="Enter restaurant name"
+                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
                   disabled={loading || saving}
                 />
                 <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
               </div>
             </div>
 
-            {/* Phone Number Field */}
+            {/* Pure Veg Toggle */}
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className={`w-4 h-4 border-2 rounded-sm flex items-center justify-center ${formData.pureVegRestaurant ? 'border-green-600' : 'border-gray-400'}`}>
+                  <div className={`w-2 h-2 rounded-full ${formData.pureVegRestaurant ? 'bg-green-600' : 'transparent'}`} />
+                </div>
+                <span className="text-sm font-semibold text-gray-700">Pure Veg Restaurant</span>
+              </div>
+              <button
+                onClick={() => handleInputChange("pureVegRestaurant", !formData.pureVegRestaurant)}
+                disabled={loading || saving}
+                className={`w-12 h-6 rounded-full transition-colors relative ${formData.pureVegRestaurant ? 'bg-green-600' : 'bg-gray-300'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.pureVegRestaurant ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+
+            {/* Name Field */}
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Phone number</label>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Owner Name</label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={loading ? "Loading..." : formData.name}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
+                  placeholder="Enter owner name"
+                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
+                  disabled={loading || saving}
+                />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+              </div>
+            </div>
+
+            {/* Phone Number Field (Read Only) */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Login Phone Number</label>
               <Input
                 type="tel"
                 value={loading ? "Loading..." : formData.phone}
                 placeholder="Enter phone number"
-                className="w-full focus-visible:border-black focus-visible:ring-0"
+                className="w-full bg-gray-50 border-gray-200 text-gray-500 cursor-not-allowed"
                 readOnly
                 disabled={loading || saving}
               />
+              <p className="text-[10px] text-gray-400 mt-1">* Login number cannot be changed from here.</p>
+            </div>
+
+            {/* Primary Contact Number Field */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Primary Contact Number</label>
+              <div className="relative">
+                <Input
+                  type="tel"
+                  value={loading ? "Loading..." : formData.primaryContactNumber}
+                  onChange={(e) => handleInputChange("primaryContactNumber", e.target.value)}
+                  placeholder="Enter contact number"
+                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
+                  disabled={loading || saving}
+                />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+              </div>
             </div>
 
             {/* Email Field */}
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Email</label>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Email Address</label>
               <div className="relative">
                 <Input
                   type="email"
@@ -384,16 +714,245 @@ export default function EditOwner() {
                 <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
               </div>
             </div>
+
+            <div className="pt-6 pb-2 border-t border-gray-100">
+              <h3 className="text-base font-bold text-gray-900">Restaurant Location</h3>
+              <p className="text-xs text-gray-400 mt-1 uppercase tracking-widest font-black">ZONE & ADDRESS</p>
+            </div>
+
+            {/* Service Zone */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Service Zone*</label>
+              <select
+                value={formData.zoneId || ""}
+                onChange={(e) => handleInputChange("zoneId", e.target.value)}
+                className="w-full h-10 rounded-md border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:border-black"
+                disabled={zonesLoading || loading || saving}
+              >
+                <option value="">{zonesLoading ? "Loading zones..." : "Select a zone"}</option>
+                {zones.map((z) => {
+                  const id = String(z?._id || z?.id || "")
+                  const label = z?.name || z?.zoneName || z?.serviceLocation || id
+                  return <option key={id} value={id}>{label}</option>
+                })}
+              </select>
+            </div>
+
+            {/* Search Location */}
+            <div className="relative">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Search Location</label>
+              <div className="relative">
+                <Input
+                  ref={locationSearchInputRef}
+                  value={locationSearchValue}
+                  onChange={(e) => setLocationSearchValue(e.target.value)}
+                  className="w-full focus-visible:border-black focus-visible:ring-0"
+                  placeholder="Search your restaurant address..."
+                  disabled={loading || saving}
+                />
+                {isSearchingLocation && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-orange-500 border-t-transparent" />
+                  </div>
+                )}
+              </div>
+
+              {/* Suggestions */}
+              {locationSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-xl z-[100] overflow-hidden max-h-60 overflow-y-auto">
+                  {locationSuggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        const { lat, lng, display, addr } = s
+                        const area = addr.suburb || addr.neighbourhood || addr.city_district || addr.locality || ""
+                        const city = addr.city || addr.town || addr.village || ""
+                        const state = addr.state || ""
+                        const pincode = addr.postcode || ""
+
+                        setFormData((prev) => ({
+                          ...prev,
+                          location: {
+                            ...prev.location,
+                            formattedAddress: display,
+                            addressLine1: display,
+                            area: area || prev.location.area,
+                            city: city || prev.location.city,
+                            state: state || prev.location.state,
+                            pincode: pincode || prev.location.pincode,
+                            latitude: lat,
+                            longitude: lng,
+                          },
+                        }))
+                        setLocationSearchValue(display)
+                        setLocationSuggestions([])
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-orange-50 border-b border-gray-100 last:border-none text-gray-700"
+                    >
+                      {s.display}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Manual Address Fields */}
+            <div className="grid grid-cols-1 gap-4">
+              <Input
+                value={formData.location?.addressLine1 || ""}
+                onChange={(e) => setFormData(prev => ({ ...prev, location: { ...prev.location, addressLine1: e.target.value } }))}
+                placeholder="Shop no. / building no."
+                className="w-full"
+                disabled={loading || saving}
+              />
+              <Input
+                value={formData.location?.area || ""}
+                onChange={(e) => setFormData(prev => ({ ...prev, location: { ...prev.location, area: e.target.value } }))}
+                placeholder="Area / Sector / Locality*"
+                className="w-full"
+                disabled={loading || saving}
+              />
+              
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  value={formData.location?.city || ""}
+                  onValueChange={(val) => setFormData(prev => ({ ...prev, location: { ...prev.location, city: val } }))}
+                >
+                  <SelectTrigger className="bg-white text-sm">
+                    <SelectValue placeholder="Select City*" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Indore">Indore</SelectItem>
+                    <SelectItem value="Bhopal">Bhopal</SelectItem>
+                    <SelectItem value="Mumbai">Mumbai</SelectItem>
+                    <SelectItem value="Pune">Pune</SelectItem>
+                    <SelectItem value="Delhi">Delhi</SelectItem>
+                    <SelectItem value="Bangalore">Bangalore</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Input
+                  value={formData.location?.pincode || ""}
+                  onChange={(e) => setFormData(prev => ({ ...prev, location: { ...prev.location, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) } }))}
+                  placeholder="Pincode*"
+                  className="w-full"
+                  disabled={loading || saving}
+                />
+              </div>
+            </div>
+
+            <div className="pt-6 pb-2 border-t border-gray-100">
+              <h3 className="text-base font-bold text-gray-900">Financial Details</h3>
+              <p className="text-xs text-gray-400 mt-1 uppercase tracking-widest font-black">PAN & BANK ACCOUNT</p>
+            </div>
+
+            {/* PAN Number */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">PAN Number</label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={loading ? "Loading..." : formData.panNumber}
+                  onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase())}
+                  placeholder="ABCDE1234F"
+                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
+                  disabled={loading || saving}
+                />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+              </div>
+            </div>
+
+            {/* Name on PAN */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Name on PAN Card</label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={loading ? "Loading..." : formData.nameOnPan}
+                  onChange={(e) => handleInputChange("nameOnPan", e.target.value)}
+                  placeholder="Enter name as per PAN"
+                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
+                  disabled={loading || saving}
+                />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+              </div>
+            </div>
+
+            {/* Account Number */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Bank Account Number</label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={loading ? "Loading..." : formData.accountNumber}
+                  onChange={(e) => handleInputChange("accountNumber", e.target.value)}
+                  placeholder="Enter account number"
+                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
+                  disabled={loading || saving}
+                />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+              </div>
+            </div>
+
+            {/* Account Type */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Account Type</label>
+              <Select
+                value={formData.accountType || ""}
+                onValueChange={(val) => handleInputChange("accountType", val)}
+              >
+                <SelectTrigger className="w-full focus:ring-0 focus:border-black">
+                  <SelectValue placeholder="Select account type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Savings">Savings</SelectItem>
+                  <SelectItem value="Current">Current</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* IFSC Code */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">IFSC Code</label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={loading ? "Loading..." : formData.ifscCode}
+                  onChange={(e) => handleInputChange("ifscCode", e.target.value.toUpperCase())}
+                  placeholder="SBIN0001234"
+                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
+                  disabled={loading || saving}
+                />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+              </div>
+            </div>
+
+            {/* UPI ID */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">UPI ID (Optional)</label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={loading ? "Loading..." : formData.upiId}
+                  onChange={(e) => handleInputChange("upiId", e.target.value)}
+                  placeholder="name@okaxis"
+                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
+                  disabled={loading || saving}
+                />
+                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+              </div>
+            </div>
           </div>
 
           {/* Delete Account Section */}
-          <div className="pt-4">
+          <div className="pt-8 border-t border-gray-100">
             <button
               onClick={() => setShowDeleteDialog(true)}
               className="flex items-center gap-2 text-red-600 hover:text-red-700 transition-colors"
             >
               <Trash2 className="w-5 h-5" />
-              <span className="text-sm font-normal">Delete your Zomato account</span>
+              <span className="text-sm font-normal">Delete your Appzeto account</span>
             </button>
           </div>
         </div>
@@ -406,7 +965,7 @@ export default function EditOwner() {
                 <span className="text-2xl leading-none text-red-600">!</span>
               </div>
               <DialogTitle className="text-base font-semibold text-gray-900 text-center">
-                You are about to delete your Zomato account
+                You are about to delete your Appzeto account
               </DialogTitle>
               <DialogHeader className="mt-2 text-sm text-gray-600">
                 All information associated with your account will be deleted, and you will lose access to your restaurant permanently.

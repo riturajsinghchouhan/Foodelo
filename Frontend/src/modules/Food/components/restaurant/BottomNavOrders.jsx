@@ -82,7 +82,7 @@ export default function BottomNavOrders() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-60 px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    <div className="fixed bottom-0 left-0 right-0 z-60 px-2 pb-[max(0.4rem,env(safe-area-inset-bottom))]">
       <div className="mx-auto flex w-full max-w-md items-end gap-2">
         <div className="flex-1 min-w-0">
           <div className="relative overflow-visible rounded-[30px] bg-[#7e3866] py-2 pl-3 pr-2 shadow-[0_16px_40px_rgba(126,56,102,0.35)]">
@@ -97,33 +97,53 @@ export default function BottomNavOrders() {
                     onClick={() => handleTabClick(tab)}
                     aria-current={isActive ? "page" : undefined}
                     className="relative z-10 flex min-w-0 flex-1 flex-col items-center justify-center gap-1 overflow-visible rounded-full px-2 py-2"
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ 
+                      scale: 1.1,
+                      y: -4,
+                      transition: { type: "spring", stiffness: 400, damping: 10 }
+                    }}
+                    whileTap={{ scale: 0.9 }}
                   >
                     {isActive && (
-                      <motion.div
-                        layoutId="bottomNavActive"
-                        className="absolute inset-0 -z-10 rounded-full bg-white/22"
-                        initial={false}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      />
+                        <motion.div
+                          layoutId="bottomNavActive"
+                          className="absolute inset-0 -z-10 rounded-full bg-white/25 shadow-[0_0_15px_rgba(255,255,255,0.2)]"
+                          initial={false}
+                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
                     )}
-                    <Icon
-                      className={`relative z-10 h-4.5 w-4.5 transition-colors duration-300 ease-in-out ${
-                        isActive ? "text-white" : "text-white/78"
-                      }`}
-                    />
+                    <motion.div
+                      animate={{ 
+                        scale: isActive ? [1, 1.2, 1] : 1,
+                        rotate: isActive ? [0, -10, 10, 0] : 0
+                      }}
+                      transition={{ duration: 0.4 }}
+                    >
+                      <Icon
+                        className={`relative z-10 h-5 w-5 transition-colors duration-300 ease-in-out ${
+                          isActive ? "text-white" : "text-white/70"
+                        }`}
+                      />
+                    </motion.div>
                     {/* Notification Dot */}
                     {((tab.id === 'orders' && (newOrder || newReservation)) || 
                       (tab.id === 'feedback' && unreadCount > 0)) && (
-                      <span className="absolute top-2 right-1/4 w-2 h-2 rounded-full bg-red-500 border border-[#7e3866] z-20 animate-pulse" />
+                      <span className="absolute top-2 right-2">
+                        <span className="absolute inset-0 rounded-full bg-red-400 animate-ping opacity-75" />
+                        <span className="relative block w-2.5 h-2.5 rounded-full bg-red-500 border border-white shadow-sm" />
+                      </span>
                     )}
-                    <span
+                    <motion.span
+                      animate={{ 
+                        scale: isActive ? 1.1 : 1,
+                        fontWeight: isActive ? 800 : 500
+                      }}
                       className={`relative z-10 whitespace-nowrap text-[11px] leading-none transition-colors duration-300 ease-in-out ${
-                        isActive ? "text-white" : "text-white/78"
+                        isActive ? "text-white" : "text-white/70"
                       }`}
                     >
                       {tab.label}
-                    </span>
+                    </motion.span>
                   </motion.button>
                 )
               })}

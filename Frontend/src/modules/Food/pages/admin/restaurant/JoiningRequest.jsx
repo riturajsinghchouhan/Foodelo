@@ -496,13 +496,20 @@ export default function JoiningRequest() {
                         <span className="text-sm text-slate-700">{request.zone || "—"}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          request.status === "Pending"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-red-100 text-red-700"
-                        }`}>
-                          {request.status}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            request.status === "pending" || request.status === "Pending"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-red-100 text-red-700"
+                          }`}>
+                            {request.status}
+                          </span>
+                          {request.status?.toLowerCase() === "pending" && request.pendingUpdateReason && (
+                            <span className="text-[10px] font-semibold text-slate-500 italic ml-1">
+                              • {request.pendingUpdateReason}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -792,7 +799,7 @@ export default function JoiningRequest() {
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                           approvalStatus === "approved" ? "bg-green-100 text-green-700" : approvalStatus === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
                         }`}>
-                          {approvalStatus === "approved" ? "Approved" : approvalStatus === "rejected" ? "Rejected" : "Pending Approval"}
+                          {approvalStatus === "approved" ? "Approved" : approvalStatus === "rejected" ? "Rejected" : (r.pendingUpdateReason ? `Pending: ${r.pendingUpdateReason}` : "Pending Approval")}
                         </span>
                       </div>
                     </div>
@@ -912,7 +919,7 @@ export default function JoiningRequest() {
                           <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                             approvalStatus === "approved" ? "bg-green-100 text-green-700" : approvalStatus === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
                           }`}>
-                            {approvalStatus === "approved" ? "Approved" : approvalStatus === "rejected" ? "Rejected" : "Pending"}
+                            {approvalStatus === "approved" ? "Approved" : approvalStatus === "rejected" ? "Rejected" : (r.pendingUpdateReason ? `Pending (${r.pendingUpdateReason})` : "Pending")}
                           </span>
                         </div>
                       </div>

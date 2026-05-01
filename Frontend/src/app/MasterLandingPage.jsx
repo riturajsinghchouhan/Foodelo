@@ -83,7 +83,7 @@ export default function MasterLandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <main className="pt-36 pb-20 px-6 relative z-10">
+      <main className="pt-44 pb-20 px-6 relative z-10">
         <div className="max-w-7xl mx-auto">
           <div className="text-center space-y-6 mb-20 relative">
             <motion.div

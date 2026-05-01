@@ -165,6 +165,13 @@ export const isRestaurantOnboardingComplete = (restaurant) => {
     return true
   }
 
+  // If a restaurant is pending but has already been approved once (e.g. they updated their profile/location),
+  // OR if they have a pendingUpdateReason that is not "New Registration",
+  // they should not be redirected back to onboarding.
+  if (restaurant?.status === "pending" && (restaurant?.approvedAt || (restaurant?.pendingUpdateReason && restaurant?.pendingUpdateReason !== 'New Registration'))) {
+    return true
+  }
+
   if (restaurant?.isActive === true) {
     return true
   }

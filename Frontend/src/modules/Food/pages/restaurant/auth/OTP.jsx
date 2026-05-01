@@ -123,6 +123,21 @@ export default function RestaurantOTP() {
         return
       }
 
+      if (data?.pendingApproval) {
+        const pendingPhone = data.phone || phone
+        setRestaurantPendingPhone(pendingPhone)
+        sessionStorage.removeItem("restaurantAuthData")
+        navigate("/food/restaurant/pending-verification", {
+          replace: true,
+          state: { 
+            phone: pendingPhone,
+            isRejected: data.isRejected,
+            rejectionReason: data.rejectionReason
+          },
+        })
+        return
+      }
+
       const accessToken = data?.accessToken
       const restaurant = data?.user ?? data?.restaurant
 

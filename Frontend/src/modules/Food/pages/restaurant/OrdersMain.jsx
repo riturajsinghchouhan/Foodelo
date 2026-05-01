@@ -1280,6 +1280,9 @@ export default function OrdersMain() {
         if (restaurant) {
           setRestaurantStatus({
             isActive: restaurant.isActive,
+            status: restaurant.status,
+            approvedAt: restaurant.approvedAt,
+            pendingUpdateReason: restaurant.pendingUpdateReason,
             rejectionReason: restaurant.rejectionReason || null,
             onboarding: restaurant.onboarding || null,
             isLoading: false,
@@ -2362,6 +2365,33 @@ export default function OrdersMain() {
       <div className="sticky top-0 z-50 bg-white">
         <RestaurantNavbar showNotifications={true} />
       </div>
+
+      {/* Profile Update Pending Banner */}
+      <AnimatePresence>
+        {!restaurantStatus.isLoading && 
+          restaurantStatus.status === 'pending' && 
+          (restaurantStatus.approvedAt || (restaurantStatus.pendingUpdateReason && restaurantStatus.pendingUpdateReason !== 'New Registration')) && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="px-4 mt-3"
+            >
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+                <div className="bg-amber-100 p-2 rounded-xl flex-shrink-0">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-amber-900">{restaurantStatus.pendingUpdateReason || "Update Pending"}</p>
+                  <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                    Your restaurant <strong>{restaurantStatus.pendingUpdateReason || "profile update"}</strong> is pending approval. Please wait for admin response. You are currently continuing operations with your existing details/location.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )
+        }
+      </AnimatePresence>
 
       {/* Top Filter Bar - Sticky below navbar */}
       <div className="sticky top-[50px] z-40 pb-2 bg-gray-100">
