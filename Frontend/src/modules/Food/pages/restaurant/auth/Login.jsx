@@ -66,7 +66,7 @@ export default function RestaurantLogin() {
 
       {/* Main Content */}
       <div className="absolute top-6 right-6 z-20">
-        <Link to="/user/auth/support">
+        <Link to="/restaurant/auth/support">
           <Button variant="ghost" className="text-gray-500 hover:text-[#7e3866] font-semibold flex items-center gap-2">
             <ShieldQuestion className="w-5 h-5" />
             Support

@@ -1,7 +1,7 @@
 import { motion } from "framer-motion"
 import { useState, useEffect } from "react"
 import { ArrowLeft, Loader2 } from "lucide-react"
-import api, { API_ENDPOINTS } from "@food/api"
+import { publicAPI } from "@food/api"
 import useDeliveryBackNavigation from "../hooks/useDeliveryBackNavigation"
 
 export default function TermsAndConditionsV2() {
@@ -13,10 +13,14 @@ export default function TermsAndConditionsV2() {
   useEffect(() => {
     const fetchTerms = async () => {
       try {
-        const response = await api.get(API_ENDPOINTS.ADMIN.TERMS_PUBLIC, {
-          params: { userType: 'delivery' }
-        })
-        const payload = response?.data?.data || response?.data || {}
+        let response = await publicAPI.getTerms("terms_delivery")
+        
+        // Fallback to general terms if specific delivery terms are not set
+        if (!response.data.success || !response.data.data?.content) {
+          response = await publicAPI.getTerms("terms")
+        }
+
+        const payload = response?.data?.data || {}
         if (response?.data?.success) {
           setContent(payload?.content || "")
           setLastUpdated(payload?.updatedAt || "")

@@ -92,7 +92,7 @@ export default function RestaurantSignIn() {
       {/* Right form section */}
       <div className="w-full lg:w-1/2 h-full flex flex-col relative">
         <div className="absolute top-6 right-6 z-20">
-          <Link to="/user/auth/support">
+          <Link to="/restaurant/auth/support">
             <Button variant="ghost" className="text-gray-500 hover:text-primary-orange font-semibold flex items-center gap-2">
               <ShieldQuestion className="w-5 h-5" />
               Support

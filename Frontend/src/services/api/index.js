@@ -2749,4 +2749,7 @@ export const diningAPI = {
   },
 };
 export const heroBannerAPI = createStubAPI();
-export const publicAPI = createStubAPI();
+export const publicAPI = {
+  getPrivacy: (key = "privacy") => apiClient.get(`/food/pages/${key}`),
+  getTerms: (key = "terms") => apiClient.get(`/food/pages/${key}`),
+};

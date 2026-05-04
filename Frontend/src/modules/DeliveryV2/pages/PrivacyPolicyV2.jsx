@@ -13,10 +13,15 @@ export default function PrivacyPolicyV2() {
   useEffect(() => {
     const fetchPrivacy = async () => {
       try {
-        const response = await publicAPI.getPrivacy()
-        if (response.data.success) {
-          setContent(response.data.data.content)
-          setLastUpdated(response.data.data.updatedAt)
+        let response = await publicAPI.getPrivacy("privacy_delivery")
+        // Fallback to general privacy if specific delivery privacy is not set
+        if (!response.data.success || !response.data.data?.content) {
+          response = await publicAPI.getPrivacy("privacy")
+        }
+        
+        if (response.data.success && response.data.data) {
+          setContent(response.data.data.content || "")
+          setLastUpdated(response.data.data.updatedAt || "")
         }
       } catch (error) {
         console.error("Error fetching privacy:", error)
