@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate, Link, useSearchParams } from "react-router-dom"
-import { AlertCircle, Loader2 } from "lucide-react"
+import { AlertCircle, Loader2, ShieldQuestion } from "lucide-react"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
@@ -117,6 +117,15 @@ export default function SignIn() {
       </div>
 
       <div className="w-full max-w-[450px] bg-white dark:bg-[#1a1a1a] rounded-xl shadow-2xl relative z-10 overflow-hidden border border-gray-100 dark:border-gray-800">
+        <div className="absolute top-4 right-4 z-20">
+          <Link to="/user/auth/support">
+            <Button variant="ghost" size="sm" className="text-gray-500 hover:text-primary font-semibold flex items-center gap-2">
+              <ShieldQuestion className="w-4 h-4" />
+              Support
+            </Button>
+          </Link>
+        </div>
+
         {/* Banner (Mobile Only) */}
         <div className="md:hidden w-full h-[180px] relative">
           <img src={loginBanner} alt="Food Banner" className="w-full h-full object-cover" />

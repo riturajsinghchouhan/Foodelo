@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Loader2, Smartphone, AlertCircle } from "lucide-react"
+import { ArrowLeft, Loader2, Smartphone, AlertCircle, ShieldQuestion } from "lucide-react"
+import { Link } from "react-router-dom"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
@@ -413,6 +414,15 @@ export default function OTP() {
       </div>
 
       <div className="w-full max-w-[450px] bg-white dark:bg-[#1a1a1a] rounded-xl shadow-2xl relative z-10 overflow-hidden border border-gray-100 dark:border-gray-800">
+        <div className="absolute top-4 right-4 z-20">
+          <Link to="/user/auth/support">
+            <Button variant="ghost" size="sm" className="text-gray-500 hover:text-primary font-semibold flex items-center gap-2">
+              <ShieldQuestion className="w-4 h-4" />
+              Support
+            </Button>
+          </Link>
+        </div>
+
         {/* Header */}
         <div className="flex items-center px-6 py-4 border-b border-gray-100 dark:border-gray-800">
           <button

@@ -3,7 +3,8 @@ import { useNavigate, Link } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { adminAPI } from "@food/api"
 import { setAuthData } from "@food/utils/auth"
-import { ShieldCheck, UserCog, Star, Heart, ArrowRight, Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { ShieldCheck, UserCog, Star, Heart, ArrowRight, Loader2, Mail, Lock, Eye, EyeOff, ShieldQuestion } from "lucide-react"
+import { Button } from "@food/components/ui/button"
 import logoNew from "@/assets/logo.png"
 import { toast } from "sonner"
 
@@ -57,6 +58,15 @@ export default function AdminLogin() {
       <div className="absolute bottom-[-100px] left-[-100px] w-[400px] h-[400px] bg-[#7e3866]/5 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Content */}
+      <div className="absolute top-6 right-6 z-20">
+        <Link to="/user/auth/support">
+          <Button variant="ghost" className="text-gray-500 hover:text-[#7e3866] font-semibold flex items-center gap-2">
+            <ShieldQuestion className="w-5 h-5" />
+            Support
+          </Button>
+        </Link>
+      </div>
+
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
