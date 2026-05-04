@@ -607,6 +607,23 @@ export const adminAPI = {
   deleteZone: (id) =>
     apiClient.delete(`/food/admin/zones/${id}`, { contextModule: "admin" }),
 
+  /** Business Settings */
+  getBusinessSettings: () =>
+    apiClient.get("/food/admin/business-settings", { contextModule: "admin" }),
+  getPublicBusinessSettings: () =>
+    apiClient.get("/food/admin/business-settings/public"),
+  updateBusinessSettings: (data, files = {}) => {
+    const formData = new FormData();
+    formData.append("data", JSON.stringify(data));
+    if (files.logo) formData.append("logo", files.logo);
+    if (files.favicon) formData.append("favicon", files.favicon);
+
+    return apiClient.patch("/food/admin/business-settings", formData, {
+      contextModule: "admin",
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
   /** Feedback Experience (admin) */
   getFeedbackExperiences: (params = {}) =>
     apiClient.get(API_ENDPOINTS.ADMIN.FEEDBACK_EXPERIENCE, {

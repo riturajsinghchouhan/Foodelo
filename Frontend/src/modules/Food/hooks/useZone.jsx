@@ -58,7 +58,7 @@ export function useZone(location) {
   // Detect zone when location is available
   const detectZone = useCallback(async (lat, lng) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setZoneStatus("OUT_OF_SERVICE");
+      setZoneStatus("IDLE");
       setZoneId(null);
       setZone(null);
       return;
@@ -155,7 +155,10 @@ export function useZone(location) {
         setZone(cachedZone ? JSON.parse(cachedZone) : null);
         setZoneStatus("IN_SERVICE");
       } else {
-        setZoneStatus("OUT_OF_SERVICE");
+        // If no location and no cached zone, we are in an "IDLE" or "UNKNOWN" state,
+        // not necessarily "OUT_OF_SERVICE". This prevents the UI from turning grayscale
+        // before the user has even selected a location.
+        setZoneStatus("IDLE");
         setZoneId(null);
         setZone(null);
       }

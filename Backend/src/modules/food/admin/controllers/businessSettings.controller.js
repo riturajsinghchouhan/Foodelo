@@ -32,7 +32,10 @@ export async function updateBusinessSettings(req, res, next) {
             return res.status(400).json({ success: false, message: 'Invalid data format' });
         }
 
-        const { companyName, email, phoneCountryCode, phoneNumber, address, state, pincode, region } = data;
+        const { 
+            companyName, email, phoneCountryCode, phoneNumber, address, state, pincode, region,
+            supportEmail, supportPhone, supportHours 
+        } = data;
 
         // Ensure string inputs for validation to prevent crashes from non-string values
         const s_companyName = String(companyName || "").trim();
@@ -41,6 +44,9 @@ export async function updateBusinessSettings(req, res, next) {
         const s_address = String(address || "").trim();
         const s_state = String(state || "").trim();
         const s_pincode = String(pincode || "").trim();
+        const s_supportEmail = String(supportEmail || "").trim();
+        const s_supportPhone = String(supportPhone || "").trim();
+        const s_supportHours = String(supportHours || "").trim();
 
         // Validation
         if (!s_companyName || s_companyName.length < 2 || s_companyName.length > 50) {
@@ -61,6 +67,9 @@ export async function updateBusinessSettings(req, res, next) {
         if (s_pincode && !/^\d{4,10}$/.test(s_pincode)) {
             return res.status(400).json({ success: false, message: 'Invalid pincode (4-10 digits required)' });
         }
+        if (s_supportEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s_supportEmail)) {
+            return res.status(400).json({ success: false, message: 'Invalid support email address' });
+        }
 
         let settings = await FoodBusinessSettings.findOne();
         if (!settings) {
@@ -79,6 +88,10 @@ export async function updateBusinessSettings(req, res, next) {
         if (state !== undefined) settings.state = s_state;
         if (pincode !== undefined) settings.pincode = s_pincode;
         if (region) settings.region = String(region).trim();
+        
+        if (supportEmail !== undefined) settings.supportEmail = s_supportEmail;
+        if (supportPhone !== undefined) settings.supportPhone = s_supportPhone;
+        if (supportHours !== undefined) settings.supportHours = s_supportHours;
 
         // Handle file uploads
         if (req.files) {

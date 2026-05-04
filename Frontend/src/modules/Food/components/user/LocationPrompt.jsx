@@ -1,11 +1,21 @@
 import { useEffect, useState, useRef } from "react"
+import { useLocation as useRouterLocation } from "react-router-dom"
 import { MapPin, X } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@food/components/ui/card"
 import { Button } from "@food/components/ui/button"
 import { useLocation } from "@food/hooks/useLocation"
 
 export default function LocationPrompt() {
+  const routerLocation = useRouterLocation()
   const { location, loading, permissionGranted, requestLocation } = useLocation()
+  
+  // Hide location prompt on legal pages (Privacy, Terms, etc.)
+  const isLegalPage = 
+    routerLocation.pathname.includes("/privacy") || 
+    routerLocation.pathname.includes("/terms") ||
+    routerLocation.pathname.includes("/refund") ||
+    routerLocation.pathname.includes("/shipping") ||
+    routerLocation.pathname.includes("/cancellation")
   const [showPrompt, setShowPrompt] = useState(false)
   const cardRef = useRef(null)
 
@@ -20,7 +30,7 @@ export default function LocationPrompt() {
     // 2. Prompt hasn't been dismissed
     // 3. Location permission was denied (we'll detect this after a delay)
     
-    if (!storedLocation && !promptDismissed) {
+    if (!storedLocation && !promptDismissed && !isLegalPage) {
       // Wait a bit to let the hook try to get location automatically
       // If it fails, we'll show the prompt
       const timer = setTimeout(() => {
@@ -86,7 +96,7 @@ export default function LocationPrompt() {
     }
   }, [])
 
-  if (!showPrompt) return null
+  if (isLegalPage || !showPrompt) return null
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>

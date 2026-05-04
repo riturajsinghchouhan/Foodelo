@@ -20,6 +20,8 @@ import { Input } from "@food/components/ui/input"
 import { Textarea } from "@food/components/ui/textarea"
 import { toast } from "sonner"
 
+import { adminAPI } from "@food/api"
+
 const supportOptions = [
   {
     id: "login",
@@ -62,6 +64,26 @@ export default function PublicSupport() {
     message: ""
   })
   const [loading, setLoading] = useState(false)
+  const [settings, setSettings] = useState({
+    supportEmail: "support@foodelo.com",
+    supportPhone: "+91 1234567890",
+    supportHours: "24/7 Availability"
+  })
+
+  React.useEffect(() => {
+    adminAPI.getPublicBusinessSettings()
+      .then(res => {
+        const data = res?.data?.data || res?.data
+        if (data) {
+          setSettings({
+            supportEmail: data.supportEmail || "support@foodelo.com",
+            supportPhone: data.supportPhone || "+91 1234567890",
+            supportHours: data.supportHours || "24/7 Availability"
+          })
+        }
+      })
+      .catch(() => null)
+  }, [])
 
   const handleTopicSelect = (topic) => {
     setSelectedTopic(topic)
@@ -240,7 +262,7 @@ export default function PublicSupport() {
             </div>
             <div>
               <h4 className="font-bold mb-1">Call Us</h4>
-              <p className="text-sm text-gray-500">+1 (800) 123-4567</p>
+              <p className="text-sm text-gray-500">{settings.supportPhone}</p>
             </div>
           </div>
           <div className="flex items-start gap-4">
@@ -249,7 +271,7 @@ export default function PublicSupport() {
             </div>
             <div>
               <h4 className="font-bold mb-1">Email Us</h4>
-              <p className="text-sm text-gray-500">support@foodelo.com</p>
+              <p className="text-sm text-gray-500">{settings.supportEmail}</p>
             </div>
           </div>
           <div className="flex items-start gap-4">
@@ -258,7 +280,7 @@ export default function PublicSupport() {
             </div>
             <div>
               <h4 className="font-bold mb-1">Hours</h4>
-              <p className="text-sm text-gray-500">24/7 Availability</p>
+              <p className="text-sm text-gray-500">{settings.supportHours}</p>
             </div>
           </div>
         </div>
