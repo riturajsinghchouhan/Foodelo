@@ -350,11 +350,11 @@ export default function DeliverySignup() {
             </p>
             <p className="text-xs text-gray-500">
               By continuing, you agree to our{" "}
-              <Link to="/food/user/profile/terms" className="text-primary-orange hover:underline">
+              <Link to="/food/delivery/profile/terms" className="text-primary-orange hover:underline">
                 Terms of Service
               </Link>
               {" & "}
-              <Link to="/food/user/profile/privacy" className="text-primary-orange hover:underline">
+              <Link to="/food/delivery/profile/privacy" className="text-primary-orange hover:underline">
                 Privacy Policy
               </Link>
             </p>

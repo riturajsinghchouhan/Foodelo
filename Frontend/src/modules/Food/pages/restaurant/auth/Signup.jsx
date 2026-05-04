@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { Phone, User, AlertCircle, Loader2, UtensilsCrossed } from "lucide-react"
 import { restaurantAPI } from "@food/api"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@food/components/ui/card"
@@ -307,16 +307,27 @@ export default function RestaurantSignup() {
             </Button>
           </form>
 
-          {/* Login link */}
-          <div className="mt-6 text-center text-sm">
-            <span className="text-gray-600">Already have an account? </span>
-            <button
-              type="button"
-              onClick={() => navigate("/food/restaurant/login")}
-              className="text-primary-orange hover:underline font-medium"
-            >
-              Login
-            </button>
+          <div className="mt-6 text-center text-sm space-y-2">
+            <p>
+              <span className="text-gray-600">Already have an account? </span>
+              <button
+                type="button"
+                onClick={() => navigate("/food/restaurant/login")}
+                className="text-primary-orange hover:underline font-medium"
+              >
+                Login
+              </button>
+            </p>
+            <p className="text-xs text-gray-500">
+              By continuing, you agree to our{" "}
+              <Link to="/food/restaurant/profile/terms" className="text-primary-orange hover:underline">
+                Terms of Service
+              </Link>
+              {" & "}
+              <Link to="/food/restaurant/profile/privacy" className="text-primary-orange hover:underline">
+                Privacy Policy
+              </Link>
+            </p>
           </div>
 
           {/* Demo credentials / info bar */}
