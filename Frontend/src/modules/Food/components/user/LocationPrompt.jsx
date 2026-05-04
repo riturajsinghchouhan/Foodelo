@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react"
-import { useLocation as useRouterLocation } from "react-router-dom"
+import { useLocation as useRouterLocation, useNavigate } from "react-router-dom"
 import { MapPin, X } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@food/components/ui/card"
 import { Button } from "@food/components/ui/button"
@@ -7,6 +7,7 @@ import { useLocation } from "@food/hooks/useLocation"
 
 export default function LocationPrompt() {
   const routerLocation = useRouterLocation()
+  const navigate = useNavigate()
   const { location, loading, permissionGranted, requestLocation } = useLocation()
   
   // Hide location prompt on legal pages (Privacy, Terms, etc.)
@@ -89,6 +90,13 @@ export default function LocationPrompt() {
     localStorage.setItem("locationPromptDismissed", "true")
   }
 
+  const handleManualEntry = () => {
+    setShowPrompt(false)
+    document.body.style.overflow = ""
+    localStorage.setItem("locationPromptDismissed", "true")
+    navigate("/food/user/address-selector")
+  }
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -131,20 +139,29 @@ export default function LocationPrompt() {
             delivery times. Your location data is stored locally and never
             shared.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Button
+                onClick={handleDismiss}
+                variant="outline"
+                className="flex-1"
+              >
+                Not Now
+              </Button>
+              <Button
+                onClick={handleAllow}
+                className="flex-1 bg-[#7e3866] hover:opacity-90 text-white"
+                disabled={loading}
+              >
+                {loading ? "Getting location..." : "Allow Location"}
+              </Button>
+            </div>
             <Button
-              onClick={handleDismiss}
-              variant="outline"
-              className="flex-1"
+              onClick={handleManualEntry}
+              variant="ghost"
+              className="w-full text-[#7e3866] hover:bg-[#7e3866]/10 font-semibold"
             >
-              Not Now
-            </Button>
-            <Button
-              onClick={handleAllow}
-              className="flex-1 bg-[#7e3866] hover:opacity-90 text-white"
-              disabled={loading}
-            >
-              {loading ? "Getting location..." : "Allow Location"}
+              Fill location manually
             </Button>
           </div>
         </CardContent>
