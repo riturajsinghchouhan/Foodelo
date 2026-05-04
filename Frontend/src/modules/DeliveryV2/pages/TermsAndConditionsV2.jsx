@@ -64,7 +64,7 @@ export default function TermsAndConditionsV2() {
               <p className="text-gray-500">Loading terms...</p>
             </div>
           ) : (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
+            <div>
               {content ? (
                 <div
                   className="prose prose-sm prose-orange dark:prose-invert max-w-none text-gray-700 dark:text-gray-300"
@@ -78,7 +78,7 @@ export default function TermsAndConditionsV2() {
                   <p className="text-gray-400 text-xs italic">Last updated: {formatDate(lastUpdated)}</p>
                 </div>
               )}
-            </motion.div>
+            </div>
           )}
         </div>
       </div>
