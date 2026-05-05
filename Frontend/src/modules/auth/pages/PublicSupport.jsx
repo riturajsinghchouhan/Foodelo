@@ -1,17 +1,17 @@
 import React, { useState } from "react"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
-import { 
-  ArrowLeft, 
-  MessageCircle, 
-  Phone, 
-  Mail, 
-  Clock, 
-  ChevronRight, 
-  ShieldQuestion, 
-  Lock, 
-  UserX, 
-  CreditCard 
+import {
+  ArrowLeft,
+  MessageCircle,
+  Phone,
+  Mail,
+  Clock,
+  ChevronRight,
+  ShieldQuestion,
+  Lock,
+  UserX,
+  CreditCard
 } from "lucide-react"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Button } from "@food/components/ui/button"
@@ -65,8 +65,8 @@ export default function PublicSupport() {
   })
   const [loading, setLoading] = useState(false)
   const [settings, setSettings] = useState({
-    supportEmail: "support@foodelo.com",
-    supportPhone: "+91 1234567890",
+    supportEmail: "rbfoodscorp@gmail.com",
+    supportPhone: "9940837039",
     supportHours: "24/7 Availability"
   })
 
@@ -76,8 +76,8 @@ export default function PublicSupport() {
         const data = res?.data?.data || res?.data
         if (data) {
           setSettings({
-            supportEmail: data.supportEmail || "support@foodelo.com",
-            supportPhone: data.supportPhone || "+91 1234567890",
+            supportEmail: data.supportEmail || "rbfoodscorp@gmail.com",
+            supportPhone: data.supportPhone || "+91 9940837039",
             supportHours: data.supportHours || "24/7 Availability"
           })
         }
@@ -94,10 +94,10 @@ export default function PublicSupport() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    
+
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1500))
-    
+
     toast.success("Support request sent! We'll get back to you shortly.")
     setLoading(false)
     setStep("success")
@@ -128,7 +128,7 @@ export default function PublicSupport() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1 }}
               >
-                <Card 
+                <Card
                   className="cursor-pointer hover:shadow-xl transition-all border-none bg-gray-50 dark:bg-[#1a1a1a] group"
                   onClick={() => handleTopicSelect(option)}
                 >
@@ -163,65 +163,65 @@ export default function PublicSupport() {
                 </div>
                 {selectedTopic?.title}
               </h2>
-              
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Full Name</label>
-                    <Input 
-                      required 
-                      placeholder="John Doe" 
+                    <Input
+                      required
+                      placeholder="John Doe"
                       value={formData.name}
-                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      onChange={e => setFormData({ ...formData, name: e.target.value })}
                       className="bg-white dark:bg-[#0a0a0a]"
                     />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Phone Number</label>
-                    <Input 
-                      required 
-                      type="tel" 
-                      placeholder="+91 1234567890" 
+                    <Input
+                      required
+                      type="tel"
+                      placeholder="+91 1234567890"
                       value={formData.phone}
-                      onChange={e => setFormData({...formData, phone: e.target.value})}
+                      onChange={e => setFormData({ ...formData, phone: e.target.value })}
                       className="bg-white dark:bg-[#0a0a0a]"
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Email Address</label>
-                  <Input 
-                    required 
-                    type="email" 
-                    placeholder="john@example.com" 
+                  <Input
+                    required
+                    type="email"
+                    placeholder="john@example.com"
                     value={formData.email}
-                    onChange={e => setFormData({...formData, email: e.target.value})}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
                     className="bg-white dark:bg-[#0a0a0a]"
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Message</label>
-                  <Textarea 
-                    required 
-                    rows={5} 
-                    placeholder="Tell us more about the issue..." 
+                  <Textarea
+                    required
+                    rows={5}
+                    placeholder="Tell us more about the issue..."
                     value={formData.message}
-                    onChange={e => setFormData({...formData, message: e.target.value})}
+                    onChange={e => setFormData({ ...formData, message: e.target.value })}
                     className="bg-white dark:bg-[#0a0a0a]"
                   />
                 </div>
-                
+
                 <div className="pt-4 flex gap-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => setStep("options")}
                     className="flex-1 h-12"
                   >
                     Back
                   </Button>
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     className="flex-1 h-12 bg-[#7e3866] hover:bg-[#6b2f57]"
                     disabled={loading}
                   >
