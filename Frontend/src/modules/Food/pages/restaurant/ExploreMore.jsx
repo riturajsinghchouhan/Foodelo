@@ -353,6 +353,8 @@ export default function ExploreMore() {
   const [showEndTimePicker, setShowEndTimePicker] = useState(false)
   const [showCalendar, setShowCalendar] = useState(false)
   const [existingSchedule, setExistingSchedule] = useState(null)
+  const [deleteAccountConfirmOpen, setDeleteAccountConfirmOpen] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   const STORAGE_KEY = "restaurant_schedule_off"
 
@@ -610,6 +612,29 @@ export default function ExploreMore() {
     }
   }
 
+  const handleDeleteAccount = async () => {
+    if (isDeletingAccount) return
+    setIsDeletingAccount(true)
+    try {
+      await restaurantAPI.deleteAccount()
+      // Clear auth and redirect
+      clearModuleAuth("restaurant")
+      localStorage.removeItem("restaurant_onboarding")
+      localStorage.removeItem("restaurant_accessToken")
+      localStorage.removeItem("restaurant_authenticated")
+      localStorage.removeItem("restaurant_user")
+      sessionStorage.removeItem("restaurantAuthData")
+      window.dispatchEvent(new Event("restaurantAuthChanged"))
+      navigate("/food/restaurant/welcome", { replace: true })
+    } catch (error) {
+      debugError("Error deleting account:", error)
+      alert("Failed to delete account. Please try again.")
+    } finally {
+      setIsDeletingAccount(false)
+      setDeleteAccountConfirmOpen(false)
+    }
+  }
+
   const scheduleOffReasons = [
     "renovation or relocation of restaurant",
     "closed dur to festival",
@@ -700,7 +725,7 @@ export default function ExploreMore() {
 
   // Prevent body scroll when popup is open
   useEffect(() => {
-    if (profileOpen || scheduleOffOpen || dateTimePickerOpen || successPopupOpen || existingScheduleOpen || searchOpen) {
+    if (profileOpen || scheduleOffOpen || dateTimePickerOpen || successPopupOpen || existingScheduleOpen || searchOpen || deleteAccountConfirmOpen) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = 'unset'
@@ -708,7 +733,7 @@ export default function ExploreMore() {
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [profileOpen, scheduleOffOpen, dateTimePickerOpen, successPopupOpen, existingScheduleOpen, searchOpen])
+  }, [profileOpen, scheduleOffOpen, dateTimePickerOpen, successPopupOpen, existingScheduleOpen, searchOpen, deleteAccountConfirmOpen])
 
   // Lenis smooth scrolling
   useEffect(() => {
@@ -1006,6 +1031,25 @@ export default function ExploreMore() {
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-[#7e3866]/40 shrink-0" />
+        </motion.button>
+
+        <motion.button
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55, duration: 0.25 }}
+          onClick={() => setDeleteAccountConfirmOpen(true)}
+          className="w-full mt-4 flex items-center justify-between gap-3 rounded-2xl border border-red-600/20 bg-red-600/5 px-4 py-4 text-left hover:bg-red-600/10 transition-all active:scale-[0.99]"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600/10">
+              <X className="w-5 h-5 text-red-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-base font-semibold text-red-600">Delete Restaurant</p>
+              <p className="text-sm text-red-600/60 font-medium">Permanently delete your restaurant account</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-red-600/40 shrink-0" />
         </motion.button>
       </div>
 
