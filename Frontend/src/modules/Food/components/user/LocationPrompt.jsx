@@ -151,103 +151,81 @@ export default function LocationPrompt() {
   if (isLegalPage || !showPrompt) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
       <Card
-        className="w-full max-w-md border-2 border-gray-200 shadow-2xl mx-auto my-auto overflow-hidden transition-all duration-300"
+        className="w-full max-w-sm border-none shadow-2xl mx-auto my-auto overflow-hidden rounded-[2rem] bg-white"
       >
         {view === "prompt" ? (
-          <>
-            <CardHeader className="relative">
+          <div className="p-10 flex flex-col items-center text-center">
+            {/* Circular Icon */}
+            <div className="h-24 w-24 rounded-full bg-[#f8f0f1] flex items-center justify-center mb-8">
+              <div className="h-14 w-14 rounded-full bg-white shadow-sm flex items-center justify-center">
+                <MapPin className="h-8 w-8 text-[#a03a42]" strokeWidth={2.5} />
+              </div>
+            </div>
+
+            {/* Content */}
+            <h2 className="text-2xl font-bold text-[#1a1c2e] mb-4">Location Access Required</h2>
+            <p className="text-[#6b7280] text-base leading-relaxed mb-10 px-2">
+              We need your location to show you products available near you and enable delivery services. Location access is required to continue.
+            </p>
+
+            {/* Actions */}
+            <div className="w-full flex flex-col gap-4">
               <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-2"
-                onClick={handleDismiss}
+                onClick={handleAllow}
+                className="w-full h-16 bg-[#a03a42] hover:bg-[#8a3239] text-white text-lg font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98]"
+                disabled={loading}
               >
-                <X className="h-4 w-4" />
+                {loading ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : (
+                  "Allow Location Access"
+                )}
               </Button>
-              <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
-                  <MapPin className="h-6 w-6 text-[#7e3866]" />
-                </div>
-                <div>
-                  <CardTitle>Enable Location Services</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Get faster delivery and better recommendations
-                  </p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                We use your location to show nearby restaurants and provide accurate
-                delivery times. Your location data is stored locally and never
-                shared.
-              </p>
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleDismiss}
-                    variant="outline"
-                    className="flex-1"
-                  >
-                    Not Now
-                  </Button>
-                  <Button
-                    onClick={handleAllow}
-                    className="flex-1 bg-[#7e3866] hover:opacity-90 text-white"
-                    disabled={loading}
-                  >
-                    {loading ? "Getting location..." : "Allow Location"}
-                  </Button>
-                </div>
-                <Button
-                  onClick={handleManualEntry}
-                  variant="ghost"
-                  className="w-full text-[#7e3866] hover:bg-[#7e3866]/10 font-semibold"
-                >
-                  Fill location manually
-                </Button>
-              </div>
-            </CardContent>
-          </>
+              <Button
+                onClick={handleManualEntry}
+                variant="ghost"
+                className="w-full h-16 bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#374151] text-lg font-bold rounded-2xl transition-all active:scale-[0.98]"
+              >
+                Enter Location Manually
+              </Button>
+            </div>
+          </div>
         ) : (
-          <div className="flex flex-col bg-white dark:bg-[#1a1a1a]">
+          <div className="flex flex-col bg-white">
             {/* Header with Icon */}
-            <div className="p-6 text-center border-b dark:border-gray-800">
-               <div className="h-16 w-16 rounded-full bg-[#7e386610] flex items-center justify-center mx-auto mb-4">
-                  <MapPin className="h-8 w-8 text-[#7e3866]" />
+            <div className="p-8 text-center border-b border-gray-50">
+               <div className="h-20 w-20 rounded-full bg-[#f8f0f1] flex items-center justify-center mx-auto mb-4">
+                  <MapPin className="h-8 w-8 text-[#a03a42]" />
                </div>
-               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Location Access Required</h2>
-               <p className="text-sm text-gray-500 dark:text-gray-400">
-                  We need your location to show you products available near you and enable delivery services. Location access is required to continue.
+               <h2 className="text-2xl font-bold text-[#1a1c2e] mb-2">Manual Location</h2>
+               <p className="text-sm text-[#6b7280]">
+                  Search and select your delivery address
                </p>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-8 space-y-6">
               {/* Search Section */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                   Search and select your location
-                </label>
                 <div className="relative">
-                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                    <Input 
-                      placeholder="Type your address or location..."
+                      placeholder="Type your address..."
                       value={searchValue}
                       onChange={(e) => setSearchValue(e.target.value)}
-                      className="pl-10 h-12 bg-gray-50 dark:bg-gray-800 border-none rounded-xl focus:ring-2 focus:ring-[#7e3866]"
+                      className="pl-12 h-14 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#a03a42]/20"
                    />
                    {isSearching && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                         <Loader2 className="h-4 w-4 text-[#7e3866] animate-spin" />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                         <Loader2 className="h-5 w-5 text-[#a03a42] animate-spin" />
                       </div>
                    )}
                 </div>
 
                 {/* Suggestions List */}
                 {suggestions.length > 0 && (
-                   <div className="mt-2 border rounded-xl overflow-hidden shadow-lg bg-white dark:bg-gray-800 max-h-48 overflow-y-auto">
+                   <div className="mt-2 border border-gray-100 rounded-2xl overflow-hidden shadow-xl bg-white max-h-60 overflow-y-auto">
                       {suggestions.map(s => (
                          <button
                             key={s.id}
@@ -256,7 +234,7 @@ export default function LocationPrompt() {
                                setSearchValue(s.display)
                                setSuggestions([])
                             }}
-                            className="w-full p-3 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700 border-b last:border-none truncate"
+                            className="w-full p-4 text-left text-sm hover:bg-gray-50 border-b border-gray-50 last:border-none transition-colors"
                          >
                             {s.display}
                          </button>
@@ -267,18 +245,18 @@ export default function LocationPrompt() {
 
               {/* Separator */}
               <div className="flex items-center gap-4 py-2">
-                 <div className="h-[1px] flex-1 bg-gray-200 dark:bg-gray-800" />
-                 <span className="text-xs font-bold text-gray-400 uppercase">OR</span>
-                 <div className="h-[1px] flex-1 bg-gray-200 dark:bg-gray-800" />
+                 <div className="h-[1px] flex-1 bg-gray-100" />
+                 <span className="text-xs font-bold text-gray-300 uppercase tracking-widest">OR</span>
+                 <div className="h-[1px] flex-1 bg-gray-100" />
               </div>
 
               {/* Detect My Location */}
               <Button
                  onClick={handleDetectLocation}
                  variant="outline"
-                 className="w-full h-12 rounded-xl flex items-center justify-center gap-2 border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-200"
+                 className="w-full h-14 rounded-2xl flex items-center justify-center gap-3 border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-200 font-bold transition-all active:scale-[0.98]"
               >
-                 <Navigation className="h-4 w-4" />
+                 <Navigation className="h-5 w-5" />
                  Detect My Location
               </Button>
 
@@ -287,16 +265,16 @@ export default function LocationPrompt() {
                  <Button
                     onClick={handleBackToPrompt}
                     variant="outline"
-                    className="flex-1 h-12 rounded-xl bg-gray-100 border-none hover:bg-gray-200"
+                    className="flex-1 h-14 rounded-2xl bg-gray-50 border-none hover:bg-gray-100 text-gray-600 font-bold"
                  >
                     Back
                  </Button>
                  <Button
                     onClick={handleSaveManualLocation}
-                    className="flex-1 h-12 rounded-xl bg-[#7e3866] hover:bg-[#55254b] text-white font-bold"
+                    className="flex-1 h-14 rounded-2xl bg-[#a03a42] hover:bg-[#8a3239] text-white font-bold shadow-md"
                     disabled={!selectedLocation}
                  >
-                    Save Location
+                    Confirm
                  </Button>
               </div>
             </div>
