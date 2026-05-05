@@ -1007,50 +1007,6 @@ export default function ExploreMore() {
             <p className="text-sm text-gray-500">Try searching with different keywords</p>
           </motion.div>
         )}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.45, duration: 0.2 }}
-          className="border-t border-gray-200 my-6"
-        />
-
-        <motion.button
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.25 }}
-          onClick={() => setLogoutConfirmOpen(true)}
-          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#7e3866]/20 bg-[#7e3866]/5 px-4 py-4 text-left hover:bg-[#7e3866]/10 transition-all active:scale-[0.99]"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#7e3866]/10">
-              <LogOut className="w-5 h-5 text-[#7e3866]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-base font-semibold text-[#7e3866]">Logout</p>
-              <p className="text-sm text-[#7e3866]/60 font-medium">Tap to sign out from this device</p>
-            </div>
-          </div>
-          <ChevronRight className="w-5 h-5 text-[#7e3866]/40 shrink-0" />
-        </motion.button>
-
-        <motion.button
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55, duration: 0.25 }}
-          onClick={() => setDeleteAccountConfirmOpen(true)}
-          className="w-full mt-4 flex items-center justify-between gap-3 rounded-2xl border border-red-600/20 bg-red-600/5 px-4 py-4 text-left hover:bg-red-600/10 transition-all active:scale-[0.99]"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600/10">
-              <X className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-base font-semibold text-red-600">Delete Restaurant</p>
-              <p className="text-sm text-red-600/60 font-medium">Permanently delete your restaurant account</p>
-            </div>
-          </div>
-          <ChevronRight className="w-5 h-5 text-red-600/40 shrink-0" />
-        </motion.button>
       </div>
 
       {/* Search Popup */}
@@ -1103,6 +1059,57 @@ export default function ExploreMore() {
                   className="rounded-2xl bg-[#7e3866] px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#6a2f56] active:scale-95 disabled:opacity-50"
                 >
                   {isLoggingOut ? "Logging out..." : "Yes"}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+
+        {deleteAccountConfirmOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/50 z-[60]"
+              onClick={() => {
+                if (!isDeletingAccount) setDeleteAccountConfirmOpen(false)
+              }}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 24 }}
+              transition={{ duration: 0.22 }}
+              className="fixed inset-x-4 bottom-28 z-[61] mx-auto w-auto max-w-md rounded-3xl bg-white p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                  <X className="w-5 h-5 text-red-600" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Delete Restaurant?</h3>
+                <p className="mt-1 text-sm text-gray-500">Are you sure you want to permanently delete your restaurant account? This action cannot be undone.</p>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDeleteAccountConfirmOpen(false)}
+                  disabled={isDeletingAccount}
+                  className="rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={isDeletingAccount}
+                  className="rounded-2xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-red-700 active:scale-95 disabled:opacity-50"
+                >
+                  {isDeletingAccount ? "Deleting..." : "Yes, Delete"}
                 </button>
               </div>
             </motion.div>
@@ -1341,6 +1348,26 @@ export default function ExploreMore() {
                   className="w-full bg-[#7e3866]/10 text-[#7e3866] border border-[#7e3866]/20 hover:bg-[#7e3866]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all"
                 >
                   {isLoggingOut ? "Logging out..." : "Logout from all devices"}
+                </button>
+
+                {/* Delete Restaurant Button */}
+                <button
+                  onClick={() => {
+                    setProfileOpen(false)
+                    setDeleteAccountConfirmOpen(true)
+                  }}
+                  className="w-full flex items-center justify-between gap-3 rounded-2xl border border-red-600/20 bg-red-600/5 px-4 py-4 text-left hover:bg-red-600/10 transition-all active:scale-[0.99]"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600/10">
+                      <X className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold text-red-600">Delete Restaurant</p>
+                      <p className="text-sm text-red-600/60 font-medium">Permanently delete your account</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-red-600/40 shrink-0" />
                 </button>
               </div>
 
