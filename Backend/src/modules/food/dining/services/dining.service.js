@@ -4,6 +4,9 @@ import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDiningCategory } from '../models/diningCategory.model.js';
 import { FoodDiningRestaurant } from '../models/diningRestaurant.model.js';
 import { FoodDiningRequest } from '../models/diningRequest.model.js';
+import { FoodDiningBooking } from '../models/diningBooking.model.js';
+import { notifyOwnerSafely } from '../../../../core/notifications/firebase.service.js';
+import { createInboxNotifications } from '../../../../core/notifications/notification.service.js';
 
 const slugify = (value) =>
     String(value || '')
@@ -542,4 +545,163 @@ export async function rejectDiningRequest(requestId, reason = '') {
     await request.save();
 
     return request.toObject();
+}
+
+// ==================== DINING BOOKINGS ====================
+
+export async function createDiningBooking(userId, payload = {}) {
+    const restaurantId = payload.restaurantId || (payload.restaurant?._id || payload.restaurant);
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+        throw new ValidationError('Invalid restaurant ID');
+    }
+
+    // Check if restaurant exists and has dining enabled
+    const restaurant = await FoodRestaurant.findById(restaurantId).select('restaurantName diningSettings').lean();
+    if (!restaurant) {
+        throw new ValidationError('Restaurant not found');
+    }
+
+    const bookingId = `TB${Date.now().toString().slice(-8)}`;
+    
+    const userPayload = payload.user || payload.userRef || {};
+    const name = (userPayload.name || userPayload.fullName || 'Guest').trim();
+    const phone = (userPayload.phone || userPayload.mobile || userPayload.phoneNumber || '').trim();
+    const email = (userPayload.email || '').trim();
+
+    const booking = await FoodDiningBooking.create({
+        bookingId,
+        restaurantId,
+        userId,
+        user: {
+            name,
+            phone,
+            email
+        },
+        guests: Math.max(1, Number(payload.guests) || 1),
+        date: new Date(payload.date || Date.now()),
+        timeSlot: String(payload.timeSlot || '').trim(),
+        specialRequest: String(payload.specialRequest || '').trim(),
+        status: 'pending'
+    });
+
+    return booking.toObject();
+}
+
+export async function getUserDiningBookings(userId) {
+    if (!mongoose.Types.ObjectId.isValid(userId)) return [];
+    
+    const docs = await FoodDiningBooking.find({ userId })
+        .populate({
+            path: 'restaurantId',
+            select: 'restaurantName profileImage location slug coverImages'
+        })
+        .sort({ createdAt: -1 })
+        .lean();
+
+    return docs.map(doc => ({
+        ...doc,
+        restaurant: doc.restaurantId ? {
+            ...doc.restaurantId,
+            name: doc.restaurantId.restaurantName,
+            image: Array.isArray(doc.restaurantId.coverImages) ? doc.restaurantId.coverImages[0] : (doc.restaurantId.profileImage || '')
+        } : null
+    }));
+}
+
+export async function getRestaurantDiningBookings(restaurantId) {
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) return [];
+
+    return await FoodDiningBooking.find({ restaurantId })
+        .populate({
+            path: 'userId',
+            select: 'name phone email'
+        })
+        .sort({ createdAt: -1 })
+        .lean();
+}
+
+export async function updateDiningBookingStatus(bookingId, status) {
+    const filter = mongoose.Types.ObjectId.isValid(bookingId) 
+        ? { _id: bookingId } 
+        : { bookingId: bookingId };
+
+    const booking = await FoodDiningBooking.findOne(filter).populate('restaurantId', 'restaurantName');
+    if (!booking) throw new ValidationError('Booking not found');
+
+    const oldStatus = booking.status;
+    booking.status = status;
+    await booking.save();
+
+    // Send notifications to user on status change
+    if (oldStatus !== status) {
+        try {
+            const restaurantName = booking.restaurantId?.restaurantName || 'Restaurant';
+            let notificationPayload = null;
+
+            if (status === 'accepted' || status === 'confirmed') {
+                notificationPayload = {
+                    title: 'Dining Booking Confirmed! 🎉',
+                    body: `Your table booking at ${restaurantName} for ${booking.guests} guests has been confirmed. See you soon!`,
+                    data: {
+                        type: 'dining_booking',
+                        bookingId: String(booking._id),
+                        status: 'confirmed'
+                    }
+                };
+            } else if (status === 'cancelled') {
+                notificationPayload = {
+                    title: 'Dining Booking Cancelled',
+                    body: `We're sorry, your table booking at ${restaurantName} has been cancelled by the restaurant.`,
+                    data: {
+                        type: 'dining_booking',
+                        bookingId: String(booking._id),
+                        status: 'cancelled'
+                    }
+                };
+            }
+
+            if (notificationPayload) {
+                // 1. Push Notification (Firebase)
+                notifyOwnerSafely({
+                    ownerType: 'USER',
+                    ownerId: booking.userId
+                }, notificationPayload);
+
+                // 2. In-App Inbox Notification
+                createInboxNotifications({
+                    notifications: [{
+                        ownerType: 'USER',
+                        ownerId: booking.userId,
+                        title: notificationPayload.title,
+                        message: notificationPayload.body,
+                        category: 'orders',
+                        source: 'SYSTEM',
+                        metadata: notificationPayload.data
+                    }]
+                });
+            }
+        } catch (error) {
+            console.error('[DiningNotification] Error sending notification:', error);
+        }
+    }
+
+    return booking.toObject();
+}
+
+export async function createDiningBookingReview(bookingId, payload = {}) {
+    const filter = mongoose.Types.ObjectId.isValid(bookingId) 
+        ? { _id: bookingId } 
+        : { bookingId: bookingId };
+
+    const booking = await FoodDiningBooking.findOne(filter);
+    if (!booking) throw new ValidationError('Booking not found');
+
+    booking.review = {
+        rating: Number(payload.rating || 0),
+        comment: String(payload.comment || '').trim(),
+        createdAt: new Date()
+    };
+
+    await booking.save();
+    return booking.toObject();
 }
