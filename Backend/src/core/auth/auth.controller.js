@@ -98,7 +98,7 @@ export const verifyRestaurantOtpController = async (req, res, next) => {
   try {
     const { phone, otp, fcmToken, platform } = validateRestaurantOtpVerifyDto(req.body);
     const result = await verifyRestaurantOtpAndLogin(phone, otp, fcmToken, platform);
-    return sendResponse(res, 200, "Login successful", result);
+    return sendResponse(res, 200, "Authentication successful", result);
   } catch (error) {
     next(error);
   }

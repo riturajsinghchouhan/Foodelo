@@ -337,8 +337,8 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     throw new AuthError(result.reason || "OTP verification failed");
   }
 
-  // Restaurants may store ownerPhone with country code or formatting.
-  // Match by exact phone, last-10 digits, or suffix match to avoid false "needsRegistration".
+  // Restaurants may store ownerPhone with country code or formatting, or normalized fields.
+  // Match by exact phone, last-10 digits, suffix match, or normalized fields to avoid false "needsRegistration".
   const digits = String(phone || "").replace(/\D/g, "");
   const last10 = digits.slice(-10);
   const phoneCandidates = [phone, digits, last10].filter(Boolean);
@@ -351,67 +351,88 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     $or: [
       ...phoneOrFields("ownerPhone"),
       ...phoneOrFields("primaryContactNumber"),
+      ...phoneOrFields("ownerPhoneDigits"),
+      ...phoneOrFields("ownerPhoneLast10"),
     ],
   });
-  if (!restaurant) {
-    // Phone has been successfully verified, but no restaurant exists yet.
-    // Frontend will use this to redirect into registration/onboarding.
-    return {
-      needsRegistration: true,
-      phone,
-    };
+  let restaurantDoc = restaurant;
+  let createdRestaurant = false;
+  if (!restaurantDoc) {
+    // Create a minimal, pending restaurant so onboarding can proceed with auth tokens.
+    const safeDigits = digits || String(phone || "").replace(/\D/g, "");
+    const safeLast10 = safeDigits.slice(-10);
+    const fallbackName = `New Restaurant ${safeLast10 || ""}`.trim();
+    const fallbackOwner = "Owner";
+
+    restaurantDoc = await FoodRestaurant.create({
+      restaurantName: fallbackName,
+      ownerName: fallbackOwner,
+      ownerPhone: safeDigits || phone,
+      ownerPhoneDigits: safeDigits || undefined,
+      ownerPhoneLast10: safeLast10 || undefined,
+      primaryContactNumber: safeDigits || phone,
+      pureVegRestaurant: false,
+      status: "pending",
+      pendingUpdateReason: "New Registration",
+      isAcceptingOrders: false,
+    });
+    createdRestaurant = true;
   }
 
   // Update FCM token if provided
   if (fcmToken) {
     let isModified = false;
     if (platform === "mobile") {
-      if (!restaurant.fcmTokenMobile) restaurant.fcmTokenMobile = [];
-      if (!restaurant.fcmTokenMobile.includes(fcmToken)) {
-        restaurant.fcmTokenMobile.push(fcmToken);
+      if (!restaurantDoc.fcmTokenMobile) restaurantDoc.fcmTokenMobile = [];
+      if (!restaurantDoc.fcmTokenMobile.includes(fcmToken)) {
+        restaurantDoc.fcmTokenMobile.push(fcmToken);
         isModified = true;
       }
     } else {
-      if (!restaurant.fcmTokens) restaurant.fcmTokens = [];
-      if (!restaurant.fcmTokens.includes(fcmToken)) {
-        restaurant.fcmTokens.push(fcmToken);
+      if (!restaurantDoc.fcmTokens) restaurantDoc.fcmTokens = [];
+      if (!restaurantDoc.fcmTokens.includes(fcmToken)) {
+        restaurantDoc.fcmTokens.push(fcmToken);
         isModified = true;
       }
     }
     if (isModified) {
-      await restaurant.save();
+      await restaurantDoc.save();
     }
   }
 
   // If restaurant approval status is used, handle pending/rejected states by returning info instead of throwing errors.
-  if (restaurant.status && restaurant.status !== "approved") {
+  if (!createdRestaurant && restaurantDoc.status && restaurantDoc.status !== "approved") {
     return {
       pendingApproval: true,
-      status: restaurant.status,
-      isRejected: restaurant.status === "rejected",
-      rejectionReason: restaurant.rejectionReason || null,
+      status: restaurantDoc.status,
+      isRejected: restaurantDoc.status === "rejected",
+      rejectionReason: restaurantDoc.rejectionReason || null,
       phone,
     };
   }
 
-  const payload = { userId: restaurant._id.toString(), role: ROLES.RESTAURANT };
+  const payload = { userId: restaurantDoc._id.toString(), role: ROLES.RESTAURANT };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
   const ttlMs = ms(config.jwtRefreshExpiresIn || "7d");
   const expiresAt = new Date(Date.now() + ttlMs);
 
   await FoodRefreshToken.create({
-    userId: restaurant._id,
+    userId: restaurantDoc._id,
     token: refreshToken,
     expiresAt,
   });
+
+  const sanitizedRestaurant = sanitizeRestaurantForAuthResponse(
+    restaurantDoc?.toObject?.() || restaurantDoc,
+  );
 
   return {
     token: accessToken,
     accessToken,
     refreshToken,
-    user: sanitizeRestaurantForAuthResponse(restaurant?.toObject?.() || restaurant),
-    needsRegistration: false,
+    user: sanitizedRestaurant,
+    restaurant: sanitizedRestaurant,
   };
 };
 
