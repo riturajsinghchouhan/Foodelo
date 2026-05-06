@@ -864,7 +864,7 @@ export default function RestaurantOnboarding() {
           setZonesLoading(true)
           const zoneRes = await zoneAPI.getPublicZones()
           if (zoneRes.data?.success) {
-            setZones(zoneRes.data.data || [])
+            setZones(zoneRes.data.data?.zones || zoneRes.data.data || [])
           }
         } catch (zErr) {
           debugError("Failed to fetch zones:", zErr)
@@ -922,14 +922,14 @@ export default function RestaurantOnboarding() {
 
           setStep2(prev => ({
             ...prev,
-            menuImages: s2.menuImageUrls || apiData.menuImages || [],
+            menuImages: Array.isArray(s2.menuImageUrls) ? s2.menuImageUrls : (Array.isArray(apiData.menuImages) ? apiData.menuImages : []),
             menuPdf: s2.menuPdfUrl || apiData.menuPdf || null,
             profileImage: s2.profileImageUrl || apiData.profileImage || null,
-            cuisines: s2.cuisines || apiData.cuisines || [],
+            cuisines: Array.isArray(s2.cuisines) ? s2.cuisines : (Array.isArray(apiData.cuisines) ? apiData.cuisines : []),
             estimatedDeliveryTime: s2.estimatedDeliveryTime || apiData.estimatedDeliveryTime || "",
             openingTime: normalizeTimeValue(s2.openingTime || apiData.openingTime),
             closingTime: normalizeTimeValue(s2.closingTime || apiData.closingTime),
-            openDays: s2.openDays || apiData.openDays || [],
+            openDays: Array.isArray(s2.openDays) ? s2.openDays : (Array.isArray(apiData.openDays) ? apiData.openDays : []),
           }))
 
           setStep3(prev => ({
