@@ -188,7 +188,6 @@ export function clearRestaurantSessionCache() {
     "restaurant_hub_menu_active_tab",
     "restaurant_name",
     "restaurantName",
-    "restaurant_pendingPhone",
   ];
 
   keys.forEach((key) => localStorage.removeItem(key));

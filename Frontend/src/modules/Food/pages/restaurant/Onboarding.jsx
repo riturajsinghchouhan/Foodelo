@@ -21,7 +21,7 @@ import { determineStepToShow } from "@food/utils/onboardingUtils"
 import { toast } from "sonner"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
-import { clearModuleAuth, clearAuthData } from "@food/utils/auth"
+import { clearModuleAuth, clearAuthData, isModuleAuthenticated } from "@food/utils/auth"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { EMAIL_REGEX } from "@/shared/utils/emailValidation"
 const debugLog = (...args) => {}
@@ -861,13 +861,15 @@ export default function RestaurantOnboarding() {
         const currentPhone = getVerifiedPhoneFromStoredRestaurant()
         const localData = loadOnboardingFromLocalStorage()
         
-        // 1. First fetch API data to have the latest backend state
+        // 1. First fetch API data to have the latest backend state (only if authenticated)
         let apiData = null;
-        try {
-          const res = await restaurantAPI.getCurrentRestaurant()
-          apiData = res?.data?.data?.restaurant || res?.data?.restaurant
-        } catch (err) {
-          debugError("API fetch skipped/failed:", err)
+        if (isModuleAuthenticated("restaurant")) {
+          try {
+            const res = await restaurantAPI.getCurrentRestaurant()
+            apiData = res?.data?.data?.restaurant || res?.data?.restaurant
+          } catch (err) {
+            debugError("API fetch skipped/failed:", err)
+          }
         }
 
         // 2. Hydrate from API if exists
