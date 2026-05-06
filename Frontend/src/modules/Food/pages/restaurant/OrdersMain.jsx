@@ -1293,7 +1293,7 @@ export default function OrdersMain() {
             // Onboarding is incomplete, redirect to onboarding page
             const incompleteStep = await checkOnboardingStatus();
             if (incompleteStep) {
-              navigate(`/restaurant/onboarding?step=${incompleteStep}`, {
+              navigate(`/food/restaurant/onboarding?step=${incompleteStep}`, {
                 replace: true,
               });
               return;

@@ -147,7 +147,7 @@ export default function RestaurantSignupEmail() {
         
         window.dispatchEvent(new Event("restaurantAuthChanged"))
         
-        navigate("/restaurant/onboarding", { replace: true })
+        navigate("/food/restaurant/onboarding", { replace: true })
       } else {
         throw new Error("Registration failed. Please try again.")
       }

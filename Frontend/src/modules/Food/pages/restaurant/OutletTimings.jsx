@@ -6,7 +6,8 @@ import { ArrowLeft, ChevronUp, ChevronDown, Clock, Edit2 } from "lucide-react"
 import { Switch } from "@food/components/ui/switch"
 import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns"
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
+import dayjs from "dayjs"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { restaurantAPI } from "@food/api"
 const debugLog = (...args) => {}
@@ -16,23 +17,18 @@ const debugError = (...args) => {}
 // Helper function to convert "HH:mm" string to Date object
 const stringToTime = (timeString) => {
   if (!timeString || !timeString.includes(":")) {
-    return new Date(2000, 0, 1, 9, 0) // Default to 9:00 AM
+    return dayjs().hour(9).minute(0)
   }
   const [hours, minutes] = timeString.split(":").map(Number)
-  // Ensure valid hours (0-23) and minutes (0-59)
-  const validHours = Math.max(0, Math.min(23, hours || 9))
-  const validMinutes = Math.max(0, Math.min(59, minutes || 0))
-  return new Date(2000, 0, 1, validHours, validMinutes)
+  return dayjs().hour(hours || 9).minute(minutes || 0)
 }
 
 // Helper function to convert Date object to "HH:mm" string
 const timeToString = (date) => {
-  if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+  if (!date || !dayjs.isDayjs(date) || !date.isValid()) {
     return "09:00"
   }
-  const hours = date.getHours().toString().padStart(2, "0")
-  const minutes = date.getMinutes().toString().padStart(2, "0")
-  return `${hours}:${minutes}`
+  return date.format("HH:mm")
 }
 
 // Format time from 24-hour to 12-hour format for display
@@ -180,7 +176,7 @@ export default function OutletTimings() {
   }
 
   return (
-    <LocalizationProvider dateAdapter={AdapterDateFns}>
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
       <div className="min-h-screen bg-white overflow-x-hidden">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">

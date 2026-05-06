@@ -16,7 +16,7 @@ import {
 import { restaurantAPI, zoneAPI, uploadAPI, api } from "@food/api"
 import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns"
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 import { determineStepToShow } from "@food/utils/onboardingUtils"
 import { toast } from "sonner"
 import { useCompanyName } from "@food/hooks/useCompanyName"
@@ -858,6 +858,20 @@ export default function RestaurantOnboarding() {
     const loadData = async () => {
       try {
         setLoading(true);
+
+        // Fetch zones for Step 1 location selection
+        try {
+          setZonesLoading(true)
+          const zoneRes = await zoneAPI.getPublicZones()
+          if (zoneRes.data?.success) {
+            setZones(zoneRes.data.data || [])
+          }
+        } catch (zErr) {
+          debugError("Failed to fetch zones:", zErr)
+        } finally {
+          setZonesLoading(false)
+        }
+
         const currentPhone = getVerifiedPhoneFromStoredRestaurant()
         const localData = loadOnboardingFromLocalStorage()
         
@@ -2854,7 +2868,7 @@ export default function RestaurantOnboarding() {
   }
 
   return (
-    <LocalizationProvider dateAdapter={AdapterDateFns}>
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
       <div className="min-h-screen bg-gray-100 flex flex-col">
         <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white flex items-center justify-between border-b">
           <div className="flex items-center gap-3">
