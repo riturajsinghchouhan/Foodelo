@@ -17,6 +17,7 @@ import { restaurantAPI, zoneAPI, uploadAPI, api } from "@food/api"
 import { MobileTimePicker } from "@mui/x-date-pickers/MobileTimePicker"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
+import dayjs from "dayjs"
 import { determineStepToShow } from "@food/utils/onboardingUtils"
 import { toast } from "sonner"
 import { useCompanyName } from "@food/hooks/useCompanyName"
@@ -448,15 +449,28 @@ const parseLocalYMDDate = (value) => {
 }
 
 function TimeSelector({ label, value, onChange }) {
-  const timeValue = stringToTime(value)
+  const timeValue = (() => {
+    const normalized = normalizeTimeValue(value)
+    if (!normalized) return null
+    const [hours, minutes] = normalized.split(":").map(Number)
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+    return dayjs().hour(hours).minute(minutes).second(0).millisecond(0)
+  })()
 
-  const handleTimeChange = (newValue) => {
-    if (!newValue) {
-      onChange("")
+  const applyTimeValue = (newValue) => {
+    if (!newValue || (typeof newValue.isValid === "function" && !newValue.isValid())) {
       return
     }
-    const timeString = timeToString(newValue)
-    onChange(timeString)
+
+    if (typeof newValue.format === "function") {
+      onChange(newValue.format("HH:mm"))
+      return
+    }
+
+    const timeString = timeToString(newValue?.toDate?.() || newValue)
+    if (timeString) {
+      onChange(timeString)
+    }
   }
 
   return (
@@ -465,10 +479,11 @@ function TimeSelector({ label, value, onChange }) {
         <Clock className="w-4 h-4 text-gray-800" />
         <span className="text-xs font-medium text-gray-900">{label}</span>
       </div>
-      <MobileTimePicker ampm={true}
+      <MobileTimePicker 
+        ampm={true}
         value={timeValue}
-        onChange={handleTimeChange}
-        onAccept={handleTimeChange}
+        onChange={applyTimeValue}
+        onAccept={applyTimeValue}
         slotProps={{
           textField: {
             variant: "outlined",
@@ -493,12 +508,6 @@ function TimeSelector({ label, value, onChange }) {
                 padding: "8px 12px",
                 fontSize: "12px",
               },
-            },
-            onBlur: (event) => {
-              const normalized = normalizeTimeValue(event?.target?.value)
-              if (normalized) {
-                onChange(normalized)
-              }
             },
           },
         }}
@@ -990,12 +999,13 @@ export default function RestaurantOnboarding() {
 
         // 4. Finally re-hydrate heavy files from IndexedDB if they exist 
         // (IndexedDB is reliable for large files which don't fit in localStorage)
-        const [prof, pan, gst, fs, pdf] = await Promise.all([
+        const [prof, pan, gst, fs, pdf, ...menuImages] = await Promise.all([
           getFileFromDB("profileImage"),
           getFileFromDB("panImage"),
           getFileFromDB("gstImage"),
           getFileFromDB("fssaiImage"),
-          getFileFromDB("menuPdf")
+          getFileFromDB("menuPdf"),
+          ...Array.from({ length: 10 }, (_, i) => getFileFromDB(`menuImage_${i}`))
         ]);
 
         if (prof) setStep2(p => ({ ...p, profileImage: prof }));
@@ -1004,11 +1014,7 @@ export default function RestaurantOnboarding() {
         if (fs) setStep3(p => ({ ...p, fssaiImage: fs }));
         if (pdf) setStep2(p => ({ ...p, menuPdf: pdf }));
 
-        const restoredMenuImages = []
-        for (let i = 0; i < 10; i++) {
-          const img = await getFileFromDB(`menuImage_${i}`)
-          if (img) restoredMenuImages.push(img)
-        }
+        const restoredMenuImages = menuImages.filter(Boolean)
         if (restoredMenuImages.length) {
           setStep2(p => ({ ...p, menuImages: [...p.menuImages.filter(im => !isUploadableFile(im)), ...restoredMenuImages] }));
         }
