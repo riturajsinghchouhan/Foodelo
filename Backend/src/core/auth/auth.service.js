@@ -355,29 +355,13 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
       ...phoneOrFields("ownerPhoneLast10"),
     ],
   });
-  let restaurantDoc = restaurant;
-  let createdRestaurant = false;
-  if (!restaurantDoc) {
-    // Create a minimal, pending restaurant so onboarding can proceed with auth tokens.
-    const safeDigits = digits || String(phone || "").replace(/\D/g, "");
-    const safeLast10 = safeDigits.slice(-10);
-    const fallbackName = `New Restaurant ${safeLast10 || ""}`.trim();
-    const fallbackOwner = "Owner";
-
-    restaurantDoc = await FoodRestaurant.create({
-      restaurantName: fallbackName,
-      ownerName: fallbackOwner,
-      ownerPhone: safeDigits || phone,
-      ownerPhoneDigits: safeDigits || undefined,
-      ownerPhoneLast10: safeLast10 || undefined,
-      primaryContactNumber: safeDigits || phone,
-      pureVegRestaurant: false,
-      status: "pending",
-      pendingUpdateReason: "New Registration",
-      isAcceptingOrders: false,
-    });
-    createdRestaurant = true;
-  }
+    const restaurantDoc = restaurant;
+    if (!restaurantDoc) {
+      return {
+        needsRegistration: true,
+        phone,
+      };
+    }
 
   // Update FCM token if provided
   if (fcmToken) {
@@ -401,7 +385,7 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   }
 
   // If restaurant approval status is used, handle pending/rejected states by returning info instead of throwing errors.
-  if (!createdRestaurant && restaurantDoc.status && restaurantDoc.status !== "approved") {
+    if (restaurantDoc.status && restaurantDoc.status !== "approved") {
     return {
       pendingApproval: true,
       status: restaurantDoc.status,
@@ -423,16 +407,12 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     expiresAt,
   });
 
-  const sanitizedRestaurant = sanitizeRestaurantForAuthResponse(
-    restaurantDoc?.toObject?.() || restaurantDoc,
-  );
-
   return {
     token: accessToken,
     accessToken,
     refreshToken,
-    user: sanitizedRestaurant,
-    restaurant: sanitizedRestaurant,
+    user: sanitizeRestaurantForAuthResponse(restaurantDoc?.toObject?.() || restaurantDoc),
+    needsRegistration: false,
   };
 };
 

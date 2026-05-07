@@ -856,8 +856,14 @@ export default function RestaurantOnboarding() {
     }
 
     const loadData = async () => {
+      let loadingTimer = null
       try {
-        setLoading(true);
+        setLoading(true)
+        if (typeof window !== "undefined") {
+          loadingTimer = window.setTimeout(() => {
+            setLoading(false)
+          }, 8000)
+        }
 
         // Fetch zones for Step 1 location selection
         try {
@@ -1018,6 +1024,9 @@ export default function RestaurantOnboarding() {
       } finally {
         setIsOnboardingHydrated(true)
         setLoading(false)
+        if (loadingTimer) {
+          window.clearTimeout(loadingTimer)
+        }
       }
     }
 
