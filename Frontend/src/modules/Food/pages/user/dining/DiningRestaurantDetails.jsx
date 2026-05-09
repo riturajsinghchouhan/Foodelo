@@ -104,7 +104,7 @@ export default function DiningRestaurantDetails() {
   const [selectedGuests, setSelectedGuests] = useState(2)
   const [isBookingSheetOpen, setIsBookingSheetOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("prebook")
-  const [currentBookings, setCurrentBookings] = useState([])
+  const [occupiedSeats, setOccupiedSeats] = useState(0)
   const [isFetchingBookings, setIsFetchingBookings] = useState(false)
 
   const fetchRestaurantData = async () => {
@@ -141,15 +141,15 @@ export default function DiningRestaurantDetails() {
       
       const restaurantId = resolvedRestaurant?._id || resolvedRestaurant?.id || slug
       
-      // Fetch Bookings for Availability Check
+      // Fetch Occupied Seats for Availability Check
       setIsFetchingBookings(true)
       try {
-          const bookingsRes = await diningAPI.getRestaurantBookings(resolvedRestaurant)
-          if (bookingsRes.data.success) {
-              setCurrentBookings(Array.isArray(bookingsRes.data.data) ? bookingsRes.data.data : [])
+          const availabilityRes = await diningAPI.getOccupiedSeatsPublic(restaurantId)
+          if (availabilityRes.data.success) {
+              setOccupiedSeats(Number(availabilityRes.data.data?.occupiedSeats) || 0)
           }
       } catch (err) {
-          debugError("Error fetching bookings:", err)
+          console.error("Error fetching availability:", err)
       } finally {
           setIsFetchingBookings(false)
       }
@@ -169,27 +169,7 @@ export default function DiningRestaurantDetails() {
     fetchRestaurantData()
   }, [location.state?.restaurant, slug])
 
-  // Calculate current occupied seats
-  const occupiedSeats = useMemo(() => {
-      const now = new Date()
-      const THIRTY_MINUTES = 30 * 60 * 1000
-
-      return currentBookings
-          .filter(b => {
-              // Only count approved bookings or pending bookings that are NOT expired (within 30 mins)
-              const isApproved = b.status === "approved"
-              const isPending = b.status === "pending"
-              
-              if (isApproved) return true
-              if (isPending) {
-                  const createdAt = new Date(b.createdAt || b.date)
-                  const ageMs = now - createdAt
-                  return ageMs < THIRTY_MINUTES // Only count if less than 30 mins old
-              }
-              return false
-          })
-          .reduce((sum, b) => sum + (Number(b.guests) || 0), 0)
-  }, [currentBookings])
+  // Occupied seats are now fetched directly from the backend
 
   const maxCapacity = restaurant?.diningSettings?.maxGuests || 6
   const remainingSeats = Math.max(0, maxCapacity - occupiedSeats)

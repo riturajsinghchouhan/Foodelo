@@ -2378,6 +2378,8 @@ export const diningAPI = {
     apiClient.get("/food/dining/categories/public", { params }),
   getRestaurants: (params = {}) =>
     apiClient.get("/food/dining/restaurants/public", { params }),
+  getOccupiedSeatsPublic: (restaurantId) =>
+    apiClient.get(`/food/dining/restaurants/${String(restaurantId)}/occupied-seats/public`),
   getHeroBanners: () => apiClient.get("/food/hero-banners/dining/public"),
   getRestaurantBySlug: (slug) =>
     apiClient.get(`/food/restaurant/restaurants/${String(slug)}`),

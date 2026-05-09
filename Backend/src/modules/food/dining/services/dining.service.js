@@ -705,3 +705,23 @@ export async function createDiningBookingReview(bookingId, payload = {}) {
     await booking.save();
     return booking.toObject();
 }
+
+export async function getRestaurantOccupiedSeats(restaurantId) {
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) return 0;
+
+    const now = new Date();
+    const THIRTY_MINUTES = 30 * 60 * 1000;
+    const expiryLimit = new Date(now.getTime() - THIRTY_MINUTES);
+
+    // Only count approved/confirmed bookings or recent pending ones
+    const bookings = await FoodDiningBooking.find({
+        restaurantId,
+        $or: [
+            { status: 'approved' },
+            { status: 'confirmed' },
+            { status: 'pending', createdAt: { $gte: expiryLimit } }
+        ]
+    }).select('guests').lean();
+
+    return bookings.reduce((sum, b) => sum + (Number(b.guests) || 0), 0);
+}
