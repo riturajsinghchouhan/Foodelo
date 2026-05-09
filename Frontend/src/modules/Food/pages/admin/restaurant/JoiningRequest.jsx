@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react"
 import { 
   Search, Filter, Eye, Check, X, UtensilsCrossed, ArrowUpDown, Loader2,
-  FileText, Image as ImageIcon, ExternalLink, CreditCard, Calendar, Star, Building2, User, Phone, Mail, MapPin, Clock
+  FileText, Image as ImageIcon, ExternalLink, CreditCard, Calendar, Star, Building2, User, Phone, Mail, MapPin, Clock, Map
 } from "lucide-react"
 import { adminAPI, restaurantAPI } from "@food/api"
 const debugLog = (...args) => {}
@@ -861,6 +861,17 @@ export default function JoiningRequest() {
                             </div>
                           ) : null
                         })()}
+                        {(r?.zoneId || r?.zone) && (
+                          <div className="flex items-start gap-3 mt-3">
+                            <Map className="w-5 h-5 text-slate-400 mt-0.5" />
+                            <div>
+                              <p className="text-xs text-slate-500">Service Zone</p>
+                              <p className="text-sm font-medium text-slate-900">
+                                {r?.zoneId?.name || r?.zoneId?.zoneName || r?.zone || "Assigned"}
+                              </p>
+                            </div>
+                          </div>
+                        )}
                         {r?.pureVegRestaurant != null && (
                           <div className="flex items-center gap-3">
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${r.pureVegRestaurant ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>

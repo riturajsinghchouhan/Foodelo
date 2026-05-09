@@ -2647,36 +2647,6 @@ export default function Home() {
                 transition={{ duration: 0.3 }}
                 className="bg-transparent dark:bg-transparent"
               >
-                {/* NEW Quick Offer Section - Cleaner & Professional (On white bg now) */}
-                <div className="px-4 pt-2.5 pb-1">
-                  <div className="grid grid-cols-2 gap-3">
-                    <Link
-                      to="/food/user/offers"
-                      className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 border border-rose-100 dark:border-rose-900/30 group active:scale-[0.98] transition-all"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-rose-400 tracking-widest uppercase mb-0.5">Min.</span>
-                        <span className="text-sm font-black text-rose-600 dark:text-rose-400">40% Off</span>
-                      </div>
-                      <div className="w-10 h-10 p-1.5 rounded-xl bg-white dark:bg-[#1a1a1a] shadow-sm group-hover:scale-110 transition-transform">
-                        <Tag className="w-full h-full text-rose-500" />
-                      </div>
-                    </Link>
-
-                    <Link
-                      to="/food/user/under-250"
-                      className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-100 dark:border-amber-900/30 group active:scale-[0.98] transition-all"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-amber-500 tracking-widest uppercase mb-0.5">Budget</span>
-                        <span className="text-sm font-black text-amber-600 dark:text-amber-400">Under ₹{under250PriceLimit}</span>
-                      </div>
-                      <div className="w-10 h-10 p-1.5 rounded-xl bg-white dark:bg-[#1a1a1a] shadow-sm group-hover:scale-110 transition-transform">
-                        <IndianRupee className="w-full h-full text-amber-500" />
-                      </div>
-                    </Link>
-                  </div>
-                </div>
 
                 {/* "What's on your mind today?" Section - Now with Sticky Logic */}
                 <div

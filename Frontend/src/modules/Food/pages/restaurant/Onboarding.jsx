@@ -620,6 +620,9 @@ export default function RestaurantOnboarding() {
   const panImageInputRef = useRef(null)
   const gstImageInputRef = useRef(null)
   const fssaiImageInputRef = useRef(null)
+  const zoneDetectTimerRef = useRef(null)
+  const lastZoneDetectKeyRef = useRef(null)
+  const lastOutOfZoneToastKeyRef = useRef(null)
   const [sourcePicker, setSourcePicker] = useState({
     isOpen: false,
     title: "",
@@ -2150,6 +2153,53 @@ export default function RestaurantOnboarding() {
 
     return () => clearTimeout(t)
   }, [locationSearchValue, step])
+
+  useEffect(() => {
+    if (step !== 1) return
+
+    const lat = Number(step1.location?.latitude)
+    const lng = Number(step1.location?.longitude)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+
+    const key = `${lat.toFixed(5)},${lng.toFixed(5)}`
+    if (lastZoneDetectKeyRef.current === key) return
+
+    if (zoneDetectTimerRef.current) {
+      clearTimeout(zoneDetectTimerRef.current)
+    }
+
+    zoneDetectTimerRef.current = setTimeout(async () => {
+      lastZoneDetectKeyRef.current = key
+      try {
+        const res = await zoneAPI.detectZone(lat, lng)
+        const payload = res?.data?.data
+
+        if (res?.data?.success && payload) {
+          if (payload.status === "IN_SERVICE" && payload.zoneId) {
+            setStep1((prev) =>
+              prev.zoneId === payload.zoneId ? prev : { ...prev, zoneId: payload.zoneId },
+            )
+            lastOutOfZoneToastKeyRef.current = null
+          } else {
+            if (lastOutOfZoneToastKeyRef.current !== key) {
+              toast.error("Selected location is outside all service zones")
+              lastOutOfZoneToastKeyRef.current = key
+            }
+            setStep1((prev) => (prev.zoneId ? { ...prev, zoneId: "" } : prev))
+          }
+        }
+      } catch (err) {
+        debugError("Zone detect failed:", err)
+      }
+    }, 350)
+
+    return () => {
+      if (zoneDetectTimerRef.current) {
+        clearTimeout(zoneDetectTimerRef.current)
+        zoneDetectTimerRef.current = null
+      }
+    }
+  }, [step, step1.location?.latitude, step1.location?.longitude])
 
   // Load zones for onboarding dropdown (public endpoint).
   useEffect(() => {

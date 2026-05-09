@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus } from "lucide-react"
+import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, Map } from "lucide-react"
 import { adminAPI, restaurantAPI, uploadAPI } from "@food/api"
 import { clearModuleAuth } from "@food/utils/auth"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
@@ -1730,6 +1730,17 @@ export default function RestaurantsList() {
                               <p className="text-xs text-slate-500">Address</p>
                               <p className="text-sm font-medium text-slate-900">
                                 {r?.location ? formatLocationAddress(r.location, selectedRestaurant?.zone) : flatAddress}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {r?.zoneId && (
+                          <div className="flex items-start gap-3 mt-3">
+                            <Map className="w-5 h-5 text-slate-400 mt-0.5" />
+                            <div>
+                              <p className="text-xs text-slate-500">Service Zone</p>
+                              <p className="text-sm font-medium text-slate-900">
+                                {r.zoneId?.name || r.zoneId?.zoneName || selectedRestaurant?.zone?.name || "Assigned"}
                               </p>
                             </div>
                           </div>

@@ -529,8 +529,7 @@ export default function ZoneSetup() {
       
       const { lat, lng, address } = selectedLocation
       
-      // Update restaurant location
-      const response = await restaurantAPI.updateProfile({
+      const payload = {
         location: {
           ...(restaurantData?.location || {}),
           latitude: lat,
@@ -538,7 +537,14 @@ export default function ZoneSetup() {
           coordinates: [lng, lat], // GeoJSON format: [longitude, latitude]
           formattedAddress: address
         }
-      })
+      }
+
+      if (currentZone && (currentZone._id || currentZone.id)) {
+        payload.zoneId = currentZone._id || currentZone.id
+      }
+
+      // Update restaurant location
+      const response = await restaurantAPI.updateProfile(payload)
 
       if (response?.data?.data?.restaurant) {
         setRestaurantData(response.data.data.restaurant)
