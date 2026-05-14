@@ -99,14 +99,16 @@ router.patch('/addons/:id/approve', addonsApprovalController.approveRestaurantAd
 router.patch('/addons/:id/reject', addonsApprovalController.rejectRestaurantAddon);
 
 // ----- Foods -----
+// Food approval queue (pending items created by restaurants)
+router.get('/foods/pending-approvals', foodApprovalController.getPendingFoodApprovals);
+router.patch('/foods/bulk-approve', foodApprovalController.bulkApproveFoodItemsController);
+router.patch('/foods/:id/approve', foodApprovalController.approveFoodItemController);
+router.patch('/foods/:id/reject', foodApprovalController.rejectFoodItemController);
+
 router.get('/foods', adminController.getFoods);
 router.post('/foods', adminController.createFood);
 router.patch('/foods/:id', adminController.updateFood);
 router.delete('/foods/:id', adminController.deleteFood);
-// Food approval queue (pending items created by restaurants)
-router.get('/foods/pending-approvals', foodApprovalController.getPendingFoodApprovals);
-router.patch('/foods/:id/approve', foodApprovalController.approveFoodItemController);
-router.patch('/foods/:id/reject', foodApprovalController.rejectFoodItemController);
 
 // ----- Offers & Coupons -----
 router.get('/offers', adminController.getAllOffers);

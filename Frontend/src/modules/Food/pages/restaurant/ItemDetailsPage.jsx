@@ -70,9 +70,6 @@ export default function ItemDetailsPage() {
   const [itemDescription, setItemDescription] = useState("")
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
-  const [priceOnOtherPlatforms, setPriceOnOtherPlatforms] = useState("")
-  const [otherPlatformGst, setOtherPlatformGst] = useState("")
-  const [otherPlatformGstError, setOtherPlatformGstError] = useState(false)
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
   const [gst, setGst] = useState("5.0")
@@ -129,8 +126,6 @@ export default function ItemDetailsPage() {
     const itemVariants = getFoodVariants(item)
     setVariants(itemVariants.map(createVariantDraft))
     setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
-    setPriceOnOtherPlatforms(item.priceOnOtherPlatforms?.toString() || "")
-    setOtherPlatformGst(item.otherPlatformGst?.toString() || "")
     setPreparationTime(item.preparationTime || "")
     setGst(item.gst?.toString() || "5.0")
     setIsRecommended(item.isRecommended || false)
@@ -643,14 +638,6 @@ export default function ItemDetailsPage() {
         return
       }
 
-      if (otherPlatformGst === "" || !Number.isFinite(Number(otherPlatformGst))) {
-        setOtherPlatformGstError(true)
-        toast.error("Other platform GST is required")
-        setUploadingImages(false)
-        return
-      }
-      setOtherPlatformGstError(false)
-
       const variantPayload = normalizedVariants.map((variant) => ({
         ...(variant.persistedId ? { _id: variant.persistedId } : {}),
         name: variant.name,
@@ -664,8 +651,6 @@ export default function ItemDetailsPage() {
           name: itemName.trim(),
           description: itemDescription.trim(),
           price: hasVariants ? undefined : parsedBasePrice,
-          priceOnOtherPlatforms: priceOnOtherPlatforms ? Number(priceOnOtherPlatforms) : null,
-          otherPlatformGst: Number(otherPlatformGst),
           variants: variantPayload,
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
           foodType: foodType,
@@ -688,8 +673,6 @@ export default function ItemDetailsPage() {
           name: itemName.trim(),
           description: itemDescription.trim(),
           price: hasVariants ? undefined : parsedBasePrice,
-          priceOnOtherPlatforms: priceOnOtherPlatforms ? Number(priceOnOtherPlatforms) : null,
-          otherPlatformGst: Number(otherPlatformGst),
           variants: variantPayload,
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
           foodType: foodType,
@@ -1055,68 +1038,7 @@ export default function ItemDetailsPage() {
                     </div>
                   </div>
 
-                  <div className="relative">
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Price on other platforms{" "}
-                      <span className="text-gray-400 text-xs font-normal">(Optional)</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={priceOnOtherPlatforms}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[\u20B9\s,]/g, '').replace(/[^0-9.]/g, '')
-                          const parts = value.split('.')
-                          const cleanedValue = parts.length > 2
-                            ? parts[0] + '.' + parts.slice(1).join('')
-                            : value
-                          setPriceOnOtherPlatforms(cleanedValue)
-                        }}
-                        onFocus={(e) => {
-                          if (e.target.value.startsWith('\u20B9')) {
-                            e.target.value = e.target.value.replace(/[\u20B9\s]+/g, '')
-                          }
-                        }}
-                        placeholder="e.g., 299 (Enter the price on Swiggy, Zomato, etc.)"
-                        className="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-600">{"\u20B9"}</span>
-                    </div>
-                    <p className="mt-1.5 text-xs text-gray-500">
-                      Help customers see how much they save by ordering with us. We'll show the savings in their cart.
-                    </p>
-                  </div>
 
-                  <div className="relative">
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Other platform GST (%) <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={otherPlatformGst}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[^0-9.]/g, '')
-                          const parts = value.split('.')
-                          const cleanedValue = parts.length > 2
-                            ? parts[0] + '.' + parts.slice(1).join('')
-                            : value
-                          const parsed = cleanedValue === '' ? '' : Math.min(100, Number(cleanedValue))
-                          setOtherPlatformGst(parsed === '' ? '' : String(parsed))
-                          setOtherPlatformGstError(false)
-                        }}
-                        placeholder="e.g., 5"
-                        className={`w-full pr-8 pl-3 py-3 border ${otherPlatformGstError ? 'border-red-500' : 'border-gray-300'} rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-600">%</span>
-                    </div>
-                    {otherPlatformGstError && (
-                      <p className="mt-1.5 text-xs text-red-500">Other platform GST is required</p>
-                    )}
-                    <p className="mt-1.5 text-xs text-gray-500">
-                      Enter the GST rate applied on other platforms for this item.
-                    </p>
-                  </div>
                 </>
               ) : (
                 <div className="rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-sm text-orange-700">

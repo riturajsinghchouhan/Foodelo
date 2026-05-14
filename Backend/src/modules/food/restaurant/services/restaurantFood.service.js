@@ -151,10 +151,23 @@ const resolveCategoryForRestaurant = async (context, body = {}) => {
             throw new ValidationError('Multiple categories share this name. Please choose a specific category.');
         }
         category = matches[0] || null;
+
+        // Automatically create category if not found by name
+        if (!category) {
+            category = await FoodCategory.create({
+                name: categoryNameRaw,
+                restaurantId: context.restaurantId,
+                createdByRestaurantId: context.restaurantId,
+                foodTypeScope: context.pureVegRestaurant ? 'Veg' : 'Both',
+                approvalStatus: 'approved',
+                isApproved: true,
+                isActive: true
+            });
+        }
     }
 
     if (!category?._id) {
-        throw new ValidationError('Category not found for this restaurant');
+        throw new ValidationError('Category lookup failed');
     }
 
     await backfillLegacyCategoryWorkflow([category]);
@@ -311,4 +324,90 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     }
 
     return updated;
+}
+
+export async function bulkCreateFood(restaurantId, items = []) {
+    const context = await getRestaurantContext(restaurantId);
+    const results = {
+        successCount: 0,
+        errorCount: 0,
+        errors: [],
+        items: []
+    };
+
+    if (!Array.isArray(items) || items.length === 0) {
+        throw new ValidationError('No items provided for bulk upload');
+    }
+
+    // Limit bulk size to prevent timeout
+    if (items.length > 100) {
+        throw new ValidationError('Bulk upload limit is 100 items per request');
+    }
+
+    const processedItems = [];
+
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        try {
+            const name = toStr(item.name);
+            if (!name) throw new Error('Item name is required');
+
+            const foodType = normalizeFoodType(item.foodType);
+            const { categoryObjectId, categoryName } = await resolveCategoryForRestaurant(context, {
+                categoryId: item.categoryId,
+                categoryName: item.categoryName,
+                foodType
+            });
+
+            const { price: finalPrice, variants: finalVariants } = getCreateFoodPricing(item);
+
+            processedItems.push({
+                restaurantId,
+                categoryId: categoryObjectId,
+                categoryName: categoryName || '',
+                name,
+                description: toStr(item.description),
+                price: finalPrice,
+                variants: finalVariants,
+                image: toStr(item.image),
+                foodType,
+                isAvailable: item.isAvailable !== false,
+                preparationTime: toStr(item.preparationTime),
+                approvalStatus: 'pending',
+                requestedAt: new Date()
+            });
+
+            results.successCount++;
+        } catch (err) {
+            results.errorCount++;
+            results.errors.push({
+                index: i,
+                name: item.name || 'Unknown',
+                message: err.message
+            });
+        }
+    }
+
+    if (processedItems.length > 0) {
+        const docs = await FoodItem.insertMany(processedItems);
+        results.items = docs;
+
+        // Notify admins about the bulk request
+        try {
+            const { notifyAdminsSafely } = await import('../../../../core/notifications/firebase.service.js');
+            void notifyAdminsSafely({
+                title: 'Bulk Product Approval Request 🚀',
+                body: `Restaurant has uploaded ${processedItems.length} new items for approval.`,
+                data: {
+                    type: 'approval_request',
+                    subType: 'food_bulk',
+                    restaurantId: String(restaurantId)
+                }
+            });
+        } catch (e) {
+            console.error('Failed to notify admins of bulk food upload:', e);
+        }
+    }
+
+    return results;
 }

@@ -14,7 +14,8 @@ import {
   ChevronRight,
   X,
   ThumbsUp,
-  Pencil
+  Pencil,
+  Check
 } from "lucide-react"
 import RestaurantNavbar from "@food/components/restaurant/RestaurantNavbar"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
@@ -768,6 +769,10 @@ export default function Inventory() {
   const [toggleTarget, setToggleTarget] = useState(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isAddPopupOpen, setIsAddPopupOpen] = useState(false)
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
+  const [isUploadingBulk, setIsUploadingBulk] = useState(false)
+  const [selectedBulkFile, setSelectedBulkFile] = useState(null)
+  const [bulkUploadResult, setBulkUploadResult] = useState(null)
 
   // Toggle popup state
   const [selectedOption, setSelectedOption] = useState("specific-time")
@@ -794,10 +799,165 @@ export default function Inventory() {
 
   // Swipe gesture refs
   const touchStartX = useRef(0)
-  const touchEndX = useRef(0)
   const touchStartY = useRef(0)
   const isSwiping = useRef(false)
   const mouseStartX = useRef(0)
+
+  // XLSX Helper: Loads the library dynamically from CDN
+  const loadXlsx = () => {
+    return new Promise((resolve, reject) => {
+      if (window.XLSX) return resolve(window.XLSX);
+      const script = document.createElement("script");
+      script.src = "https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js";
+      script.onload = () => {
+        if (window.XLSX) resolve(window.XLSX);
+        else reject(new Error("XLSX not found after script load"));
+      };
+      script.onerror = () => reject(new Error("Failed to load XLSX library"));
+      document.head.appendChild(script);
+    });
+  };
+
+  // Bulk Upload Functions
+  const downloadTemplate = async () => {
+    try {
+      setIsUploadingBulk(true);
+      const XLSX = await loadXlsx();
+      const headers = ["Name", "Description", "Price", "Category Name", "Food Type (Veg/Non-Veg)", "Preparation Time", "Is Available (TRUE/FALSE)", "Image URL", "Variants (Name:Price, Name:Price)"];
+      const rows = [
+        ["Chicken Dum Biryani", "Authentic slow-cooked chicken biryani with aromatic spices", 350, "Biryani", "Non-Veg", "30 mins", "TRUE", "https://res.cloudinary.com/demo/image/upload/sample.jpg", "Half:180, Full:350"],
+        ["Paneer Tikka", "Grilled cottage cheese cubes marinated in yogurt and spices", 280, "Starters", "Veg", "20 mins", "TRUE", "https://res.cloudinary.com/demo/image/upload/sample.jpg", ""]
+      ];
+
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+      XLSX.writeFile(wb, "foodelo_inventory_template.xlsx");
+    } catch (err) {
+      console.error("Template download error:", err);
+      toast.error("Failed to generate Excel template. Please check your internet connection.");
+    } finally {
+      setIsUploadingBulk(false);
+    }
+  };
+
+  const handleBulkFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setSelectedBulkFile(file);
+  };
+
+  const handleBulkSubmit = async () => {
+    if (!selectedBulkFile) {
+      toast.error("Please select an Excel file first");
+      return;
+    }
+
+    setIsUploadingBulk(true);
+    try {
+      const XLSX = await loadXlsx();
+      const reader = new FileReader();
+      
+      reader.onload = async (event) => {
+        try {
+          const data = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          if (jsonData.length < 2) {
+            toast.error("File is empty or missing headers");
+            setIsUploadingBulk(false);
+            return;
+          }
+
+          const rawHeaders = jsonData[0].map(h => String(h || '').trim().toLowerCase());
+          const rows = jsonData.slice(1);
+          
+          const items = rows.filter(row => row.length > 0 && row[0]).map(row => {
+            const item = {};
+            rawHeaders.forEach((header, index) => {
+              const val = row[index];
+              if (header.includes("name") && !header.includes("category")) item.name = val;
+              else if (header.includes("description")) item.description = val;
+              else if (header.includes("variant") || header.includes("variation")) {
+                if (val && typeof val === 'string') {
+                  const parsedVariants = val.split(',').map(v => {
+                    const parts = v.split(':');
+                    if (parts.length === 2) {
+                      const vName = parts[0].trim();
+                      const vPrice = Number(parts[1].trim());
+                      if (vName && !isNaN(vPrice)) {
+                        return { name: vName, price: vPrice };
+                      }
+                    }
+                    return null;
+                  }).filter(Boolean);
+                  if (parsedVariants.length > 0) {
+                    item.variants = parsedVariants;
+                  }
+                }
+              }
+              else if (header.includes("price")) item.price = Number(val) || 0;
+              else if (header.includes("category")) item.categoryName = val;
+              else if (header.includes("type")) item.foodType = val;
+              else if (header.includes("prep")) item.preparationTime = val;
+              else if (header.includes("available")) item.isAvailable = String(val).toLowerCase() === "true";
+              else if (header.includes("image")) item.image = val;
+            });
+            return item;
+          });
+
+          if (items.length === 0) {
+            toast.error("No valid items found in the file");
+            setIsUploadingBulk(false);
+            return;
+          }
+
+          const res = await restaurantAPI.bulkCreateFood(items);
+          // Backend sendResponse wraps results in .data.data
+          const results = res?.data?.data || res?.data;
+
+          if (res?.data?.success || res?.status === 201) {
+            setBulkUploadResult({
+              successCount: results?.successCount || 0,
+              errorCount: results?.errorCount || 0,
+              errors: results?.errors || [],
+              total: items.length
+            });
+            
+            setSelectedBulkFile(null);
+            
+            // Refresh inventory
+            setLoadingInventory(true);
+            const menuRes = await restaurantAPI.getMenu();
+            if (menuRes?.data?.success) {
+              const menuData = menuRes.data.data?.categories || menuRes.data.categories || [];
+              setCategories(menuData)
+              localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(menuData))
+            }
+            setLoadingInventory(false);
+          } else {
+            toast.error(res?.data?.message || "Failed to upload bulk items")
+          }
+        } catch (err) {
+          console.error("Parsing error:", err);
+          toast.error("Error parsing file. Ensure it's a valid Excel file.");
+        } finally {
+          setIsUploadingBulk(false);
+        }
+      };
+      
+      reader.readAsArrayBuffer(selectedBulkFile);
+    } catch (err) {
+      console.error("XLSX load error:", err);
+      toast.error("Could not load Excel processing library.");
+      setIsUploadingBulk(false);
+    }
+  };
+
   const mouseEndX = useRef(0)
   const isMouseDown = useRef(false)
   const [isTransitioning, setIsTransitioning] = useState(false)
@@ -2717,7 +2877,10 @@ export default function Inventory() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsAddPopupOpen(false)}
+              onClick={() => {
+                setIsAddPopupOpen(false)
+                setShowBulkUpload(false)
+              }}
               className="fixed inset-0 bg-black/50 z-[70]"
             />
             <motion.div
@@ -2725,31 +2888,216 @@ export default function Inventory() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-[71] max-h-[70vh] overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom)+5.5rem)]"
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-[71] max-h-[85vh] overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom)+5.5rem)]"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-white px-4 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-bold text-gray-900 text-center">Add item</h2>
-              </div>
-              <div className="px-4 py-4 space-y-2">
+              <div className="sticky top-0 bg-white px-4 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div className="w-8" />
+                <h2 className="text-lg font-bold text-gray-900 text-center">
+                  {showBulkUpload ? "Bulk Inventory Upload" : "Add item"}
+                </h2>
                 <button
                   onClick={() => {
                     setIsAddPopupOpen(false)
-                    navigate(`/food/restaurant/hub-menu/item/new`, {
-                      state: {
-                        backTo: "/food/restaurant/inventory",
-                      },
-                    })
+                    setShowBulkUpload(false)
                   }}
-                  className="w-full py-3 px-4 text-left rounded-lg hover:bg-gray-50 transition-colors"
+                  className="p-1 rounded-full hover:bg-gray-100"
                 >
-                  <span className="text-sm font-medium text-gray-900">Add item</span>
+                  <X className="w-5 h-5 text-gray-400" />
                 </button>
               </div>
+
+              {!showBulkUpload ? (
+                <div className="px-4 py-6 space-y-4">
+                  <button
+                    onClick={() => {
+                      setIsAddPopupOpen(false)
+                      navigate(`/food/restaurant/hub-menu/item/new`, {
+                        state: {
+                          backTo: "/food/restaurant/inventory",
+                        },
+                      })
+                    }}
+                    className="w-full group flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-100 transition-all"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Plus className="w-6 h-6" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-base font-bold text-slate-900">Add single item</p>
+                      <p className="text-xs text-slate-500">Manually enter item details, images, and variants.</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setShowBulkUpload(true)}
+                    className="w-full group flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-100 transition-all"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-base font-bold text-slate-900">Bulk upload items</p>
+                      <p className="text-xs text-slate-500">Upload multiple items at once using an Excel/CSV file.</p>
+                    </div>
+                  </button>
+                </div>
+              ) : (
+                <div className="px-4 py-6 space-y-6">
+                  <div className="rounded-2xl bg-blue-50 border border-blue-100 p-4">
+                    <div className="flex gap-3">
+                      <div className="mt-0.5">
+                        <Upload className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-blue-900">How it works</p>
+                        <p className="text-xs text-blue-700 leading-relaxed mt-1">
+                          1. Download our template file below.<br />
+                          2. Fill in your item details following the format.<br />
+                          3. Upload the completed file to add all items at once.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={downloadTemplate}
+                    className="w-full flex items-center justify-center gap-2 py-3.5 border-2 border-dashed border-slate-200 rounded-2xl text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-sm"
+                  >
+                    Download dummy Excel template (.xlsx)
+                  </button>
+
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls"
+                      onChange={handleBulkFileChange}
+                      className="hidden"
+                      id="bulk-file-input"
+                      disabled={isUploadingBulk}
+                    />
+                    <label
+                      htmlFor="bulk-file-input"
+                      className={`w-full flex flex-col items-center justify-center gap-3 p-8 rounded-[28px] border-2 border-dashed ${
+                        selectedBulkFile ? 'border-green-300 bg-green-50' : 'border-[#ead6e3] bg-[#fcf7fb] hover:bg-[#f9f0f7] hover:border-[#d5bdd0]'
+                      } transition-all cursor-pointer`}
+                    >
+                      <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-sm">
+                        {selectedBulkFile ? (
+                          <Check className="w-8 h-8 text-green-600" />
+                        ) : (
+                          <Upload className="w-8 h-8 text-[#7e3866]" />
+                        )}
+                      </div>
+                      <div className="text-center">
+                        <p className="text-base font-bold text-slate-900">
+                          {selectedBulkFile ? selectedBulkFile.name : "Select Excel file to upload"}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {selectedBulkFile ? "File selected! Tap Submit to upload." : "Tap to choose your .xlsx file from device"}
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {selectedBulkFile && (
+                    <button
+                      onClick={handleBulkSubmit}
+                      disabled={isUploadingBulk}
+                      className="w-full py-4 bg-[#7e3866] text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-[#6a2f56] transition-all disabled:opacity-50"
+                    >
+                      {isUploadingBulk ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-5 h-5" />
+                          Submit & Upload
+                        </>
+                      )}
+                    </button>
+                  )}
+
+
+                  <button
+                    onClick={() => setShowBulkUpload(false)}
+                    className="w-full py-4 text-sm font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    Back to options
+                  </button>
+                </div>
+              )}
             </motion.div>
           </>
         )}
       </AnimatePresence>
+
+      {/* Bulk Upload Result Summary Popup */}
+      <AnimatePresence>
+        {bulkUploadResult && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setBulkUploadResult(null)}
+              className="fixed inset-0 bg-black/60 z-[80] backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-white rounded-3xl p-6 shadow-2xl z-[81] text-center"
+            >
+              <div className="w-20 h-20 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto mb-4">
+                <Check className="w-10 h-10" />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 mb-2">Upload Summary</h3>
+              <p className="text-sm text-slate-500 mb-6">Process completed successfully.</p>
+              
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="p-4 rounded-2xl bg-green-50 border border-green-100">
+                  <p className="text-2xl font-black text-green-600">{bulkUploadResult.successCount}</p>
+                  <p className="text-xs font-bold text-green-700 uppercase tracking-wider">Success</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-red-50 border border-red-100">
+                  <p className="text-2xl font-black text-red-600">{bulkUploadResult.errorCount}</p>
+                  <p className="text-xs font-bold text-red-700 uppercase tracking-wider">Failed</p>
+                </div>
+              </div>
+
+              {bulkUploadResult.errors && bulkUploadResult.errors.length > 0 && (
+                <div className="mb-8 text-left">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Failure Reasons</p>
+                  <div className="max-h-[200px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                    {bulkUploadResult.errors.map((err, idx) => (
+                      <div key={idx} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                        <p className="text-xs font-bold text-slate-900">{err.name || `Row ${err.index + 2}`}</p>
+                        <p className="text-[10px] text-red-500 mt-0.5">{err.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setBulkUploadResult(null);
+                  setIsAddPopupOpen(false);
+                  setShowBulkUpload(false);
+                }}
+                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-lg hover:bg-slate-800 transition-all"
+              >
+                Got it!
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+
 
       {/* Floating Menu Button & Popup (hidden on Add-ons tab) */}
       {activeTab !== "add-ons" && (

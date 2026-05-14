@@ -532,6 +532,13 @@ export const adminAPI = {
       { reason: String(reason || "").trim() },
       { contextModule: "admin" },
     ),
+  /** Bulk approve multiple food items */
+  bulkApproveFood: (ids) =>
+    apiClient.patch(
+      "/food/admin/foods/bulk-approve",
+      { ids },
+      { contextModule: "admin" },
+    ),
   /** Customers (admin) */
   getCustomers: (params = {}) =>
     apiClient.get("/food/admin/customers", { params, contextModule: "admin" }),
@@ -1175,6 +1182,10 @@ export const restaurantAPI = {
   /** Foods (restaurant) - stored in food_items collection */
   createFood: (body) =>
     apiClient.post("/food/restaurant/foods", body ?? {}, {
+      contextModule: "restaurant",
+    }),
+  bulkCreateFood: (items) =>
+    apiClient.post("/food/restaurant/foods/bulk", items ?? [], {
       contextModule: "restaurant",
     }),
   updateFood: (id, body) =>
