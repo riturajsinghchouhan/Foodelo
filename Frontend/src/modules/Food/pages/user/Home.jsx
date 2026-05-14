@@ -871,39 +871,6 @@ export default function Home() {
     };
   }, [showVegModePopup]);
 
-  // Fetch hero banners from public API (no auth required)
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingBanners(true);
-    publicGetOnce("/food/hero-banners/public")
-      .then((response) => {
-        if (cancelled) return;
-        const data = response?.data?.data;
-        const list = Array.isArray(data?.banners)
-          ? data.banners
-          : Array.isArray(data)
-            ? data
-            : [];
-        const images = list
-          .map((b) => (b && typeof b.imageUrl === "string" ? b.imageUrl : ""))
-          .filter(Boolean);
-        setHeroBannerImages(images);
-        setHeroBannersData(list);
-        setCurrentBannerIndex(0);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        debugError("Failed to fetch hero banners", err);
-        setHeroBannerImages([]);
-        setHeroBannersData([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingBanners(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Old backend endpoint removed: keep UI stable with empty categories.
   useEffect(() => {
@@ -1360,6 +1327,40 @@ export default function Home() {
     loading: effectiveZoneLoading,
     error: effectiveZoneError,
   } = useZone(effectiveLocation);
+
+  // Fetch hero banners from public API (no auth required)
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingBanners(true);
+    publicGetOnce("/food/hero-banners/public", { params: { zoneId: effectiveZoneId } })
+      .then((response) => {
+        if (cancelled) return;
+        const data = response?.data?.data;
+        const list = Array.isArray(data?.banners)
+          ? data.banners
+          : Array.isArray(data)
+            ? data
+            : [];
+        const images = list
+          .map((b) => (b && typeof b.imageUrl === "string" ? b.imageUrl : ""))
+          .filter(Boolean);
+        setHeroBannerImages(images);
+        setHeroBannersData(list);
+        setCurrentBannerIndex(0);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        debugError("Failed to fetch hero banners", err);
+        setHeroBannerImages([]);
+        setHeroBannersData([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBanners(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveZoneId]);
 
   const shouldShowOutOfZoneHome =
     !effectiveZoneLoading &&
@@ -2719,16 +2720,32 @@ export default function Home() {
                             exit={{ height: 0, opacity: 0 }}
                             className="px-4 pt-3 pb-2"
                           >
-                            <div
-                              className="bg-white dark:bg-[#1a1a1a] rounded-2xl flex items-center px-4 py-3 cursor-pointer border-2 border-[#7e3866]/30 dark:border-[#7e3866]/50 shadow-md"
-                              onClick={handleSearchFocus}
-                            >
-                              <Search className="h-5 w-5 text-[#7e3866] dark:text-[#a14b84] mr-3" strokeWidth={2.5} />
-                              <div className="flex-1 relative h-5 overflow-hidden">
-                                <span className="absolute inset-0 text-base text-gray-400 font-medium">Search "biryani"</span>
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="flex-1 bg-white dark:bg-[#1a1a1a] rounded-2xl flex items-center px-4 py-3 cursor-pointer border-2 border-[#7e3866]/30 dark:border-[#7e3866]/50 shadow-md"
+                                onClick={handleSearchFocus}
+                              >
+                                <Search className="h-5 w-5 text-[#7e3866] dark:text-[#a14b84] mr-3" strokeWidth={2.5} />
+                                <div className="flex-1 relative h-5 overflow-hidden">
+                                  <span className="absolute inset-0 text-base text-gray-400 font-medium">Search "biryani"</span>
+                                </div>
+                                <div className="h-5 w-[1px] bg-gray-200 dark:bg-white/10 mx-2" />
+                                <Mic className="h-5 w-5 text-[#7e3866] dark:text-[#a14b84]" />
                               </div>
-                              <div className="h-5 w-[1px] bg-gray-200 dark:bg-white/10 mx-2" />
-                              <Mic className="h-5 w-5 text-[#7e3866] dark:text-[#a14b84]" />
+
+                              {/* Veg Toggle in Sticky Header */}
+                              <div
+                                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-3 rounded-2xl border-2 transition-all duration-300 cursor-pointer shadow-md ${vegMode ? 'border-[#00b09b]/50 bg-[#00b09b]/10' : 'border-gray-100 dark:border-white/10 bg-white dark:bg-[#1a1a1a]'}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleVegModeChange?.(!vegMode);
+                                }}
+                              >
+                                <div className={`w-4 h-4 rounded-sm border flex items-center justify-center transition-colors ${vegMode ? 'border-[#00b09b] bg-[#00b09b]' : 'border-gray-300 dark:border-white/30'}`}>
+                                  {vegMode && <Check className="h-3 w-3 text-white" strokeWidth={4} />}
+                                </div>
+                                <span className={`text-xs font-bold uppercase tracking-tight ${vegMode ? 'text-[#00b09b]' : 'text-gray-500 dark:text-gray-400'}`}>Veg</span>
+                              </div>
                             </div>
                           </motion.div>
                         )}
@@ -2946,7 +2963,7 @@ export default function Home() {
             <div className="h-[1px] bg-gray-100 dark:bg-gray-800 flex-1"></div>
           </div>
           <div className="px-4 pb-4 lg:pb-6">
-            <div className="flex overflow-x-auto no-scrollbar gap-4 sm:gap-5 md:gap-6 items-start py-2">
+            <div className="flex overflow-x-auto no-scrollbar gap-10 sm:gap-12 md:gap-16 items-start justify-center py-2">
               {showExploreSkeleton ? (
                 Array(6).fill(0).map((_, i) => (
                   <div key={i} className="flex-shrink-0 w-20 sm:w-24 md:w-28">
@@ -3767,30 +3784,18 @@ export default function Home() {
 
             {/* Popup */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: -10 }}
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: -10 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{
                 type: "spring",
                 damping: 25,
                 stiffness: 300,
                 mass: 0.8,
               }}
-              className="fixed z-[9999] bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl p-4 w-[calc(100%-2rem)] max-w-xs"
-              style={{
-                top: `${popupPosition.top}px`,
-                left: `${popupPosition.left}px`,
-              }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[9999] bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl p-6 w-[calc(100%-2rem)] max-w-xs"
               onClick={(e) => e.stopPropagation()}>
-              {/* Pointer Triangle */}
-              <div
-                className="absolute -top-2 w-3 h-3 bg-white dark:bg-[#1a1a1a] transform rotate-45"
-                style={{
-                  left: `${popupPosition.triangleLeft - 6}px`,
-                  boxShadow: "-2px -2px 4px rgba(0,0,0,0.1)",
-                }}
-              />
-
+              
               {/* Title */}
               <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3">
                 See veg dishes from

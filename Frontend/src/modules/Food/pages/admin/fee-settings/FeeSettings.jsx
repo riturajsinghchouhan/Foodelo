@@ -461,24 +461,6 @@ export default function FeeSettings() {
                   </p>
                 </div>
 
-                {/* Default Delivery Fee (Fallback) */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Default Delivery Fee (₹) <span className="text-slate-400 font-normal">(Optional)</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={feeSettings.deliveryFee}
-                    onChange={(e) => setFeeSettings({ ...feeSettings, deliveryFee: e.target.value })}
-                    min="0"
-                    step="1"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-                    placeholder="Leave empty to disable fallback"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Used only when no delivery fee range matches and free delivery threshold is not met
-                  </p>
-                </div>
 
                 {/* Platform Fee */}
                 <div className="space-y-2">

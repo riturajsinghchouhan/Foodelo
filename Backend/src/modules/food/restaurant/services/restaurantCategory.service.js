@@ -167,10 +167,21 @@ export async function listPublicCategories(query = {}) {
     const search = typeof query.search === 'string' ? query.search.trim() : '';
     const zoneIdRaw = typeof query.zoneId === 'string' ? query.zoneId.trim() : '';
 
-    const approvedCategoryIds = await FoodItem.distinct('categoryId', {
+    const itemFilter = {
         approvalStatus: 'approved',
         categoryId: { $ne: null }
-    });
+    };
+
+    if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
+        // Only consider categories that have approved items in restaurants of THIS zone.
+        const zoneRestaurants = await FoodRestaurant.distinct('_id', {
+            zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+            status: 'approved'
+        });
+        itemFilter.restaurantId = { $in: zoneRestaurants };
+    }
+
+    const approvedCategoryIds = await FoodItem.distinct('categoryId', itemFilter);
 
     if (!approvedCategoryIds.length) {
         return { categories: [], total: 0, page, limit };
