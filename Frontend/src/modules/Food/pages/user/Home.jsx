@@ -401,11 +401,16 @@ export default function Home() {
   const { openSearch, closeSearch, searchValue, setSearchValue } =
     useSearchOverlay();
   const { openLocationSelector } = useLocationSelector();
-  const { vegMode, setVegMode: setVegModeContext } = useProfile();
+  const { 
+    vegMode, 
+    setVegMode: setVegModeContext,
+    vegModeOption,
+    setVegModeOption
+  } = useProfile();
   const [prevVegMode, setPrevVegMode] = useState(vegMode);
   const [showVegModePopup, setShowVegModePopup] = useState(false);
   const [showSwitchOffPopup, setShowSwitchOffPopup] = useState(false);
-  const [vegModeOption, setVegModeOption] = useState("all"); // "all" or "pure-veg"
+  
   const [isApplyingVegMode, setIsApplyingVegMode] = useState(false);
   const [isSwitchingOffVegMode, setIsSwitchingOffVegMode] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0, triangleLeft: 0 });
@@ -795,7 +800,6 @@ export default function Home() {
     setPrevVegMode(vegMode);
     setShowVegModePopup(false);
     setShowSwitchOffPopup(false);
-    setVegModeOption("all");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2141,9 +2145,14 @@ export default function Home() {
   const matchesVegMode = useCallback(
     (restaurant) => {
       if (!vegMode) return true;
-      return restaurant?.pureVegRestaurant === true;
+      // If "Pure Veg restaurants only" is selected, only show pure veg restaurants.
+      // If "All restaurants" is selected, show all (item-level filtering happens in listing/detail pages).
+      if (vegModeOption === "pure-veg") {
+        return restaurant?.pureVegRestaurant === true;
+      }
+      return true;
     },
-    [vegMode],
+    [vegMode, vegModeOption],
   );
 
   // Filter restaurants and foods based on active filters

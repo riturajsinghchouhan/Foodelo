@@ -77,7 +77,7 @@ function RestaurantDetailsContent() {
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
   const targetDishId = useMemo(() => String(searchParams.get('dish') || '').trim(), [searchParams])
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
-  const { vegMode, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite } = useProfile()
+  const { vegMode, vegModeOption, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite } = useProfile()
   const { location: userLocation } = useLocation() // Get user's current location
   const { zoneId, zone, loading: loadingZone, isOutOfService } = useZone(userLocation) // Get user's zone for zone-based filtering
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
@@ -2216,42 +2216,46 @@ function RestaurantDetailsContent() {
                   )}
                   <ChevronDown className="h-3 w-3" />
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] dark:text-white rounded-full ${filters.vegNonVeg === "veg" ? "border-green-600 bg-green-50 text-green-700 font-bold dark:border-green-500 dark:bg-green-900/20 dark:text-green-400" : ""
-                    }`}
-                  onClick={() =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      vegNonVeg: prev.vegNonVeg === "veg" ? null : "veg",
-                    }))
-                  }
-                >
-                  <div className="h-3 w-3 rounded-full bg-green-600" />
-                  Veg
-                  {filters.vegNonVeg === "veg" && (
-                    <X className="h-3 w-3 text-gray-600 dark:text-gray-400" />
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] dark:text-white rounded-full ${filters.vegNonVeg === "non-veg" ? "border-red-600 bg-red-50 text-red-600 dark:border-red-500 dark:bg-red-900/20 dark:text-red-400" : ""
-                    }`}
-                  onClick={() =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      vegNonVeg: prev.vegNonVeg === "non-veg" ? null : "non-veg",
-                    }))
-                  }
-                >
-                  <div className="h-3 w-3 rounded-full bg-red-600" />
-                  Non-veg
-                  {filters.vegNonVeg === "non-veg" && (
-                    <X className="h-3 w-3 text-gray-600 dark:text-gray-400" />
-                  )}
-                </Button>
+                {vegModeOption !== "pure-veg" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] dark:text-white rounded-full ${filters.vegNonVeg === "veg" ? "border-green-600 bg-green-50 text-green-700 font-bold dark:border-green-500 dark:bg-green-900/20 dark:text-green-400" : ""
+                      }`}
+                    onClick={() =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        vegNonVeg: prev.vegNonVeg === "veg" ? null : "veg",
+                      }))
+                    }
+                  >
+                    <div className="h-3 w-3 rounded-full bg-green-600" />
+                    Veg
+                    {filters.vegNonVeg === "veg" && (
+                      <X className="h-3 w-3 text-gray-600 dark:text-gray-400" />
+                    )}
+                  </Button>
+                )}
+                {vegModeOption !== "pure-veg" && !vegMode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`flex items-center gap-1.5 whitespace-nowrap border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] dark:text-white rounded-full ${filters.vegNonVeg === "non-veg" ? "border-red-600 bg-red-50 text-red-600 dark:border-red-500 dark:bg-red-900/20 dark:text-red-400" : ""
+                      }`}
+                    onClick={() =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        vegNonVeg: prev.vegNonVeg === "non-veg" ? null : "non-veg",
+                      }))
+                    }
+                  >
+                    <div className="h-3 w-3 rounded-full bg-red-600" />
+                    Non-veg
+                    {filters.vegNonVeg === "non-veg" && (
+                      <X className="h-3 w-3 text-gray-600 dark:text-gray-400" />
+                    )}
+                  </Button>
+                )}
               </div>
 
               {menuCategories.length > 0 && (
@@ -3036,41 +3040,45 @@ function RestaurantDetailsContent() {
                     </div>
 
                     {/* Veg/Non-veg preference */}
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Veg/Non-veg preference:</h3>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            setFilters((prev) => ({
-                              ...prev,
-                              vegNonVeg: prev.vegNonVeg === "veg" ? null : "veg",
-                            }))
-                          }
-                          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all flex-1 ${filters.vegNonVeg === "veg"
-                            ? "border-green-600 dark:border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                            : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                            }`}
-                        >
-                          <div className="h-4 w-4 rounded-full bg-green-600 dark:bg-green-500" />
-                          <span className="font-medium">Veg</span>
-                        </button>
-                        <button
-                          onClick={() =>
-                            setFilters((prev) => ({
-                              ...prev,
-                              vegNonVeg: prev.vegNonVeg === "non-veg" ? null : "non-veg",
-                            }))
-                          }
-                          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all flex-1 ${filters.vegNonVeg === "non-veg"
-                            ? "border-red-600 dark:border-red-600 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-gray-300"
-                            : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                            }`}
-                        >
-                          <div className="h-4 w-4 rounded-full bg-red-600" />
-                          <span className="font-medium">Non-veg</span>
-                        </button>
+                    {vegModeOption !== "pure-veg" && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Veg/Non-veg preference:</h3>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                vegNonVeg: prev.vegNonVeg === "veg" ? null : "veg",
+                              }))
+                            }
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all flex-1 ${filters.vegNonVeg === "veg"
+                              ? "border-green-600 dark:border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
+                              }`}
+                          >
+                            <div className="h-4 w-4 rounded-full bg-green-600 dark:bg-green-500" />
+                            <span className="font-medium">Veg</span>
+                          </button>
+                          {!vegMode && (
+                            <button
+                              onClick={() =>
+                                setFilters((prev) => ({
+                                  ...prev,
+                                  vegNonVeg: prev.vegNonVeg === "non-veg" ? null : "non-veg",
+                                }))
+                              }
+                              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all flex-1 ${filters.vegNonVeg === "non-veg"
+                                ? "border-red-600 dark:border-red-600 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-gray-300"
+                                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
+                                }`}
+                            >
+                              <div className="h-4 w-4 rounded-full bg-red-600" />
+                              <span className="font-medium">Non-veg</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Top picks */}
                     <div className="space-y-2">

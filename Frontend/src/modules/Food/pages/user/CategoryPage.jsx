@@ -41,7 +41,7 @@ const CATEGORY_PAGE_FILTERS_STORAGE_KEY = "food-category-page-filters-v1"
 export default function CategoryPage() {
   const { category } = useParams()
   const navigate = useNavigate()
-  const { vegMode } = useProfile()
+  const { vegMode, vegModeOption } = useProfile()
   const { location } = useLocation()
   const { zoneId, isOutOfService } = useZone(location)
   const [searchQuery, setSearchQuery] = useState("")
@@ -534,6 +534,10 @@ export default function CategoryPage() {
       )
     }
 
+    if (vegMode && vegModeOption === "pure-veg") {
+      nextRows = nextRows.filter((row) => row.pureVegRestaurant === true)
+    }
+
     if (sortBy) {
       nextRows.sort((left, right) => {
         if (sortBy === 'price-low' || sortBy === 'price-high') {
@@ -895,7 +899,7 @@ export default function CategoryPage() {
                 offer: offer,
                 slug: restaurant.slug || (restaurant.restaurantName || restaurant.name)?.toLowerCase().replace(/\s+/g, '-'),
                 restaurantId: restaurantId,
-                mongoId: restaurant._id || null,
+                pureVegRestaurant: restaurant.pureVegRestaurant || false,
                 hasPaneer: false,
                 category: 'all',
               }
@@ -1202,7 +1206,7 @@ export default function CategoryPage() {
     }
 
     return applyFiltersAndSorting(filtered)
-  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, approvedFoodsData, sortBy])
+  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy])
 
   const filteredAllRestaurants = useMemo(() => {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
@@ -1252,7 +1256,7 @@ export default function CategoryPage() {
     }
 
     return applyFiltersAndSorting(filtered)
-  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, approvedFoodsData, sortBy])
+  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy])
 
   const showRestaurantSkeleton = useDelayedLoading(
     isLoadingFilterResults || loadingRestaurants || (isEnrichingMenus && selectedCategory !== 'all' && filteredRecommended.length === 0),
