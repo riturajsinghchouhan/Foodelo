@@ -23,6 +23,7 @@ import { Switch } from "@food/components/ui/switch"
 import { useNavigate } from "react-router-dom"
 import { restaurantAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
+import { downloadFile } from "@/shared/utils/downloadUtils"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -833,7 +834,13 @@ export default function Inventory() {
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Inventory");
-      XLSX.writeFile(wb, "foodelo_inventory_template.xlsx");
+      
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      downloadFile({
+        data: wbout,
+        filename: "foodelo_inventory_template.xlsx",
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
     } catch (err) {
       console.error("Template download error:", err);
       toast.error("Failed to generate Excel template. Please check your internet connection.");
