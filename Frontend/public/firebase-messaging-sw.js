@@ -120,40 +120,49 @@ async function loadFirebaseWebConfig() {
 
   messaging.onBackgroundMessage(async (payload) => {
     pushDebugLog(PUSH_DEBUG_PREFIX, "Received Firebase background message", { payload });
-    
+
     const visibleClient = await hasVisibleClientForTarget(payload);
-    
-    if (!visibleClient) {
-      const title = payload?.notification?.title || payload?.data?.title || "New Notification";
-      const body = payload?.notification?.body || payload?.data?.body || "";
-      const image =
-        payload?.notification?.image ||
-        payload?.data?.image ||
-        payload?.data?.imageUrl ||
-        undefined;
-      const notificationKey = getNotificationKey(payload);
-      
-      pushDebugLog(PUSH_DEBUG_PREFIX, "Showing service worker notification", {
-        title,
-        body,
-        image,
-        notificationKey,
-      });
-  
-      self.registration.showNotification(title, {
-        body,
-        icon: "/favicon.ico",
-        image,
-        tag: notificationKey,
-        renotify: false,
-        silent: false,
-        requireInteraction: false,
-        vibrate: [200, 100, 200, 100, 300],
-        data: payload?.data || {},
-      });
+
+    if (visibleClient) {
+      // Tab is foreground/visible: Firebase SDK's onMessage() listener on the page
+      // already handles this notification. Relaying here via postMessage would cause
+      // a duplicate (onMessage fires + SW relay fires = 2 notifications shown).
+      // Skip both native notification and postMessage relay.
+      pushDebugLog(PUSH_DEBUG_PREFIX, "Visible client found — skipping SW relay (onMessage handles it)");
+      return;
     }
 
-    // Always notify clients regardless of visibility
+    // Tab is hidden/background: no onMessage fires, so SW must handle it.
+    // Show native system notification and relay to any open-but-hidden clients.
+    const title = payload?.notification?.title || payload?.data?.title || "New Notification";
+    const body = payload?.notification?.body || payload?.data?.body || "";
+    const image =
+      payload?.notification?.image ||
+      payload?.data?.image ||
+      payload?.data?.imageUrl ||
+      undefined;
+    const notificationKey = getNotificationKey(payload);
+
+    pushDebugLog(PUSH_DEBUG_PREFIX, "No visible client — showing native notification and relaying to background clients", {
+      title,
+      body,
+      image,
+      notificationKey,
+    });
+
+    self.registration.showNotification(title, {
+      body,
+      icon: "/favicon.ico",
+      image,
+      tag: notificationKey,
+      renotify: false,
+      silent: false,
+      requireInteraction: false,
+      vibrate: [200, 100, 200, 100, 300],
+      data: payload?.data || {},
+    });
+
+    // Relay to background (hidden) clients so they can refresh internal state.
     await notifyOpenClients(payload);
   });
 })();

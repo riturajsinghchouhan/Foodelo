@@ -347,8 +347,13 @@ export async function createOrder(userId, dto) {
       },
     });
 
-    // Restaurant gets new-order request only when payment flow is eligible.
-    await notifyRestaurantNewOrder(order);
+    // Restaurant gets new-order request only when payment is already settled.
+    // For Razorpay (online) payments, we skip here because verifyPayment() will
+    // call notifyRestaurantNewOrder() AFTER payment is confirmed — preventing a
+    // duplicate FCM push to the restaurant for the same order.
+    if (!isAwaitingOnlinePayment) {
+      await notifyRestaurantNewOrder(order);
+    }
   } catch {
     // Don't block order placement on socket failures.
   }

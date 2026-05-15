@@ -25,7 +25,7 @@ let pushSoundAudio = null;
 let pushSoundUnlocked = false;
 let pushSoundContext = null;
 const PUSH_DEBUG_PREFIX = "[push-debug]";
-const notificationDedupWindowMs = 8000;
+const notificationDedupWindowMs = 15000;
 const pushDebugLog = (prefix, message, data = {}) => {
   if (typeof window !== "undefined" && localStorage.getItem("push_debug") === "true") {
     console.log(`${prefix} ${message}`, data);
@@ -589,15 +589,15 @@ function attachServiceWorkerMessageListener() {
     navigator.serviceWorker.addEventListener("message", (event) => {
       const data = isRecord(event?.data) ? event.data : null;
       if (!data || data.type !== "push-notification-received") return;
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        pushDebugLog(PUSH_DEBUG_PREFIX, "Skipping page notification render for SW relay because tab is hidden");
-        return;
-      }
+      // NOTE: The SW only relays to clients when the tab is in background (no visible client).
+      // So this handler now runs ONLY in background/hidden tabs — do NOT skip hidden tabs here.
+      // The old guard (skipping if visibilityState === 'hidden') is removed because the SW
+      // relay IS the intended notification path for background tabs after the SW fix.
       if (!isRecord(data.payload)) {
         pushDebugWarn(PUSH_DEBUG_PREFIX, "Ignoring malformed SW push relay payload", { payload: data.payload });
         return;
       }
-      pushDebugLog(PUSH_DEBUG_PREFIX, "Received service worker message in page", { payload: data.payload });
+      pushDebugLog(PUSH_DEBUG_PREFIX, "Received SW relay (background tab) — scheduling notification", { payload: data.payload });
       scheduleForegroundNotification(data.payload);
     });
   }
