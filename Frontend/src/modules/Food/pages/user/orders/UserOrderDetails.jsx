@@ -20,6 +20,7 @@ import { toast } from "sonner"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { getCompanyNameAsync } from "@food/utils/businessSettings"
+import { downloadFile } from "@/shared/utils/downloadUtils"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -303,9 +304,13 @@ export default function UserOrderDetails() {
       doc.text('Total:', 145, finalY + 10, { align: 'right' })
       doc.text(`?${Number(pricing.total || 0).toFixed(2)}`, 195, finalY + 10, { align: 'right' })
 
-      // Save PDF instantly
-      const fileName = `Order_Summary_${orderIdDisplay}_${Date.now()}.pdf`
-      doc.save(fileName)
+      // Use robust download utility
+      const pdfBlob = doc.output('blob');
+      downloadFile({
+        data: pdfBlob,
+        filename: `Order_Summary_${orderIdDisplay}_${Date.now()}.pdf`,
+        type: 'application/pdf'
+      });
 
       toast.success("Summary downloaded successfully!")
     } catch (error) {

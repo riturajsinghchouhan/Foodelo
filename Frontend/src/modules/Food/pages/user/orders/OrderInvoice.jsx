@@ -10,6 +10,9 @@ import { Badge } from "@food/components/ui/badge"
 import { useOrders } from "@food/context/OrdersContext"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { orderAPI } from "@food/api"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
+import { downloadFile } from "@/shared/utils/downloadUtils"
 
 export default function OrderInvoice() {
   const companyName = useCompanyName()
@@ -159,8 +162,79 @@ export default function OrderInvoice() {
     }, 250)
   }
 
-  const handleDownloadPDF = () => {
-    handlePrint()
+  const handleDownloadPDF = async () => {
+    try {
+      const doc = new jsPDF()
+      
+      // Title
+      doc.setFontSize(20)
+      doc.setTextColor(126, 56, 102) // #7e3866
+      doc.text("INVOICE", 105, 20, { align: 'center' })
+      
+      doc.setFontSize(10)
+      doc.setTextColor(100)
+      doc.text(companyName, 105, 28, { align: 'center' })
+      
+      // Order Details
+      doc.setFontSize(12)
+      doc.setTextColor(0)
+      doc.setFont('helvetica', 'bold')
+      doc.text("Order Details:", 20, 45)
+      
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Order ID: ${order.id}`, 20, 52)
+      doc.text(`Date: ${formatDate(order.createdAt)}`, 20, 58)
+      doc.text(`Status: ${order.status.toUpperCase()}`, 20, 64)
+      
+      // Customer Details
+      doc.setFont('helvetica', 'bold')
+      doc.text("Bill To:", 120, 45)
+      doc.setFont('helvetica', 'normal')
+      const addressLines = doc.splitTextToSize(order.address?.street || "", 70)
+      doc.text(addressLines, 120, 52)
+      
+      // Items Table
+      const tableData = order.items.map(item => [
+        item.name + (item.variantName ? ` (${item.variantName})` : ""),
+        item.quantity.toString(),
+        `₹${item.price.toFixed(2)}`,
+        `₹${(item.price * item.quantity).toFixed(2)}`
+      ])
+      
+      autoTable(doc, {
+        startY: 80,
+        head: [['Item', 'Qty', 'Price', 'Total']],
+        body: tableData,
+        headStyles: { fillColor: [126, 56, 102] }
+      })
+      
+      const finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY : 150
+      
+      // Summary
+      doc.setFont('helvetica', 'bold')
+      doc.text(`Subtotal: ₹${order.subtotal.toFixed(2)}`, 190, finalY + 10, { align: 'right' })
+      doc.text(`Delivery Fee: ₹${order.deliveryFee.toFixed(2)}`, 190, finalY + 16, { align: 'right' })
+      doc.text(`Tax: ₹${order.tax.toFixed(2)}`, 190, finalY + 22, { align: 'right' })
+      if (order.discount > 0) {
+        doc.text(`Discount: -₹${order.discount.toFixed(2)}`, 190, finalY + 28, { align: 'right' })
+      }
+      doc.setFontSize(14)
+      doc.text(`Total: ₹${order.total.toFixed(2)}`, 190, finalY + 38, { align: 'right' })
+      
+      // Use robust download utility
+      const pdfBlob = doc.output('blob');
+      downloadFile({
+        data: pdfBlob,
+        filename: `Invoice_${order.id}.pdf`,
+        type: 'application/pdf'
+      });
+      
+    } catch (error) {
+      console.error("PDF generation error:", error)
+      // Fallback to print if PDF generation fails
+      handlePrint()
+    }
   }
 
   return (
