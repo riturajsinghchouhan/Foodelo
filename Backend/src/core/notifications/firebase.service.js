@@ -169,6 +169,7 @@ const buildMessagePayload = (payload = {}, token) => {
         notification: {
             channel_id: 'default',
             sound: 'default',
+            tag: payload.tag || data.orderId || data.broadcastId || undefined, // Enables notification collapsing on Android
             default_vibrate_timings: true,
             default_light_settings: true
         }

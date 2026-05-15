@@ -593,35 +593,45 @@ export default function OrdersPage({ statusKey = "all" }) {
 
     const handleIncomingRealtimeOrder = (payload = {}) => {
       const orderId = payload?.orderId || payload?.orderMongoId || ""
-      if (!orderId) {
-        activeOrderAlertRef.current = payload || { orderId: "socket-new-order" }
-        playDefaultRing()
-        startAlertLoop()
-        toast.info("New order received")
-        showBrowserNotification(
-          "New order received",
-          "A new order arrived",
-          `admin-order-socket-${Date.now()}`,
-        )
-        fetchOrders({ silent: true, withRingCheck: false })
-        return
+      
+      // 1. Mark as seen immediately so polling doesn't trigger a duplicate
+      if (orderId) {
+        seenOrderIdsRef.current.add(orderId)
       }
 
       const now = Date.now()
-      const lastHandledAt = recentRealtimeOrderRef.current.get(orderId) || 0
-      if (now - lastHandledAt < 8000) return
-      recentRealtimeOrderRef.current.set(orderId, now)
+      
+      // 2. Inter-tab sound coordination: only play sound if no other tab did in the last 2 seconds
+      const lastSoundAt = Number(localStorage.getItem("admin_last_notification_sound_at") || 0)
+      const shouldPlaySound = now - lastSoundAt > 2000
+
+      if (orderId) {
+        const lastHandledAt = recentRealtimeOrderRef.current.get(orderId) || 0
+        if (now - lastHandledAt < 8000) return
+        recentRealtimeOrderRef.current.set(orderId, now)
+      }
 
       const title = "New order received"
       const body = payload?.restaurantName
-        ? `${payload.restaurantName} • ${orderId}`
-        : `Order ${orderId}`
+        ? `${payload.restaurantName} • ${orderId || "New"}`
+        : `Order ${orderId || "New"}`
 
       activeOrderAlertRef.current = payload || { orderId }
-      playDefaultRing()
-      startAlertLoop()
+      
+      if (shouldPlaySound) {
+        localStorage.setItem("admin_last_notification_sound_at", String(now))
+        playDefaultRing()
+        startAlertLoop()
+      }
+
       toast.info(title, { description: body })
-      showBrowserNotification(title, body, `admin-order-${orderId}`)
+
+      // 3. Only show Browser Notification if the tab is HIDDEN
+      // This avoids double notifications with the app's Toast + FCM Push
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        showBrowserNotification(title, body, `admin-order-${orderId || now}`)
+      }
+      
       fetchOrders({ silent: true, withRingCheck: false })
     }
 

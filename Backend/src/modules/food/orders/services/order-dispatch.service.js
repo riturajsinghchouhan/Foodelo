@@ -347,7 +347,6 @@ export async function tryAutoAssign(orderId, options = {}) {
         const roomName = rooms.delivery(p.partnerId);
         if (io) {
           const eventPayload = { ...payload, pickupDistanceKm: p.distanceKm };
-          io.to(roomName).emit('new_order', eventPayload);
           io.to(roomName).emit('new_order_available', eventPayload);
         }
       }
@@ -362,7 +361,6 @@ export async function tryAutoAssign(orderId, options = {}) {
         const roomName = rooms.delivery(p.partnerId);
         if (io) {
           const eventPayload = { ...payload, pickupDistanceKm: p.distanceKm };
-          io.to(roomName).emit('new_order', eventPayload);
           io.to(roomName).emit('new_order_available', eventPayload);
         }
       }
