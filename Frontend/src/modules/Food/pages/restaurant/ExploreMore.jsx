@@ -33,8 +33,9 @@ import {
 import { Card, CardContent } from "@food/components/ui/card"
 import { DateRangeCalendar } from "@food/components/ui/date-range-calendar"
 import { clearModuleAuth, clearAuthData, getCurrentUser } from "@food/utils/auth"
-import { restaurantAPI } from "@food/api"
+import { restaurantAPI, notificationAPI } from "@food/api"
 import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
+import { toast } from "sonner"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -355,6 +356,7 @@ export default function ExploreMore() {
   const [existingSchedule, setExistingSchedule] = useState(null)
   const [deleteAccountConfirmOpen, setDeleteAccountConfirmOpen] = useState(false)
   const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [isTestingNotification, setIsTestingNotification] = useState(false)
 
   const STORAGE_KEY = "restaurant_schedule_off"
 
@@ -632,6 +634,23 @@ export default function ExploreMore() {
     } finally {
       setIsDeletingAccount(false)
       setDeleteAccountConfirmOpen(false)
+    }
+  }
+
+  const handleTestNotification = async () => {
+    if (isTestingNotification) return
+    setIsTestingNotification(true)
+    try {
+      let platform = "web"
+      if (typeof window !== "undefined" && window.flutter_inappwebview) {
+        platform = "mobile"
+      }
+      await notificationAPI.sendTestNotification(platform)
+      toast.success("Test notification sent! Check your device.")
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to send test notification")
+    } finally {
+      setIsTestingNotification(false)
     }
   }
 
@@ -1326,6 +1345,23 @@ export default function ExploreMore() {
                       {userData.role}
                     </p>
                   </div>
+                </button>
+              </div>
+
+              {/* Test Notification (Debug) */}
+              <div className="px-6 pb-4">
+                <button
+                  onClick={handleTestNotification}
+                  disabled={isTestingNotification}
+                  className="w-full bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100/50 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="bg-white p-2 rounded-xl shadow-sm">
+                      <Bell className={`w-5 h-5 text-blue-500 ${isTestingNotification ? "animate-pulse" : ""}`} />
+                    </div>
+                    <span className="text-base font-bold">{isTestingNotification ? "Sending test..." : "Test Notification"}</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-blue-300 group-hover:text-blue-500 transition-colors" />
                 </button>
               </div>
 

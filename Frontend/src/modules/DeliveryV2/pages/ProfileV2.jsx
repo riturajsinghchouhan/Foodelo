@@ -12,9 +12,10 @@ import {
   Loader2,
   Briefcase,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Bell
 } from "lucide-react"
-import { deliveryAPI } from "@food/api"
+import { deliveryAPI, notificationAPI } from "@food/api"
 import { toast } from "sonner"
 import { clearModuleAuth } from "@food/utils/auth"
 
@@ -34,6 +35,7 @@ export const ProfileV2 = () => {
   const [deleteStep, setDeleteStep] = useState(1)
   const [deleteCaptcha, setDeleteCaptcha] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isTestingNotification, setIsTestingNotification] = useState(false)
 
   // Fetch profile data
   useEffect(() => {
@@ -89,6 +91,23 @@ export const ProfileV2 = () => {
     toast.success("Logged out successfully")
     navigate("/food/delivery/login", { replace: true })
     setLogoutSubmitting(false)
+  }
+
+  const handleTestNotification = async () => {
+    if (isTestingNotification) return
+    setIsTestingNotification(true)
+    try {
+      let platform = "web"
+      if (typeof window !== "undefined" && window.flutter_inappwebview) {
+        platform = "mobile"
+      }
+      await notificationAPI.sendTestNotification(platform)
+      toast.success("Test notification sent! Check your device.")
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to send test notification")
+    } finally {
+      setIsTestingNotification(false)
+    }
   }
 
   if (loading) {
@@ -176,6 +195,20 @@ export const ProfileV2 = () => {
                 <span className="text-sm font-bold text-gray-900">Support tickets</span>
               </div>
               <ArrowRight className="w-5 h-5 text-gray-300" />
+            </div>
+          </div>
+
+          {/* Test Notification (Debug) */}
+          <div className="pt-0">
+            <div
+              onClick={handleTestNotification}
+              className="bg-white rounded-xl p-4 flex items-center justify-between cursor-pointer border border-blue-50 hover:bg-blue-50/30 active:bg-blue-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Bell className={`w-5 h-5 text-blue-500 ${isTestingNotification ? "animate-pulse" : ""}`} />
+                <span className="text-sm font-bold text-gray-900">{isTestingNotification ? "Sending test..." : "Test Notification"}</span>
+              </div>
+              <ArrowRight className="w-5 h-5 text-blue-200" />
             </div>
           </div>
 
