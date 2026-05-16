@@ -269,9 +269,9 @@ export const upsertFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
     console.log(`[FCM-DEBUG] upsert - Current tokens in DB count: ${existingTokens.length}`);
 
     const tokens = normalizeTokenList([...existingTokens, normalizedToken]);
-    doc[field] = tokens;
-
-    await doc.save();
+    
+    await model.updateOne({ _id: ownerId }, { $set: { [field]: tokens } });
+    
     console.log(`[FCM-DEBUG] upsert - Token list updated. New count: ${tokens.length}`);
     return { success: true };
 };
@@ -290,17 +290,19 @@ export const removeFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
         return { success: false };
     }
 
+    const updateQuery = { $set: {} };
+
     if (platform) {
         const field = getTokenFieldForPlatform(platform);
-        doc[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => t !== normalizedToken));
+        updateQuery.$set[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => t !== normalizedToken));
     } else {
-        doc.fcmTokens = normalizeTokenList((Array.isArray(doc.fcmTokens) ? doc.fcmTokens : []).filter((t) => t !== normalizedToken));
-        doc.fcmTokenMobile = normalizeTokenList(
+        updateQuery.$set.fcmTokens = normalizeTokenList((Array.isArray(doc.fcmTokens) ? doc.fcmTokens : []).filter((t) => t !== normalizedToken));
+        updateQuery.$set.fcmTokenMobile = normalizeTokenList(
             (Array.isArray(doc.fcmTokenMobile) ? doc.fcmTokenMobile : []).filter((t) => t !== normalizedToken)
         );
     }
 
-    await doc.save();
+    await model.updateOne({ _id: ownerId }, updateQuery);
     return { success: true };
 };
 
@@ -402,10 +404,11 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
                 const fieldNames = platform
                     ? [getTokenFieldForPlatform(platform)]
                     : [OWNER_TOKEN_FIELDS.web, OWNER_TOKEN_FIELDS.mobile];
+                const updateQuery = { $set: {} };
                 for (const field of fieldNames) {
-                    doc[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => !invalidTokens.includes(t)));
+                    updateQuery.$set[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => !invalidTokens.includes(t)));
                 }
-                await doc.save();
+                await model.updateOne({ _id: ownerId }, updateQuery);
             }
         }
         logger.info(
