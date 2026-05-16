@@ -25,6 +25,7 @@ import {
   Share2,
   Utensils,
   Trash2,
+  Bell,
 } from "lucide-react";
 
 import AnimatedPage from "@food/components/user/AnimatedPage";
@@ -46,7 +47,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@food/components/ui/dialog";
-import { authAPI, userAPI } from "@food/api";
+import { authAPI, userAPI, notificationAPI } from "@food/api";
 import { firebaseAuth } from "@food/firebase";
 import { clearModuleAuth } from "@food/utils/auth";
 import { toast } from "sonner";
@@ -87,6 +88,7 @@ export default function Profile() {
   const [deleteStep, setDeleteStep] = useState(1);
   const [deleteCaptcha, setDeleteCaptcha] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isTestingNotification, setIsTestingNotification] = useState(false);
 
   // Trigger web push registration when profile mounts to ensure FCM token is saved
   useEffect(() => {
@@ -433,6 +435,23 @@ export default function Profile() {
       toast.error(err?.response?.data?.message || "Failed to delete account. Please try again.");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    if (isTestingNotification) return;
+    setIsTestingNotification(true);
+    try {
+      let platform = "web";
+      if (typeof window !== "undefined" && window.flutter_inappwebview) {
+        platform = "mobile";
+      }
+      await notificationAPI.sendTestNotification(platform);
+      toast.success("Test notification sent! Check your device.");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to send test notification");
+    } finally {
+      setIsTestingNotification(false);
     }
   };
 
@@ -984,6 +1003,36 @@ export default function Profile() {
                 </Card>
               </motion.div>
             </Link>
+
+            {/* Test Notification (Debug) */}
+            <motion.div
+              whileHover={{ x: 4, scale: 1.01 }}
+              transition={{ duration: 0.2, type: "spring", stiffness: 300 }}>
+              <Card
+                className="bg-white dark:bg-[#1a1a1a] py-0 rounded-xl shadow-sm border-0 dark:border-gray-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleTestNotification}>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <motion.div
+                      className="bg-blue-50 dark:bg-blue-900/20 rounded-full p-2"
+                      whileHover={{ rotate: 15, scale: 1.1 }}
+                      transition={{ duration: 0.3 }}>
+                      <Bell
+                        className={`h-5 w-5 text-blue-500 ${isTestingNotification ? "animate-pulse" : ""}`}
+                      />
+                    </motion.div>
+                    <span className="text-base font-medium text-gray-900 dark:text-white">
+                      {isTestingNotification ? "Sending test..." : "Test Notification"}
+                    </span>
+                  </div>
+                  <motion.div
+                    whileHover={{ x: 4 }}
+                    transition={{ duration: 0.2 }}>
+                    <ChevronRight className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                  </motion.div>
+                </CardContent>
+              </Card>
+            </motion.div>
 
             <motion.div
               whileHover={{ x: 4, scale: 1.01 }}

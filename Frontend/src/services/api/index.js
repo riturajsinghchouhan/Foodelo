@@ -155,6 +155,8 @@ export const notificationAPI = {
     apiClient.delete(`/food/notifications/${String(id)}`, config),
   dismissAll: (config = {}) =>
     apiClient.delete("/food/notifications/inbox/all", config),
+  sendTestNotification: (platform = "web") =>
+    apiClient.post("/fcm-tokens/test", { platform }),
 };
 
 /** Admin API - new backend only (GET /auth/me, PATCH /auth/admin/profile, POST /auth/admin/change-password) */
