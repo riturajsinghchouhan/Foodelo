@@ -37,6 +37,7 @@ import { restaurantAPI, notificationAPI } from "@food/api"
 import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
 import { toast } from "sonner"
 import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
+import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -357,6 +358,13 @@ export default function ExploreMore() {
   const [deleteAccountConfirmOpen, setDeleteAccountConfirmOpen] = useState(false)
   const [isDeletingAccount, setIsDeletingAccount] = useState(false)
   const [isTestingNotification, setIsTestingNotification] = useState(false)
+
+  useEffect(() => {
+    // Register for push notifications on mount for this module
+    registerWebPushForCurrentModule().catch(err => {
+      debugError("Failed to register push notifications:", err)
+    })
+  }, [])
 
   const STORAGE_KEY = "restaurant_schedule_off"
 

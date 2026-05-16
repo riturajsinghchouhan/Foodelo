@@ -18,6 +18,7 @@ import {
 import { deliveryAPI, notificationAPI } from "@food/api"
 import { toast } from "sonner"
 import { clearModuleAuth } from "@food/utils/auth"
+import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
 
 /**
  * ProfileV2 - 1:1 EXACT Restoration of the Legacy Profile Hub.
@@ -36,6 +37,13 @@ export const ProfileV2 = () => {
   const [deleteCaptcha, setDeleteCaptcha] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
   const [isTestingNotification, setIsTestingNotification] = useState(false)
+
+  useEffect(() => {
+    // Register for push notifications on mount for this module
+    registerWebPushForCurrentModule().catch(err => {
+      console.error("Failed to register push notifications:", err)
+    })
+  }, [])
 
   // Fetch profile data
   useEffect(() => {
