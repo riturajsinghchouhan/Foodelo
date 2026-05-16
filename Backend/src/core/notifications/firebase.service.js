@@ -23,10 +23,10 @@ const OWNER_TOKEN_FIELDS = {
     mobile: 'fcmTokenMobile'
 };
 const OWNER_APP_PREFIXES = {
-    USER: '👤 [User]',
-    RESTAURANT: '🏪 [Shop]',
-    DELIVERY_PARTNER: '🛵 [Rider]',
-    ADMIN: '🛡️ [Admin]'
+    USER: '',
+    RESTAURANT: '',
+    DELIVERY_PARTNER: '',
+    ADMIN: ''
 };
 
 let cachedAccessToken = null;
@@ -141,11 +141,25 @@ const normalizeDataMap = (data = {}) => {
 };
 
 const buildMessagePayload = (payload = {}, token) => {
-    const notification = {
-        title: sanitizeString(payload.title || payload.notification?.title || 'New notification'),
-        body: sanitizeString(payload.body || payload.notification?.body || '')
-    };
     const data = normalizeDataMap(payload.data || {});
+    
+    // 🔍 Smart fallback for title based on data type if missing
+    let derivedTitle = payload.title || payload.notification?.title;
+    if (!derivedTitle) {
+        const type = String(data.type || '').toLowerCase();
+        if (type.includes('order')) derivedTitle = 'Order Update';
+        else if (type.includes('payment')) derivedTitle = 'Payment Update';
+        else if (type.includes('wallet')) derivedTitle = 'Wallet Update';
+        else if (type.includes('delivery')) derivedTitle = 'Delivery Update';
+        else if (type.includes('chat') || type.includes('message')) derivedTitle = 'New Message';
+        else derivedTitle = 'New notification';
+    }
+
+    const notification = {
+        title: sanitizeString(derivedTitle),
+        body: sanitizeString(payload.body || payload.notification?.body || data.body || data.message || '')
+    };
+    
     const image =
         sanitizeString(payload.icon || payload.notification?.image || payload.notification?.icon || data.image || data.imageUrl);
 
@@ -160,16 +174,17 @@ const buildMessagePayload = (payload = {}, token) => {
         }
     }
 
-    if (Object.keys(data).length > 0) {
-        message.data = data;
-    }
+    // Always include the text in data so the frontend can retrieve it even if 'notification' block is stripped or missing
+    if (!data.title) data.title = notification.title;
+    if (!data.body) data.body = notification.body;
+    
+    message.data = data;
 
     message.android = {
         priority: 'high',
         notification: {
             channel_id: 'default',
             sound: 'default',
-            tag: payload.tag || data.orderId || data.broadcastId || undefined, // Enables notification collapsing on Android
             default_vibrate_timings: true,
             default_light_settings: true
         }
@@ -217,12 +232,6 @@ const normalizeTokenList = (tokens = []) => {
     return normalized.slice(-10);
 };
 
-const pickLatestTokenOnly = (tokens = []) => {
-    const normalized = normalizeTokenList(tokens);
-    if (!normalized.length) return [];
-    return [normalized[normalized.length - 1]];
-};
-
 const readTokensFromDoc = (doc, platform) => {
     if (!doc) return [];
     if (platform) {
@@ -245,7 +254,7 @@ export const listOwnerTokens = async ({ ownerType, ownerId, platform }) => {
 export const upsertFirebaseDeviceToken = async ({ ownerType, ownerId, token, platform = 'web' }) => {
     const normalizedToken = sanitizeString(token);
     console.log(`[FCM-DEBUG] upsertFirebaseDeviceToken: ownerType=${ownerType}, ownerId=${ownerId}, platform=${platform}, tokenPreview=${normalizedToken?.slice(0, 10)}...`);
-
+    
     if (!ownerType || !ownerId || !normalizedToken) {
         console.error('[FCM-DEBUG] upsert - Missing required fields');
         throw new Error('ownerType, ownerId, and token are required.');
@@ -267,11 +276,11 @@ export const upsertFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
     const field = getTokenFieldForPlatform(normalizedPlatform);
     const existingTokens = Array.isArray(doc[field]) ? doc[field] : [];
     console.log(`[FCM-DEBUG] upsert - Current tokens in DB count: ${existingTokens.length}`);
-
+    
     const tokens = normalizeTokenList([...existingTokens, normalizedToken]);
+    doc[field] = tokens;
     
-    await model.updateOne({ _id: ownerId }, { $set: { [field]: tokens } });
-    
+    await doc.save();
     console.log(`[FCM-DEBUG] upsert - Token list updated. New count: ${tokens.length}`);
     return { success: true };
 };
@@ -290,19 +299,17 @@ export const removeFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
         return { success: false };
     }
 
-    const updateQuery = { $set: {} };
-
     if (platform) {
         const field = getTokenFieldForPlatform(platform);
-        updateQuery.$set[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => t !== normalizedToken));
+        doc[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => t !== normalizedToken));
     } else {
-        updateQuery.$set.fcmTokens = normalizeTokenList((Array.isArray(doc.fcmTokens) ? doc.fcmTokens : []).filter((t) => t !== normalizedToken));
-        updateQuery.$set.fcmTokenMobile = normalizeTokenList(
+        doc.fcmTokens = normalizeTokenList((Array.isArray(doc.fcmTokens) ? doc.fcmTokens : []).filter((t) => t !== normalizedToken));
+        doc.fcmTokenMobile = normalizeTokenList(
             (Array.isArray(doc.fcmTokenMobile) ? doc.fcmTokenMobile : []).filter((t) => t !== normalizedToken)
         );
     }
 
-    await model.updateOne({ _id: ownerId }, updateQuery);
+    await doc.save();
     return { success: true };
 };
 
@@ -367,11 +374,11 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
     if (enrichedPayload && !enrichedPayload.skipHighlighter) {
         const typeKey = String(ownerType || '').toUpperCase();
         const prefix = OWNER_APP_PREFIXES[typeKey] || '';
-
+        
         if (prefix) {
             // Get original title from any potential field
             let originalTitle = enrichedPayload.title || enrichedPayload.notification?.title || 'New notification';
-
+            
             // Safety: Ensure we don't ADD the prefix if it's already there (defensive check)
             if (!originalTitle.includes(prefix)) {
                 enrichedPayload.title = `${prefix} ${originalTitle}`.trim();
@@ -382,16 +389,12 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
     }
 
     const tokens = await listOwnerTokens({ ownerType, ownerId, platform });
-    // Default behavior: send to latest active token only to avoid duplicate pushes
-    // from stale token history on the same device/account.
-    const shouldFanoutAllDevices = payload?.sendToAllDevices === true;
-    const targetTokens = shouldFanoutAllDevices ? normalizeTokenList(tokens) : pickLatestTokenOnly(tokens);
-    if (!targetTokens.length) {
+    if (!tokens.length) {
         return { successCount: 0, failureCount: 0, results: [] };
     }
     try {
         console.log(`[FCM] Sending to ${ownerType}:${ownerId}. Title: "${enrichedPayload.title || 'Data Only'}"`);
-        const response = await sendPushNotification(targetTokens, enrichedPayload);
+        const response = await sendPushNotification(tokens, enrichedPayload);
         const invalidTokens = (response.results || [])
 
             .filter((item) => !item.ok && item.remove)
@@ -404,11 +407,10 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
                 const fieldNames = platform
                     ? [getTokenFieldForPlatform(platform)]
                     : [OWNER_TOKEN_FIELDS.web, OWNER_TOKEN_FIELDS.mobile];
-                const updateQuery = { $set: {} };
                 for (const field of fieldNames) {
-                    updateQuery.$set[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => !invalidTokens.includes(t)));
+                    doc[field] = normalizeTokenList((Array.isArray(doc[field]) ? doc[field] : []).filter((t) => !invalidTokens.includes(t)));
                 }
-                await model.updateOne({ _id: ownerId }, updateQuery);
+                await doc.save();
             }
         }
         logger.info(
@@ -417,14 +419,14 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
         return response;
     } catch (error) {
         logger.warn(`FCM push failed for ${ownerType}:${ownerId}: ${error.message}`);
-        return { successCount: 0, failureCount: targetTokens.length, error: error.message };
+        return { successCount: 0, failureCount: tokens.length, error: error.message };
     }
 };
 
 export const sendNotificationToOwners = async (targets = [], payload = {}) => {
     // 🔍 Tip #6: Deduplicate targets by ownerType:ownerId before sending
     // This prevents duplicate notifications if the same person is listed twice (e.g. as USER and partner)
-    const uniqueTargets = Array.isArray(targets)
+    const uniqueTargets = Array.isArray(targets) 
         ? [...new Map(targets.filter(t => t?.ownerType && t?.ownerId).map(t => [`${t.ownerType}:${t.ownerId}`, t])).values()]
         : [];
 
@@ -446,12 +448,12 @@ export const notifyAdminsSafely = async (payload = {}) => {
     try {
         const admins = await FoodAdmin.find({ isActive: true }).select('_id').lean();
         if (!admins.length) return [];
-
+        
         const targets = admins.map(a => ({
             ownerType: 'ADMIN',
             ownerId: String(a._id)
         }));
-
+        
         return await sendNotificationToOwners(targets, payload);
     } catch (e) {
         logger.error(`Error notifying admins: ${e.message}`);

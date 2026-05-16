@@ -5,16 +5,22 @@ importScripts("https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-com
 const sanitize = (value) => String(value || "").trim().replace(/^['"]|['"]$/g, "");
 const PUSH_DEBUG_PREFIX = "[push-sw]";
 const pushDebugLog = () => {};
-const getNotificationKey = (payload) =>
-  payload?.data?.notificationId ||
-  payload?.data?.messageId ||
-  payload?.messageId ||
-  [
-    payload?.notification?.title || payload?.data?.title || "",
-    payload?.notification?.body || payload?.data?.body || "",
-    payload?.data?.orderId || "",
-    payload?.data?.targetUrl || payload?.data?.link || "",
-  ].join("::");
+const getNotificationKey = (payload) => {
+  const fcmId = payload?.messageId || payload?.data?.messageId || payload?.data?.notificationId;
+  if (fcmId) return String(fcmId);
+
+  const title = (payload?.notification?.title || payload?.data?.title || "").trim();
+  const body = (payload?.notification?.body || payload?.data?.body || "").trim();
+  const orderId = payload?.data?.orderId || "";
+  
+  if (!title && !body && !orderId) return "unknown";
+
+  return [
+    title.toLowerCase(),
+    body.toLowerCase(),
+    orderId
+  ].join("|");
+};
 
 async function notifyOpenClients(payload) {
   pushDebugLog(PUSH_DEBUG_PREFIX, "Broadcasting push to open clients", { payload });
@@ -120,49 +126,44 @@ async function loadFirebaseWebConfig() {
 
   messaging.onBackgroundMessage(async (payload) => {
     pushDebugLog(PUSH_DEBUG_PREFIX, "Received Firebase background message", { payload });
-
+    
     const visibleClient = await hasVisibleClientForTarget(payload);
-
-    if (visibleClient) {
-      // Tab is foreground/visible: Firebase SDK's onMessage() listener on the page
-      // already handles this notification. Relaying here via postMessage would cause
-      // a duplicate (onMessage fires + SW relay fires = 2 notifications shown).
-      // Skip both native notification and postMessage relay.
-      pushDebugLog(PUSH_DEBUG_PREFIX, "Visible client found — skipping SW relay (onMessage handles it)");
-      return;
+    
+    // 💡 IMPORTANT: If the payload contains a 'notification' object, the browser/FCM SDK
+    // will often display a system notification automatically in the background.
+    // To prevent double notifications (one from browser, one from our manual call),
+    // we only call showNotification manually if 'notification' is missing (Data-only message)
+    // AND there is no visible window for the user.
+    if (!visibleClient && !payload.notification) {
+      const title = payload?.data?.title || "New Notification";
+      const body = payload?.data?.body || "";
+      const image =
+        payload?.data?.image ||
+        payload?.data?.imageUrl ||
+        undefined;
+      const notificationKey = getNotificationKey(payload);
+      
+      pushDebugLog(PUSH_DEBUG_PREFIX, "Showing manual service worker notification (Data-only message)", {
+        title,
+        body,
+        image,
+        notificationKey,
+      });
+  
+      self.registration.showNotification(title, {
+        body,
+        icon: "/favicon.ico",
+        image,
+        tag: notificationKey,
+        renotify: true,
+        silent: false,
+        requireInteraction: true,
+        vibrate: [200, 100, 200, 100, 300],
+        data: payload?.data || {},
+      });
     }
 
-    // Tab is hidden/background: no onMessage fires, so SW must handle it.
-    // Show native system notification and relay to any open-but-hidden clients.
-    const title = payload?.notification?.title || payload?.data?.title || "New Notification";
-    const body = payload?.notification?.body || payload?.data?.body || "";
-    const image =
-      payload?.notification?.image ||
-      payload?.data?.image ||
-      payload?.data?.imageUrl ||
-      undefined;
-    const notificationKey = getNotificationKey(payload);
-
-    pushDebugLog(PUSH_DEBUG_PREFIX, "No visible client — showing native notification and relaying to background clients", {
-      title,
-      body,
-      image,
-      notificationKey,
-    });
-
-    self.registration.showNotification(title, {
-      body,
-      icon: "/favicon.ico",
-      image,
-      tag: notificationKey,
-      renotify: false,
-      silent: false,
-      requireInteraction: false,
-      vibrate: [200, 100, 200, 100, 300],
-      data: payload?.data || {},
-    });
-
-    // Relay to background (hidden) clients so they can refresh internal state.
+    // Always notify clients regardless of visibility
     await notifyOpenClients(payload);
   });
 })();
