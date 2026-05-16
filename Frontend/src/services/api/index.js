@@ -272,65 +272,39 @@ export const adminAPI = {
     }),
   /** GET /food/admin/delivery/support-tickets/stats - counts by status. */
   getDeliverySupportTicketStats: () =>
-    apiClient.get("/food/admin/delivery/support-tickets/stats", {
-      contextModule: "admin",
-    }),
+    adminClient.get("/food/admin/delivery/support-tickets/stats"),
   /** PATCH /food/admin/delivery/support-tickets/:id - update adminResponse, status. */
   updateDeliverySupportTicket: (id, body) =>
-    apiClient.patch(`/food/admin/delivery/support-tickets/${id}`, body ?? {}, {
-      contextModule: "admin",
-    }),
+    adminClient.patch(`/food/admin/delivery/support-tickets/${id}`, body ?? {}),
   createBroadcastNotification: (body = {}) =>
-    apiClient.post("/food/admin/notifications/broadcast", body ?? {}, {
-      contextModule: "admin",
-    }),
+    adminClient.post("/food/admin/notifications/broadcast", body ?? {}),
   getBroadcastNotifications: (params = {}) =>
-    apiClient.get("/food/admin/notifications/broadcast", {
-      params,
-      contextModule: "admin",
-    }),
+    adminClient.get("/food/admin/notifications/broadcast", { params }),
   deleteBroadcastNotification: (id) =>
-    apiClient.delete(`/food/admin/notifications/broadcast/${String(id)}`, {
-      contextModule: "admin",
-    }),
+    adminClient.delete(`/food/admin/notifications/broadcast/${String(id)}`),
   /** List restaurants for admin. Requires admin auth. */
   getRestaurants: (params = {}, config = {}) =>
-    apiClient.get("/food/admin/restaurants", {
+    adminClient.get("/food/admin/restaurants", {
       params: { limit: 1000, ...params },
-      contextModule: "admin",
       ...config,
     }),
   getRestaurantReviews: (params = {}) =>
-    apiClient.get("/food/admin/restaurants/reviews", {
-      params: { page: 1, limit: 1000, ...params },
-      contextModule: "admin",
+    adminClient.get("/food/admin/restaurants/reviews", {
+      params: { page: 1, limit: 1000, ...params }
     }),
   /** Categories (admin) */
   getCategories: (params = {}) =>
-    apiClient.get("/food/admin/categories", { params, contextModule: "admin" }),
+    adminClient.get("/food/admin/categories", { params }),
   /** Dining categories (admin) */
   getDiningCategories: (params = {}) =>
-    apiClient.get("/food/admin/dining/categories", {
-      params,
-      contextModule: "admin",
-    }),
+    adminClient.get("/food/admin/dining/categories", { params }),
   createDiningCategory: (body) =>
-    apiClient.post("/food/admin/dining/categories", body ?? {}, {
-      contextModule: "admin",
-    }),
+    adminClient.post("/food/admin/dining/categories", body ?? {}),
   updateDiningCategory: (id, body) =>
-    apiClient.patch(`/food/admin/dining/categories/${String(id)}`, body ?? {}, {
-      contextModule: "admin",
-    }),
+    adminClient.patch(`/food/admin/dining/categories/${String(id)}`, body ?? {}),
   deleteDiningCategory: (id) =>
-    apiClient.delete(`/food/admin/dining/categories/${String(id)}`, {
-      contextModule: "admin",
-    }),
+    adminClient.delete(`/food/admin/dining/categories/${String(id)}`),
   getDiningRestaurants: (params = {}) =>
-    apiClient.get("/food/admin/dining/restaurants", {
-      params,
-      contextModule: "admin",
-    }),
     adminClient.get("/food/admin/dining/restaurants", { params }),
   updateRestaurantDiningSettings: (restaurantId, body) =>
     adminClient.patch(`/food/admin/dining/restaurants/${String(restaurantId)}`, body ?? {}),
