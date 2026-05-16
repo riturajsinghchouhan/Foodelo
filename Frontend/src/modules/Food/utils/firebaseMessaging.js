@@ -470,11 +470,10 @@ async function registerNativeWebViewFcmToken(moduleName) {
       const normalizedToken = String(token || "").trim();
       if (normalizedToken.length < 20) continue;
 
-      const lastSavedToken = getSavedToken(moduleName);
-      if (lastSavedToken !== normalizedToken) {
-        await saveTokenByModule(moduleName, normalizedToken, "mobile");
-        setSavedToken(moduleName, normalizedToken);
-      }
+      // Always sync with backend on mount to ensure database has the latest token
+      // The backend 'upsert' already handles duplicates efficiently.
+      await saveTokenByModule(moduleName, normalizedToken, "mobile");
+      setSavedToken(moduleName, normalizedToken);
 
       pushDebugLog(PUSH_DEBUG_PREFIX, "Registered native WebView FCM token", {
         moduleName,
