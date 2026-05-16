@@ -645,7 +645,7 @@ export default function ExploreMore() {
       if (typeof window !== "undefined" && window.flutter_inappwebview) {
         platform = "mobile"
       }
-      await notificationAPI.sendTestNotification(platform)
+      await notificationAPI.sendTestNotification(platform, { contextModule: "restaurant" })
       toast.success("Test notification sent! Check your device.")
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to send test notification")

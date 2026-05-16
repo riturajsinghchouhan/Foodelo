@@ -145,25 +145,25 @@ export const notificationAPI = {
     apiClient.delete(`/food/notifications/${String(id)}`, config),
   dismissAll: (config = {}) =>
     apiClient.delete("/food/notifications/inbox/all", config),
-  sendTestNotification: (platform = "web") =>
-    apiClient.post("/fcm-tokens/test", { platform }),
+  sendTestNotification: (platform = "web", config = {}) =>
+    apiClient.post("/fcm-tokens/test", { platform }, config),
 };
 
 /** Admin API - new backend only (GET /auth/me, PATCH /auth/admin/profile, POST /auth/admin/change-password) */
 export const adminAPI = {
   getSidebarBadges: () =>
-    apiClient.get("/food/admin/sidebar-badges", { contextModule: "admin" }),
+    adminClient.get("/food/admin/sidebar-badges"),
   login: (email, password) => authService.adminLogin(email, password),
   /** POST /auth/admin/forgot-password/request-otp – only accepts registered admin email */
   requestForgotPasswordOtp: (email) =>
-    apiClient.post("/auth/admin/forgot-password/request-otp", {
+    adminClient.post("/auth/admin/forgot-password/request-otp", {
       email: String(email || "")
         .trim()
         .toLowerCase(),
     }),
   /** POST /auth/admin/forgot-password/reset – verify OTP and set new password in one call */
   resetPasswordWithOtp: (email, otp, newPassword) =>
-    apiClient.post("/auth/admin/forgot-password/reset", {
+    adminClient.post("/auth/admin/forgot-password/reset", {
       email: String(email || "")
         .trim()
         .toLowerCase(),
@@ -416,7 +416,7 @@ export const adminAPI = {
   getBusinessSettings: () =>
     adminClient.get("/food/admin/business-settings"),
   getPublicBusinessSettings: () =>
-    adminClient.get("/food/admin/business-settings/public"),
+    userClient.get("/food/admin/business-settings/public"),
   updateBusinessSettings: (data, files = {}) => {
     const formData = new FormData();
     formData.append("data", JSON.stringify(data));
@@ -439,7 +439,7 @@ export const adminAPI = {
 
   /** Public categories (user app) - zone-aware */
   getPublicCategories: (params = {}, config = {}) =>
-    apiClient.get("/food/restaurant/categories/public", {
+    userClient.get("/food/restaurant/categories/public", {
       params: params ?? {},
       ...config,
     }),
@@ -604,10 +604,7 @@ export const restaurantAPI = {
   getCurrentRestaurant: () => getRestaurantCurrentOnce(),
   /** Finance dashboard for `hub-finance`. */
   getFinance: (params = {}) =>
-    apiClient.get("/food/restaurant/finance", {
-      contextModule: "restaurant",
-      params: params || {},
-    }),
+    restaurantClient.get("/food/restaurant/finance", { params: params || {} }),
   /** Fetch restaurant by owner (stub for missing backend endpoint). */
   getRestaurantByOwner: () =>
     Promise.resolve({
@@ -624,20 +621,14 @@ export const restaurantAPI = {
     }),
   /** Submit a real withdrawal request to the backend. */
   createWithdrawalRequest: (amount) =>
-    apiClient.post("/food/restaurant/withdraw", { amount: Number(amount) }, {
-      contextModule: "restaurant"
-    }),
+    restaurantClient.post("/food/restaurant/withdraw", { amount: Number(amount) }),
   /** List withdrawal history for current restaurant. */
   getWithdrawalHistory: () =>
-    apiClient.get("/food/restaurant/withdrawals", {
-      contextModule: "restaurant"
-    }),
+    restaurantClient.get("/food/restaurant/withdrawals"),
   /** Update restaurant profile fields (name/cuisines/location/menuImages). */
   updateProfile: (body) =>
-    apiClient
-      .patch("/food/restaurant/profile", body ?? {}, {
-        contextModule: "restaurant",
-      })
+    restaurantClient
+      .patch("/food/restaurant/profile", body ?? {})
       .then((res) => {
         // Keep cache coherent to avoid an immediate refetch storm.
         restaurantCurrentCached = res;
@@ -645,30 +636,23 @@ export const restaurantAPI = {
         return res;
       }),
   updateDiningSettings: (body) =>
-    apiClient
-      .patch("/food/restaurant/dining-settings", body ?? {}, {
-        contextModule: "restaurant",
-      })
+    restaurantClient
+      .patch("/food/restaurant/dining-settings", body ?? {})
       .then((res) => {
         restaurantCurrentCached = res;
         restaurantCurrentCacheTime = Date.now();
         return res;
       }),
   requestDiningUpdate: (body) =>
-    apiClient.post("/food/restaurant/dining-settings/request", body ?? {}, {
-      contextModule: "restaurant",
-    }),
+    restaurantClient.post("/food/restaurant/dining-settings/request", body ?? {}),
   getPendingDiningRequest: () =>
-    apiClient.get("/food/restaurant/dining-settings/pending", {
-      contextModule: "restaurant",
-    }),
+    restaurantClient.get("/food/restaurant/dining-settings/pending"),
   /** PATCH /food/restaurant/availability. Body: { isAcceptingOrders: boolean } */
   updateAcceptingOrders: (isAcceptingOrders) =>
-    apiClient
+    restaurantClient
       .patch(
         "/food/restaurant/availability",
-        { isAcceptingOrders: Boolean(isAcceptingOrders) },
-        { contextModule: "restaurant" },
+        { isAcceptingOrders: Boolean(isAcceptingOrders) }
       )
       .then((res) => {
         // Keep cache coherent to avoid an immediate refetch storm.
@@ -681,18 +665,14 @@ export const restaurantAPI = {
     if (!file) return Promise.reject(new Error("File is required"));
     const formData = new FormData();
     formData.append("file", file);
-    return apiClient.post("/food/restaurant/profile/profile-image", formData, {
-      contextModule: "restaurant",
-    });
+    return restaurantClient.post("/food/restaurant/profile/profile-image", formData);
   },
   /** Upload a menu/cover image (multipart). Does not auto-attach; use updateProfile(menuImages) after. */
   uploadMenuImage: (file) => {
     if (!file) return Promise.reject(new Error("File is required"));
     const formData = new FormData();
     formData.append("file", file);
-    return apiClient.post("/food/restaurant/profile/menu-image", formData, {
-      contextModule: "restaurant",
-    });
+    return restaurantClient.post("/food/restaurant/profile/menu-image", formData);
   },
   uploadCoverImages: (files = []) => {
     const normalizedFiles = Array.from(files || []).filter(Boolean);
@@ -701,9 +681,7 @@ export const restaurantAPI = {
     }
     const formData = new FormData();
     normalizedFiles.forEach((file) => formData.append("files", file));
-    return apiClient.post("/food/restaurant/profile/cover-images", formData, {
-      contextModule: "restaurant",
-    });
+    return restaurantClient.post("/food/restaurant/profile/cover-images", formData);
   },
   uploadMenuImages: (files = []) => {
     const normalizedFiles = Array.from(files || []).filter(Boolean);
@@ -712,15 +690,13 @@ export const restaurantAPI = {
     }
     const formData = new FormData();
     normalizedFiles.forEach((file) => formData.append("files", file));
-    return apiClient.post("/food/restaurant/profile/menu-images", formData, {
-      contextModule: "restaurant",
-    });
+    return restaurantClient.post("/food/restaurant/profile/menu-images", formData);
   },
   /** Public Offers for users (global/selected restaurant) */
-  getPublicOffers: () => apiClient.get("/food/restaurant/offers"),
+  getPublicOffers: () => userClient.get("/food/restaurant/offers"),
   /** Backward-compat helper used by Cart: returns coupons array for an item by adapting public offers */
   getCouponsByItemIdPublic: (restaurantId, _itemId) =>
-    apiClient.get("/food/restaurant/offers").then((res) => {
+    userClient.get("/food/restaurant/offers").then((res) => {
       const list = res?.data?.data?.allOffers || res?.data?.allOffers || [];
       const now = Date.now();
       const coupons = list
@@ -755,71 +731,48 @@ export const restaurantAPI = {
   /** Categories (restaurant dashboard) */
   getCategories: (params = {}) =>
     // Compact payload for item creation forms (id + name only).
-    apiClient.get("/food/restaurant/categories", {
+    restaurantClient.get("/food/restaurant/categories", {
       params: { compact: true, limit: 1000, ...params },
-      contextModule: "restaurant",
     }),
   // For MenuCategoriesPage compatibility
   getAllCategories: (params = {}) =>
-    apiClient.get("/food/restaurant/categories", {
+    restaurantClient.get("/food/restaurant/categories", {
       params: {
         includeInactive: true,
         withCounts: true,
         limit: 1000,
         ...params,
       },
-      contextModule: "restaurant",
     }),
   createCategory: (body) =>
-    apiClient.post("/food/restaurant/categories", body ?? {}, {
-      contextModule: "restaurant",
-    }),
+    restaurantClient.post("/food/restaurant/categories", body ?? {}),
   updateCategory: (id, body) =>
-    apiClient.patch(`/food/restaurant/categories/${String(id)}`, body ?? {}, {
-      contextModule: "restaurant",
-    }),
+    restaurantClient.patch(`/food/restaurant/categories/${String(id)}`, body ?? {}),
   deleteCategory: (id) =>
-    apiClient.delete(`/food/restaurant/categories/${String(id)}`, {
-      contextModule: "restaurant",
-    }),
+    restaurantClient.delete(`/food/restaurant/categories/${String(id)}`),
   /** Menu (restaurant dashboard) */
   getMenu: (params = {}) =>
-    apiClient.get("/food/restaurant/menu", {
-      params,
-      contextModule: "restaurant",
-    }),
+    restaurantClient.get("/food/restaurant/menu", { params }),
   /** Orders (restaurant dashboard) */
   getOrders: (params = {}) =>
-    apiClient.get("/food/restaurant/orders", {
+    restaurantClient.get("/food/restaurant/orders", {
       params: { limit: 50, page: 1, ...params },
-      contextModule: "restaurant",
     }),
   getOrderById: (orderId) =>
-    apiClient.get(`/food/restaurant/orders/${String(orderId)}`, {
-      contextModule: "restaurant",
-    }),
+    restaurantClient.get(`/food/restaurant/orders/${String(orderId)}`),
   updateMenu: (body) =>
-    apiClient.patch("/food/restaurant/menu", body ?? {}, {
-      contextModule: "restaurant",
-    }),
+    restaurantClient.patch("/food/restaurant/menu", body ?? {}),
   saveFcmToken: (token, platform = "web") => {
     if (!token) return Promise.reject(new Error("FCM token is required"));
     const path =
       platform === "mobile" ? "/fcm-tokens/mobile/save" : "/fcm-tokens/save";
-    return apiClient.post(
-      path,
-      { token: String(token), platform },
-      { contextModule: "restaurant" },
-    );
+    return restaurantClient.post(path, { token: String(token), platform });
   },
   removeFcmToken: (token, platform = "web") => {
     if (!token) return Promise.reject(new Error("FCM token is required"));
-    return apiClient.delete(
+    return restaurantClient.delete(
       `/fcm-tokens/remove/${encodeURIComponent(String(token))}`,
-      {
-        data: { token: String(token), platform },
-        contextModule: "restaurant",
-      },
+      { data: { token: String(token), platform } }
     );
   },
   /** Outlet timings (restaurant dashboard) */
@@ -1031,7 +984,7 @@ export const restaurantAPI = {
     getPublicRestaurantOutletTimingsOnce(id, config),
   /** Public (user app): approved add-ons by restaurant id/slug */
   getAddonsByRestaurantId: (id, config = {}) =>
-    apiClient.get(`/food/restaurant/restaurants/${String(id)}/addons`, {
+    userClient.get(`/food/restaurant/restaurants/${String(id)}/addons`, {
       ...config,
     }),
   getPublicOffers: (params = {}) =>
@@ -1355,21 +1308,17 @@ export const deliveryAPI = {
     deliveryClient.post("/food/delivery/support-tickets", body ?? {}),
   /** GET /food/delivery/support-tickets/:id - get one ticket (own only). */
   getSupportTicketById: (id) =>
-    apiClient.get(`/food/delivery/support-tickets/${id}`, {
-      contextModule: "delivery",
-    }),
+    deliveryClient.get(`/food/delivery/support-tickets/${id}`),
   /** PATCH /food/delivery/availability - set online/offline (and optional lat/lng). */
   updateOnlineStatus: (isOnline) =>
-    apiClient.patch(
+    deliveryClient.patch(
       "/food/delivery/availability",
-      { status: isOnline ? "online" : "offline" },
-      { contextModule: "delivery" },
+      { status: isOnline ? "online" : "offline" }
     ),
   updateLocation: (latitude, longitude, isOnline, extras = {}) =>
-    apiClient.patch(
+    deliveryClient.patch(
       "/food/delivery/availability",
-      { status: isOnline ? "online" : "offline", latitude, longitude, ...extras },
-      { contextModule: "delivery" },
+      { status: isOnline ? "online" : "offline", latitude, longitude, ...extras }
     ),
   /** Orders */
   getOrders: (() => {
