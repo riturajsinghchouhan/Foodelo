@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useContext } from 'react';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '@food/api/config';
 import { deliveryAPI } from '@food/api';
 const alertSound = '/alert.mp3';
 const originalSound = '/original.mp3';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
+import { DeliveryNotificationContext } from '../context/DeliveryNotificationContext';
 
 const shouldLogDeliverySocket = () => {
   if (typeof window === 'undefined') return import.meta.env.DEV;
@@ -168,6 +169,9 @@ const triggerWebViewNativeNotification = async (orderData = {}) => {
 
 
 export const useDeliveryNotifications = () => {
+  const context = useContext(DeliveryNotificationContext);
+  if (context) return context;
+  
   // CRITICAL: All hooks must be called unconditionally and in the same order every render
   // Order: useRef -> useState -> useEffect -> useCallback
   

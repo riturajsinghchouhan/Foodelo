@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback, useContext } from 'react';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '@food/api/config';
 import { restaurantAPI } from '@food/api';
 const alertSound = '/zomato_sms.mp3';
 import { dispatchNotificationInboxRefresh } from '@food/hooks/useNotificationInbox';
+import { RestaurantNotificationContext } from '../context/RestaurantNotificationContext';
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -77,6 +78,9 @@ const triggerWebViewNativeNotification = async (orderData = {}) => {
  * @returns {object} - { newOrder, playSound, isConnected }
  */
 export const useRestaurantNotifications = () => {
+  const context = useContext(RestaurantNotificationContext);
+  if (context) return context;
+  
   const socketRef = useRef(null);
   const [newOrder, setNewOrder] = useState(null);
   const [newReservation, setNewReservation] = useState(null);
