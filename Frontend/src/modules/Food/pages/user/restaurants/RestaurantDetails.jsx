@@ -47,6 +47,7 @@ import AddToCartAnimation from "@food/components/user/AddToCartAnimation"
 import { getCompanyNameAsync } from "@food/utils/businessSettings"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
+import { extractImages, normalizeImageUrl } from "@food/utils/common"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import {
   buildCartLineId,
@@ -65,7 +66,6 @@ const debugError = (...args) => {}
 
 
 
-const FOOD_IMAGE_FALLBACK = "https://picsum.photos/seed/food-fallback/800/600"
 const RUPEE_SYMBOL = "\u20B9"
 const RESTAURANT_DETAILS_FILTERS_STORAGE_KEY = "food-restaurant-details-filters"
 
@@ -76,6 +76,7 @@ function RestaurantDetailsContent() {
   const [searchParams] = useSearchParams()
   const showOnlyUnder250 = searchParams.get('under250') === 'true'
   const targetDishId = useMemo(() => String(searchParams.get('dish') || '').trim(), [searchParams])
+  const BACKEND_ORIGIN = useMemo(() => API_BASE_URL.replace(/\/api\/?$/, ""), [])
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
   const { vegMode, vegModeOption, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite } = useProfile()
   const { location: userLocation } = useLocation() // Get user's current location
@@ -105,7 +106,9 @@ function RestaurantDetailsContent() {
   const [expandedSections, setExpandedSections] = useState(new Set([0])) // Default: Recommended section is expanded
   const [highlightedDishId, setHighlightedDishId] = useState(null)
   const [loadingMenuItems, setLoadingMenuItems] = useState(true)
+  const [menuUnavailable, setMenuUnavailable] = useState(false)
   const [selectedMenuCategory, setSelectedMenuCategory] = useState("all")
+  const [failedImageIds, setFailedImageIds] = useState({})
   const dishCardRefs = useRef({})
 
   const getLineItemIdForDish = (item, variant = null) =>
@@ -121,6 +124,11 @@ function RestaurantDetailsContent() {
     const variant = getVariantForDish(item, preferredVariantId)
     const lineItemId = getLineItemIdForDish(item, variant)
     return quantities[lineItemId] || 0
+  }
+
+  const markImageFailed = (itemId) => {
+    if (!itemId) return
+    setFailedImageIds((prev) => (prev[itemId] ? prev : { ...prev, [itemId]: true }))
   }
 
   // Initialize filters from localStorage if available
@@ -493,7 +501,7 @@ function RestaurantDetailsContent() {
               "Unknown Restaurant",
             cuisine: resolvedTopCategory,
             topCategory: resolvedTopCategory,
-            rating: actualRestaurant?.rating || apiRestaurant?.rating || actualRestaurant?.averageRating || apiRestaurant?.averageRating || 4.5,
+            rating: actualRestaurant?.rating || apiRestaurant?.rating || actualRestaurant?.averageRating || apiRestaurant?.averageRating || null,
             reviews: actualRestaurant?.totalRatings || apiRestaurant?.totalRatings || actualRestaurant?.reviewCount || apiRestaurant?.reviewCount || actualRestaurant?.reviews?.length || apiRestaurant?.reviews?.length || 0,
             deliveryTime: actualRestaurant?.estimatedDeliveryTime || apiRestaurant?.estimatedDeliveryTime || actualRestaurant?.deliveryTime || apiRestaurant?.deliveryTime || actualRestaurant?.avgDeliveryTime || apiRestaurant?.avgDeliveryTime || "25-30 mins",
             distance: calculatedDistance || actualRestaurant?.distance || apiRestaurant?.distance || actualRestaurant?.distanceFromUser || apiRestaurant?.distanceFromUser || "1.2 km",
@@ -638,6 +646,7 @@ function RestaurantDetailsContent() {
             .filter((value, index, arr) => arr.indexOf(value) === index)
 
           setLoadingMenuItems(true)
+          setMenuUnavailable(false)
           if (normalizedLookupIds.length > 0) {
             let hasPreviousOrderForRestaurant = false
             if (isModuleAuthenticated('user')) {
@@ -745,6 +754,24 @@ function RestaurantDetailsContent() {
                   if (!value || typeof value !== "object") return []
                   return Object.values(value).filter((entry) => entry && typeof entry === "object")
                 }
+                const resolveItemImage = (item = {}) => {
+                  const candidates = [
+                    item.image,
+                    item.imageUrl,
+                    item.photo,
+                    item.photoUrl,
+                    item.menuImage,
+                    item.menuImageUrl,
+                    item.images,
+                    item.photos,
+                    item.gallery,
+                    item.image?.url,
+                    item.image?.secure_url,
+                  ]
+                  const resolved = extractImages(candidates, BACKEND_ORIGIN)[0]
+                  return resolved || ""
+                }
+
                 const normalizeItem = (item = {}) => {
                    const isRecommended = item.isRecommended === true || item.isRecommended === 1 || String(item.isRecommended) === "true"
                    const isSpicy = item.isSpicy === true || item.isSpicy === 1 || String(item.isSpicy) === "true"
@@ -764,6 +791,7 @@ function RestaurantDetailsContent() {
                       foodType,
                       isVeg, // Explicitly set isVeg
                       price: getFoodDisplayPrice(item),
+                       image: resolveItemImage(item) || normalizeImageUrl(item.image || "", BACKEND_ORIGIN),
                       variants: getFoodVariants(item),
                       variations: getFoodVariants(item),
                       isAvailable: item.isAvailable !== false,
@@ -784,6 +812,14 @@ function RestaurantDetailsContent() {
                     items: toArray(subsection.items).map(normalizeItem),
                   })),
                 }))
+
+                const menuHasItems = menuSections.some((section) => {
+                  const directItems = Array.isArray(section.items) && section.items.length > 0
+                  const subsectionItems = Array.isArray(section.subsections)
+                    ? section.subsections.some((subsection) => Array.isArray(subsection.items) && subsection.items.length > 0)
+                    : false
+                  return directItems || subsectionItems
+                })
 
                 // Collect all recommended items from all sections
                 // Only include items that are both recommended (isRecommended === true) AND available (isAvailable !== false)
@@ -868,6 +904,8 @@ function RestaurantDetailsContent() {
                   menuSections: finalMenuSections,
                 }))
 
+                setMenuUnavailable(!menuHasItems)
+
                 // Set first 3 sections (Recommended, Starters, Main Course) as expanded by default
                 const defaultExpandedSections = new Set(
                   Array.from({ length: Math.min(3, finalMenuSections.length) }, (_, idx) => idx)
@@ -879,6 +917,7 @@ function RestaurantDetailsContent() {
             } catch (menuError) {
               if (menuError.response && menuError.response.status === 404) {
                 debugLog('? Menu not found for this restaurant (might be a dining-only listing).')
+                setMenuUnavailable(true)
               } else {
                 debugError('? Error fetching menu:', menuError)
               }
@@ -1954,68 +1993,91 @@ function RestaurantDetailsContent() {
     return () => clearInterval(interval)
   }, [highlightOffers.length])
 
-  // Show loading state
-  if (loadingRestaurant) {
-    return <RestaurantDetailSkeleton />
-  }
-
-  // Show error state if restaurant not found or network error
-  if (restaurantError && !restaurant) {
-    const isNetworkError = restaurantError.includes('Backend server is not connected')
-    const isNotFoundError = restaurantError === 'Restaurant not found'
-
-    return (
-      <AnimatedPage>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <AlertCircle className={`h-12 w-12 ${isNetworkError ? 'text-[#7e3866]' : 'text-red-500'}`} />
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                {isNetworkError ? 'Connection Error' : isNotFoundError ? 'Restaurant not found' : 'Error'}
-              </h2>
-              <p className="text-sm text-gray-600 mb-4 max-w-md">{restaurantError}</p>
-              {isNetworkError && (
-                <p className="text-xs text-gray-500 mb-4">
-                  Make sure the backend server is running at {API_BASE_URL.replace('/api', '')}
-                </p>
-              )}
-              <Button onClick={goBack} variant="outline">
-                Go Back
-              </Button>
-            </div>
-          </div>
-        </div>
-      </AnimatedPage>
-    )
-  }
-
-  // Show error if restaurant is still null
-  if (!restaurant) {
-    return (
-      <AnimatedPage>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <AlertCircle className="h-12 w-12 text-red-500" />
-            <span className="text-sm text-gray-600">Restaurant not found</span>
-            <Button onClick={goBack} variant="outline">
-              Go Back
-            </Button>
-          </div>
-        </div>
-      </AnimatedPage>
-    )
-  }
-
-  const availabilityStatus = getRestaurantAvailabilityStatus(restaurant, new Date(availabilityTick))
+  const availabilityStatus = restaurant ? getRestaurantAvailabilityStatus(restaurant, new Date(availabilityTick)) : { isOpen: false }
   const isRestaurantOffline = !availabilityStatus.isOpen
   const shouldShowGrayscale = isOutOfService || isRestaurantOffline
+  const ratingValue = Number(restaurant?.rating || 0)
+  const hasRating = Number.isFinite(ratingValue) && ratingValue > 0
+  const ratingLabel = hasRating ? ratingValue.toFixed(1) : "New"
+  const reviewsCount = Number(restaurant?.reviews || 0)
+  const reviewsLabel = hasRating && Number.isFinite(reviewsCount) && reviewsCount > 0
+    ? `${reviewsCount.toLocaleString()}+ ratings`
+    : "New"
 
   return (
-    <AnimatedPage
-      id="scrollingelement"
-      className={`min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col transition-all duration-300 ${shouldShowGrayscale ? 'grayscale opacity-75' : ''
-        }`}
-    >
+    <AnimatePresence mode="wait">
+      {loadingRestaurant ? (
+        <motion.div
+          key="skeleton"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.25, ease: "easeInOut" }}
+        >
+          <RestaurantDetailSkeleton />
+        </motion.div>
+      ) : restaurantError && !restaurant ? (
+        <motion.div
+          key="error"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <AnimatedPage>
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <AlertCircle className={`h-12 w-12 ${restaurantError.includes('Backend server is not connected') ? 'text-[#7e3866]' : 'text-red-500'}`} />
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                    {restaurantError.includes('Backend server is not connected') ? 'Connection Error' : restaurantError === 'Restaurant not found' ? 'Restaurant not found' : 'Error'}
+                  </h2>
+                  <p className="text-sm text-gray-600 mb-4 max-w-md">{restaurantError}</p>
+                  {restaurantError.includes('Backend server is not connected') && (
+                    <p className="text-xs text-gray-500 mb-4">
+                      Make sure the backend server is running at {API_BASE_URL.replace('/api', '')}
+                    </p>
+                  )}
+                  <Button onClick={goBack} variant="outline">
+                    Go Back
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </AnimatedPage>
+        </motion.div>
+      ) : !restaurant ? (
+        <motion.div
+          key="not-found"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <AnimatedPage>
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-4">
+                <AlertCircle className="h-12 w-12 text-red-500" />
+                <span className="text-sm text-gray-600">Restaurant not found</span>
+                <Button onClick={goBack} variant="outline">
+                  Go Back
+                </Button>
+              </div>
+            </div>
+          </AnimatedPage>
+        </motion.div>
+      ) : (
+        <motion.div
+          key="content"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -30 }}
+          transition={{ type: "spring", stiffness: 100, damping: 15 }}
+          className="w-full flex-1 flex flex-col"
+        >
+          <AnimatedPage
+            id="scrollingelement"
+            className={`min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col transition-all duration-300 ${shouldShowGrayscale ? 'grayscale opacity-75' : ''
+              }`}
+          >
       {/* Header - Back, Search, Menu (like reference image) */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-3 md:pt-4 lg:pt-5 pb-2 md:pb-3 bg-white dark:bg-[#0a0a0a]">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -2106,10 +2168,10 @@ function RestaurantDetailsContent() {
               <div className="flex flex-col items-end">
                 <div className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
                   <Star className="h-3 w-3 fill-white" />
-                  {Number(restaurant?.rating || 4.5).toFixed(1)}
+                  {ratingLabel}
                 </div>
                 <span className="mt-1 text-xs text-gray-500">
-                  {(restaurant.reviews || 0).toLocaleString()}+ ratings
+                  {reviewsLabel}
                 </span>
               </div>
             </div>
@@ -2178,10 +2240,10 @@ function RestaurantDetailsContent() {
               <div className="flex flex-col items-end gap-1">
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                   <Star className="h-3 w-3 fill-emerald-700 dark:fill-emerald-400 text-emerald-700 dark:text-emerald-400" />
-                  {Number(restaurant?.rating || 4.5).toFixed(1)}
+                  {ratingLabel}
                 </span>
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                  {(restaurant.reviews || 0).toLocaleString()}+ ratings
+                  {reviewsLabel}
                 </span>
               </div>
             </div>
@@ -2429,7 +2491,7 @@ function RestaurantDetailsContent() {
                         }
 
                         return (
-                          <div
+                          <motion.div
                             key={item.id}
                             ref={(node) => {
                               if (node) {
@@ -2438,7 +2500,22 @@ function RestaurantDetailsContent() {
                                 delete dishCardRefs.current[item.id]
                               }
                             }}
-                            className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#7e386605] ring-2 ring-[#7e3866] ring-inset dark:bg-[#7e386610]" : ""}`}
+                            initial={highlightedDishId === item.id ? { scale: 0.98, opacity: 0.95 } : false}
+                            animate={highlightedDishId === item.id ? { 
+                              scale: [1, 1.02, 1.01], 
+                              opacity: 1,
+                              boxShadow: [
+                                "0 4px 12px rgba(126,56,102,0.1)",
+                                "0 16px 36px rgba(126,56,102,0.3)",
+                                "0 12px 28px rgba(126,56,102,0.22)"
+                              ]
+                            } : false}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-500 rounded-2xl ${
+                              highlightedDishId === item.id 
+                                ? "bg-gradient-to-r from-[#7e38660a] to-[#7e386615] dark:from-[#7e386618] dark:to-[#7e386622] ring-2 ring-[#7e3866] z-10 mx-1 my-2" 
+                                : "hover:bg-gray-50/50 dark:hover:bg-white/[0.02]"
+                            }`}
                             onClick={() => handleItemClick(item)}
                           >
                             {/* Left Side - Details */}
@@ -2520,15 +2597,13 @@ function RestaurantDetailsContent() {
 
                             {/* Right Side - Image and Add Button */}
                             <div className="relative w-32 h-32 flex-shrink-0">
-                              {item.image ? (
+                              {item.image && !failedImageIds[item.id] ? (
                                 <img
                                   src={item.image}
                                   alt={item.name}
                                   className="w-full h-full object-cover rounded-2xl shadow-sm"
                                   onError={(e) => {
-                                    if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
-                                      e.currentTarget.src = FOOD_IMAGE_FALLBACK
-                                    }
+                                    markImageFailed(item.id)
                                   }}
                                 />
                               ) : (
@@ -2593,7 +2668,7 @@ function RestaurantDetailsContent() {
                                 </motion.button>
                               )}
                             </div>
-                          </div>
+                          </motion.div>
                         )
                       })}
                     </div>
@@ -2650,7 +2725,7 @@ function RestaurantDetailsContent() {
                                   }
 
                                   return (
-                                    <div
+                                    <motion.div
                                       key={item.id}
                                       ref={(node) => {
                                         if (node) {
@@ -2659,7 +2734,22 @@ function RestaurantDetailsContent() {
                                           delete dishCardRefs.current[item.id]
                                         }
                                       }}
-                                      className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-300 ${highlightedDishId === item.id ? "bg-[#7e386605] ring-2 ring-[#7e3866] ring-inset dark:bg-[#7e386610]" : ""}`}
+                                      initial={highlightedDishId === item.id ? { scale: 0.98, opacity: 0.95 } : false}
+                                      animate={highlightedDishId === item.id ? { 
+                                        scale: [1, 1.02, 1.01], 
+                                        opacity: 1,
+                                        boxShadow: [
+                                          "0 4px 12px rgba(126,56,102,0.1)",
+                                          "0 16px 36px rgba(126,56,102,0.3)",
+                                          "0 12px 28px rgba(126,56,102,0.22)"
+                                        ]
+                                      } : false}
+                                      transition={{ duration: 0.8, ease: "easeOut" }}
+                                      className={`flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-500 rounded-2xl ${
+                                        highlightedDishId === item.id 
+                                          ? "bg-gradient-to-r from-[#7e38660a] to-[#7e386615] dark:from-[#7e386618] dark:to-[#7e386622] ring-2 ring-[#7e3866] z-10 mx-1 my-2" 
+                                          : "hover:bg-gray-50/50 dark:hover:bg-white/[0.02]"
+                                      }`}
                                       onClick={() => handleItemClick(item)}
                                     >
                                       {/* Left Side - Details */}
@@ -2741,15 +2831,13 @@ function RestaurantDetailsContent() {
 
                                       {/* Right Side - Image and Add Button */}
                                       <div className="relative w-32 h-32 flex-shrink-0">
-                                        {item.image ? (
+                                        {item.image && !failedImageIds[item.id] ? (
                                           <img
                                             src={item.image}
                                             alt={item.name}
                                             className="w-full h-full object-cover rounded-2xl shadow-sm"
                                             onError={(e) => {
-                                              if (e.currentTarget.src !== FOOD_IMAGE_FALLBACK) {
-                                                e.currentTarget.src = FOOD_IMAGE_FALLBACK
-                                              }
+                                              markImageFailed(item.id)
                                             }}
                                           />
                                         ) : (
@@ -2814,7 +2902,7 @@ function RestaurantDetailsContent() {
                                           </motion.button>
                                         )}
                                       </div>
-                                    </div>
+                                    </motion.div>
                                   )
                                 })}
                               </div>
@@ -2827,6 +2915,19 @@ function RestaurantDetailsContent() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {!loadingMenuItems && menuUnavailable && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-6 sm:py-8 md:py-10 lg:py-12">
+            <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] px-6 py-10 text-center">
+              <p className="text-sm md:text-base font-medium text-gray-700 dark:text-gray-300">
+                Menu is not available yet.
+              </p>
+              <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 mt-2">
+                The restaurant has not uploaded its menu.
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -3221,11 +3322,24 @@ function RestaurantDetailsContent() {
                                 <div className="flex items-center gap-1">
                                   <Star className="h-3.5 w-3.5 text-[#8CC63F] dark:text-green-500 fill-[#8CC63F] dark:fill-green-500" />
                                   <span className="text-xs font-medium text-gray-900 dark:text-white">
-                                    {outlet?.rating || 4.5}
+                                    {(() => {
+                                      const outletRating = Number(outlet?.rating)
+                                      return Number.isFinite(outletRating) && outletRating > 0
+                                        ? outletRating.toFixed(1)
+                                        : "New"
+                                    })()}
                                   </span>
                                 </div>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  By {(outlet?.reviews || 0) >= 1000 ? `${((outlet.reviews || 0) / 1000).toFixed(1)}K+` : `${outlet?.reviews || 0}+`}
+                                  {(() => {
+                                    const outletReviews = Number(outlet?.reviews)
+                                    if (!Number.isFinite(outletReviews) || outletReviews <= 0) {
+                                      return "New"
+                                    }
+                                    return outletReviews >= 1000
+                                      ? `By ${(outletReviews / 1000).toFixed(1)}K+`
+                                      : `By ${outletReviews}+`
+                                  })()}
                                 </span>
                               </div>
                             </div>
@@ -4058,7 +4172,10 @@ function RestaurantDetailsContent() {
           />,
           document.body
         )}
-    </AnimatedPage>
+          </AnimatedPage>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 

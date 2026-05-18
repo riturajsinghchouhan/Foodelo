@@ -3,6 +3,7 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
+import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import {
     extractRawFoodVariants,
     getFoodDisplayPrice,
@@ -28,6 +29,68 @@ const normalizeFoodType = (v) => {
     if (t === 'Non-Veg') return 'Non-Veg';
     if (t === 'Egg') return 'Non-Veg';
     return 'Non-Veg';
+};
+
+const CLOUDINARY_HOST_RE = /res\.cloudinary\.com/i;
+const MAX_BULK_ITEMS = 500;
+const BULK_CONCURRENCY = 5;
+const IMAGE_UPLOAD_FOLDER = 'food/items';
+
+const isCloudinaryUrl = (value) => CLOUDINARY_HOST_RE.test(String(value || ''));
+
+const shouldUploadImageUrl = (value) => {
+    const url = toStr(value);
+    if (!url) return false;
+    if (isCloudinaryUrl(url)) return false;
+    if (/^data:/i.test(url) || /^blob:/i.test(url)) return false;
+    return /^https?:\/\//i.test(url);
+};
+
+const downloadImageBuffer = async (url) => {
+    if (typeof fetch !== 'function') {
+        throw new Error('Image download is not supported in this runtime');
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) {
+            throw new Error(`Failed to download image (${response.status})`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
+const ensureCloudinaryImageUrl = async (value) => {
+    const url = toStr(value);
+    if (!url) return '';
+    if (!shouldUploadImageUrl(url)) return url;
+    const buffer = await downloadImageBuffer(url);
+    return await uploadImageBuffer(buffer, IMAGE_UPLOAD_FOLDER);
+};
+
+const asyncPool = async (limit, items, iterator) => {
+    const results = [];
+    const executing = new Set();
+
+    for (let i = 0; i < items.length; i++) {
+        const p = Promise.resolve().then(() => iterator(items[i], i));
+        results.push(p);
+        executing.add(p);
+
+        const cleanup = () => executing.delete(p);
+        p.then(cleanup).catch(cleanup);
+
+        if (executing.size >= limit) {
+            await Promise.race(executing);
+        }
+    }
+
+    return Promise.all(results);
 };
 
 const getCreateFoodPricing = (body = {}) => {
@@ -199,7 +262,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const { price, variants } = getCreateFoodPricing(body);
 
     const description = toStr(body.description);
-    const image = toStr(body.image);
+    const image = await ensureCloudinaryImageUrl(body.image || body.imageUrl || body.photoUrl || body.photo);
     const isAvailable = body.isAvailable !== false;
     const foodType = normalizeFoodType(body.foodType);
     const preparationTime = toStr(body.preparationTime);
@@ -340,14 +403,13 @@ export async function bulkCreateFood(restaurantId, items = []) {
     }
 
     // Limit bulk size to prevent timeout
-    if (items.length > 100) {
-        throw new ValidationError('Bulk upload limit is 100 items per request');
+    if (items.length > MAX_BULK_ITEMS) {
+        throw new ValidationError(`Bulk upload limit is ${MAX_BULK_ITEMS} items per request`);
     }
 
     const processedItems = [];
 
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
+    await asyncPool(BULK_CONCURRENCY, items, async (item, index) => {
         try {
             const name = toStr(item.name);
             if (!name) throw new Error('Item name is required');
@@ -360,6 +422,7 @@ export async function bulkCreateFood(restaurantId, items = []) {
             });
 
             const { price: finalPrice, variants: finalVariants } = getCreateFoodPricing(item);
+            const imageUrl = await ensureCloudinaryImageUrl(item.image || item.imageUrl || item.photoUrl || item.photo);
 
             processedItems.push({
                 restaurantId,
@@ -369,7 +432,7 @@ export async function bulkCreateFood(restaurantId, items = []) {
                 description: toStr(item.description),
                 price: finalPrice,
                 variants: finalVariants,
-                image: toStr(item.image),
+                image: imageUrl,
                 foodType,
                 isAvailable: item.isAvailable !== false,
                 preparationTime: toStr(item.preparationTime),
@@ -381,12 +444,12 @@ export async function bulkCreateFood(restaurantId, items = []) {
         } catch (err) {
             results.errorCount++;
             results.errors.push({
-                index: i,
-                name: item.name || 'Unknown',
+                index,
+                name: item?.name || 'Unknown',
                 message: err.message
             });
         }
-    }
+    });
 
     if (processedItems.length > 0) {
         const docs = await FoodItem.insertMany(processedItems);
