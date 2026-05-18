@@ -887,9 +887,7 @@ export default function Inventory() {
             const item = {};
             rawHeaders.forEach((header, index) => {
               const val = row[index];
-              if (header.includes("name") && !header.includes("category")) item.name = val;
-              else if (header.includes("description")) item.description = val;
-              else if (header.includes("variant") || header.includes("variation")) {
+              if (header.includes("variant") || header.includes("variation")) {
                 if (val && typeof val === 'string') {
                   const parsedVariants = val.split(',').map(v => {
                     const parts = v.split(':');
@@ -907,6 +905,8 @@ export default function Inventory() {
                   }
                 }
               }
+              else if (header === "name") item.name = val;
+              else if (header.includes("description")) item.description = val;
               else if (header.includes("price")) item.price = Number(val) || 0;
               else if (header.includes("category")) item.categoryName = val;
               else if (header.includes("type")) item.foodType = val;
