@@ -2568,6 +2568,17 @@ function RestaurantDetailsContent() {
           </div>
         </div>
 
+        {loadingMenuItems && (!restaurant?.menuSections || restaurant.menuSections.length === 0) && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-6 sm:py-8 md:py-10 lg:py-12">
+            <div className="space-y-4 animate-pulse">
+              <div className="h-6 w-40 rounded-full bg-gray-100 dark:bg-gray-800" />
+              <div className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800" />
+              <div className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800" />
+              <div className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800" />
+            </div>
+          </div>
+        )}
+
         {/* Menu Items Section */}
         {restaurant?.menuSections && Array.isArray(restaurant.menuSections) && restaurant.menuSections.length > 0 && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-6 sm:py-8 md:py-10 lg:py-12 space-y-6 md:space-y-8 lg:space-y-10">
