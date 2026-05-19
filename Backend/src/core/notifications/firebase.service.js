@@ -193,13 +193,16 @@ const buildMessagePayload = (payload = {}, token) => {
     message.webpush = {
         headers: {
             Urgency: 'high'
-        },
-        notification: {
+        }
+    };
+
+    if (!payload.dataOnly) {
+        message.webpush.notification = {
             title: notification.title,
             body: notification.body,
             icon: image || payload.icon || '/logo.png'
-        }
-    };
+        };
+    }
 
     return message;
 };

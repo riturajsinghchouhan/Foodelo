@@ -2009,12 +2009,12 @@ function RestaurantDetailsContent() {
           {/* Veg Icon & Spicy Indicator */}
           <div className="flex items-center gap-2 mb-1">
             {isVeg ? (
-              <div className={`w-4 h-4 border-2 ${isRecommendedSection ? 'border-green-600' : 'border-[#8CC63F]'} flex items-center justify-center rounded-sm flex-shrink-0`}>
-                <div className={`w-2 h-2 ${isRecommendedSection ? 'bg-green-600' : 'bg-[#8CC63F]'} rounded-full`}></div>
+              <div className="w-4 h-4 border-2 border-green-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
               </div>
             ) : (
-              <div className={`w-4 h-4 border-2 ${isRecommendedSection ? 'border-red-600' : 'border-[#7e3866]'} flex items-center justify-center rounded-sm flex-shrink-0`}>
-                <div className={`w-2 h-2 ${isRecommendedSection ? 'bg-red-600' : 'bg-[#7e3866]'} rounded-full`}></div>
+              <div className="w-4 h-4 border-2 border-red-600 flex items-center justify-center rounded-sm flex-shrink-0">
+                <div className="w-2 h-2 bg-red-600 rounded-full"></div>
               </div>
             )}
             {item.isSpicy && <span className="text-xs font-semibold text-red-500">Spicy</span>}
@@ -2458,18 +2458,18 @@ function RestaurantDetailsContent() {
           <div className="border-y border-gray-200 py-3 -mx-4 px-4">
             <div className="flex flex-col gap-3">
               {/* Row 1: Filters (scrollable independently) */}
-              <div className="overflow-x-auto scrollbar-hide pb-2.5 border-b border-gray-100 dark:border-gray-900">
+              <div className="overflow-x-auto scrollbar-hide pt-2 pb-2.5 border-b border-gray-100 dark:border-gray-900">
                 <div className="flex items-center gap-2 w-max">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex items-center gap-1.5 whitespace-nowrap border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] relative"
+                    className="flex items-center gap-1.5 whitespace-nowrap border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] relative overflow-visible"
                     onClick={() => setShowFilterSheet(true)}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                     Filters
                     {activeFilterCount > 0 && (
-                      <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-semibold">
+                      <span className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-semibold z-10">
                         {activeFilterCount}
                       </span>
                     )}

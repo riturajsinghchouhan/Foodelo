@@ -246,8 +246,8 @@ export default function Favorites() {
                                   <div className="w-1.5 h-1.5 bg-green-600 rounded-full"></div>
                                 </div>
                               ) : (
-                                <div className="w-3 h-3 border-2 border-#55254b flex items-center justify-center rounded-sm">
-                                  <div className="w-1.5 h-1.5 bg-#55254b rounded-full"></div>
+                                <div className="w-3 h-3 border-2 border-red-600 flex items-center justify-center rounded-sm">
+                                  <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
                                 </div>
                               )}
                               <span className="text-muted-foreground font-medium text-xs">{dish.foodType || "N/A"}</span>
