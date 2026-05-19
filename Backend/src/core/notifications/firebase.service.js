@@ -197,7 +197,7 @@ const buildMessagePayload = (payload = {}, token) => {
         notification: {
             title: notification.title,
             body: notification.body,
-            icon: image || payload.icon || '/favicon.ico'
+            icon: image || payload.icon || '/logo.png'
         }
     };
 

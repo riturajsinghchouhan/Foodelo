@@ -8,9 +8,6 @@ import { exportRestaurantsToPDF } from "@food/components/admin/restaurants/resta
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 
 // Import icons from Dashboard-icons
-import locationIcon from "@food/assets/Dashboard-icons/image1.png"
-import restaurantIcon from "@food/assets/Dashboard-icons/image2.png"
-import inactiveIcon from "@food/assets/Dashboard-icons/image3.png"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -1113,7 +1110,7 @@ export default function RestaurantsList() {
                 <p className="text-2xl font-bold text-slate-900">{totalRestaurants}</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <img src={locationIcon} alt="Location" className="w-8 h-8" />
+                <MapPin className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </div>
@@ -1126,7 +1123,7 @@ export default function RestaurantsList() {
                 <p className="text-2xl font-bold text-slate-900">{activeRestaurants}</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-                <img src={restaurantIcon} alt="Restaurant" className="w-8 h-8" />
+                <Building2 className="w-6 h-6 text-green-600" />
               </div>
             </div>
           </div>
@@ -1139,7 +1136,7 @@ export default function RestaurantsList() {
                 <p className="text-2xl font-bold text-slate-900">{inactiveRestaurants}</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
-                <img src={inactiveIcon} alt="Inactive" className="w-8 h-8" />
+                <ShieldX className="w-6 h-6 text-red-600" />
               </div>
             </div>
           </div>
