@@ -835,7 +835,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       <div className={`flex-1 relative overflow-y-auto ${currentTab === 'history' ? 'pt-0' : 'pt-[120px]'} no-scrollbar`}>
          {currentTab === 'feed' ? (
            <div className="absolute inset-0 top-[-120px]">
-             <LiveMap 
+             {isOnline ? (
+               <>
+                 <LiveMap 
                onMapLoad={(m) => mapRef.current = m}
                onMapClick={handleMapClick}
                onPathReceived={setSimPath}
@@ -933,6 +935,40 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                   <Target className="w-7 h-7" />
                 </button>
              </div>
+             </>
+            ) : (
+              <div className="w-full h-full bg-[#f8f9fa] flex flex-col items-center justify-center relative overflow-hidden">
+                {/* CSS Static Map Background Pattern */}
+                <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{
+                  backgroundImage: `radial-gradient(#000 2px, transparent 2px)`,
+                  backgroundSize: '24px 24px'
+                }}></div>
+                {/* Fake Roads to simulate map */}
+                <div className="absolute inset-0 opacity-[0.06] pointer-events-none">
+                   <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                     <path d="M -100,200 Q 150,250 300,100 T 800,300" stroke="#000" strokeWidth="8" fill="none" />
+                     <path d="M 200,-100 Q 250,150 100,300 T 300,800" stroke="#000" strokeWidth="6" fill="none" />
+                     <path d="M 400,-100 Q 350,150 500,400 T 200,800" stroke="#000" strokeWidth="10" fill="none" />
+                   </svg>
+                </div>
+                
+                {/* Avatar / Offline State */}
+                <div className="z-10 flex flex-col items-center mt-32 relative">
+                   <img 
+                     src="/MapRider.png" 
+                     alt="Offline Rider" 
+                     className="w-64 h-auto drop-shadow-[0_20px_40px_rgba(0,0,0,0.15)] object-contain"
+                     onError={(e) => {
+                        e.target.src = 'https://cdn-icons-png.flaticon.com/512/2950/2950150.png';
+                     }}
+                   />
+                   <div className="mt-8 bg-white/90 backdrop-blur-md px-8 py-5 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] text-center border border-gray-100/50">
+                      <h2 className="text-gray-900 font-black uppercase tracking-widest text-lg">You are Offline</h2>
+                      <p className="text-gray-500 font-bold text-xs uppercase tracking-wider mt-1.5">Go online to receive jobs</p>
+                   </div>
+                </div>
+              </div>
+            )}
            </div>
          ) : currentTab === 'pocket' ? (
            <PocketV2 />
