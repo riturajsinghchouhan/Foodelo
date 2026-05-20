@@ -26,7 +26,7 @@ import {
   Bell, HelpCircle, AlertTriangle, 
   Wallet, History, User as UserIcon, LayoutGrid,
   Plus, Minus, Navigation2, Target, Play, CheckCircle2, Clock, ChevronDown,
-  Contact, Package
+  Contact, Package, Phone
 } from 'lucide-react';
 
 import { getHaversineDistance, calculateETA, calculateHeading } from '@/modules/DeliveryV2/utils/geo';
@@ -1026,6 +1026,17 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                                </p>
                             </div>
                           </div>
+                          {(activeOrder?.userPhone || activeOrder?.deliveryAddress?.phone || activeOrder?.user?.phone) && (
+                            <button
+                              onClick={() => {
+                                const num = activeOrder?.userPhone || activeOrder?.deliveryAddress?.phone || activeOrder?.user?.phone;
+                                if (num) window.location.href = `tel:${num}`;
+                              }}
+                              className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 border border-green-100 active:scale-95 transition-all shadow-sm shrink-0"
+                            >
+                              <Phone className="w-5 h-5 fill-current" />
+                            </button>
+                          )}
                         </div>
 
                         {/* Customer Instructions Panel */}

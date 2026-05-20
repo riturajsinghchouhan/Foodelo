@@ -69,6 +69,26 @@ const debugError = (...args) => {}
 const RUPEE_SYMBOL = "\u20B9"
 const RESTAURANT_DETAILS_FILTERS_STORAGE_KEY = "food-restaurant-details-filters"
 
+const DishImage = ({ src, alt, className = "" }) => {
+  const [failed, setFailed] = useState(false)
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        className={className}
+        onError={() => setFailed(true)}
+      />
+    )
+  }
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      <span className="text-xs text-gray-400">No image</span>
+    </div>
+  )
+}
+
 function RestaurantDetailsContent() {
   const { slug } = useParams()
   const navigate = useNavigate()
@@ -108,7 +128,7 @@ function RestaurantDetailsContent() {
   const [loadingMenuItems, setLoadingMenuItems] = useState(true)
   const [menuUnavailable, setMenuUnavailable] = useState(false)
   const [selectedMenuCategory, setSelectedMenuCategory] = useState("all")
-  const [failedImageIds, setFailedImageIds] = useState({})
+  const [visibleItemCount, setVisibleItemCount] = useState(50)
   const dishCardRefs = useRef({})
 
   const getLineItemIdForDish = (item, variant = null) =>
@@ -124,11 +144,6 @@ function RestaurantDetailsContent() {
     const variant = getVariantForDish(item, preferredVariantId)
     const lineItemId = getLineItemIdForDish(item, variant)
     return quantities[lineItemId] || 0
-  }
-
-  const markImageFailed = (itemId) => {
-    if (!itemId) return
-    setFailedImageIds((prev) => (prev[itemId] ? prev : { ...prev, [itemId]: true }))
   }
 
   // Initialize filters from localStorage if available
@@ -1880,6 +1895,54 @@ function RestaurantDetailsContent() {
     [restaurant?.menuSections, showOnlyUnder250, searchQuery, vegMode, filters, selectedMenuCategory]
   )
 
+  // Compute paginated sections based on visibleItemCount
+  const paginatedSections = useMemo(() => {
+    let currentCount = 0
+    return filteredSections.map(({ section, originalIndex }) => {
+      if (currentCount >= visibleItemCount) return { section: { ...section, items: [], subsections: [] }, originalIndex }
+      
+      const newSection = { ...section, items: [], subsections: [] }
+      
+      if (section.subsections && section.subsections.length > 0) {
+        for (const sub of section.subsections) {
+          if (currentCount >= visibleItemCount) break
+          const subItems = sub.items || []
+          const remaining = visibleItemCount - currentCount
+          const itemsToTake = subItems.slice(0, remaining)
+          currentCount += itemsToTake.length
+          newSection.subsections.push({ ...sub, items: itemsToTake })
+        }
+      } else {
+        const items = section.items || []
+        const remaining = visibleItemCount - currentCount
+        const itemsToTake = items.slice(0, remaining)
+        currentCount += itemsToTake.length
+        newSection.items = itemsToTake
+      }
+      return { section: newSection, originalIndex }
+    }).filter(s => s.section.items?.length > 0 || s.section.subsections?.some(sub => sub.items?.length > 0))
+  }, [filteredSections, visibleItemCount])
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setVisibleItemCount(50)
+  }, [filteredSections])
+
+  // Implement Infinite Scroll for Menu Items
+  useEffect(() => {
+    const handleScroll = () => {
+      // Using a small threshold (800px) from the bottom
+      if (
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 800
+      ) {
+        setVisibleItemCount((prev) => prev + 20)
+      }
+    }
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+
   useEffect(() => {
     if (!hasActiveMenuFilters) return
 
@@ -2089,21 +2152,7 @@ function RestaurantDetailsContent() {
         <div className="relative w-32 h-32 flex-shrink-0">
           {/* Image Container with rounded-2xl overflow-hidden */}
           <div className="w-full h-full bg-gray-100 dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm">
-            {item.image && !failedImageIds[item.id] ? (
-              <img
-                src={item.image}
-                alt={item.name}
-                loading="lazy"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  markImageFailed(item.id)
-                }}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <span className="text-xs text-gray-400">No image</span>
-              </div>
-            )}
+            <DishImage src={item.image} alt={item.name} className="w-full h-full object-cover" />
           </div>
           {/* Button overlay - rendered outside of overflow-hidden image container to prevent clipping */}
           {quantity > 0 ? (
@@ -2598,7 +2647,7 @@ function RestaurantDetailsContent() {
               </div>
             )}
 
-            {filteredSections.map(({ section, originalIndex }, sectionIndex) => {
+            {paginatedSections.map(({ section, originalIndex }, sectionIndex) => {
               // Handle section name - check for valid non-empty string
               const isRecommended = isRecommendedSection(section)
               const sectionId = `menu-section-${originalIndex}`
@@ -3357,10 +3406,9 @@ function RestaurantDetailsContent() {
                   {/* Image Section */}
                   <div className="relative w-full h-64 overflow-hidden rounded-t-3xl bg-gray-100 dark:bg-gray-800">
                     {selectedItem.image ? (
-                      <img
+                      <DishImage
                         src={selectedItem.image}
                         alt={selectedItem.name}
-                        loading="lazy"
                         className="w-full h-full object-cover"
                       />
                     ) : (
