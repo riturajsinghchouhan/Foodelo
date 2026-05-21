@@ -1942,8 +1942,28 @@ function RestaurantDetailsContent() {
 
   // Reset pagination when filters change
   useEffect(() => {
-    setVisibleItemCount(totalFilteredItems || 0)
-  }, [filteredSections, totalFilteredItems])
+    setVisibleItemCount(50) // Start with 50 items
+  }, [filteredSections]) // Re-run when sections/filters change
+
+  // Implement infinite scrolling on window scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      // If we are within 800px of the bottom of the page, load more items
+      if (window.innerHeight + window.scrollY >= document.documentElement.offsetHeight - 800) {
+        setVisibleItemCount((prevCount) => {
+          if (prevCount >= totalFilteredItems) return prevCount
+          return prevCount + 50
+        })
+      }
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    
+    // Check initially in case screen is very large and 50 items don't trigger scroll
+    handleScroll()
+
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [totalFilteredItems])
 
   useEffect(() => {
     if (!hasActiveMenuFilters) return
