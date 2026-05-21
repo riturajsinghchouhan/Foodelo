@@ -1895,8 +1895,25 @@ function RestaurantDetailsContent() {
     [restaurant?.menuSections, showOnlyUnder250, searchQuery, vegMode, filters, selectedMenuCategory]
   )
 
+  const totalFilteredItems = useMemo(() => {
+    return filteredSections.reduce((count, { section }) => {
+      const directItems = Array.isArray(section?.items) ? section.items.length : 0
+      const subsectionItems = Array.isArray(section?.subsections)
+        ? section.subsections.reduce(
+            (sum, subsection) => sum + (Array.isArray(subsection?.items) ? subsection.items.length : 0),
+            0
+          )
+        : 0
+      return count + directItems + subsectionItems
+    }, 0)
+  }, [filteredSections])
+
   // Compute paginated sections based on visibleItemCount
   const paginatedSections = useMemo(() => {
+    if (visibleItemCount >= totalFilteredItems) {
+      return filteredSections
+    }
+
     let currentCount = 0
     return filteredSections.map(({ section, originalIndex }) => {
       if (currentCount >= visibleItemCount) return { section: { ...section, items: [], subsections: [] }, originalIndex }
@@ -1921,27 +1938,12 @@ function RestaurantDetailsContent() {
       }
       return { section: newSection, originalIndex }
     }).filter(s => s.section.items?.length > 0 || s.section.subsections?.some(sub => sub.items?.length > 0))
-  }, [filteredSections, visibleItemCount])
+  }, [filteredSections, visibleItemCount, totalFilteredItems])
 
   // Reset pagination when filters change
   useEffect(() => {
-    setVisibleItemCount(50)
-  }, [filteredSections])
-
-  // Implement Infinite Scroll for Menu Items
-  useEffect(() => {
-    const handleScroll = () => {
-      // Using a small threshold (800px) from the bottom
-      if (
-        window.innerHeight + window.scrollY >=
-        document.documentElement.scrollHeight - 800
-      ) {
-        setVisibleItemCount((prev) => prev + 20)
-      }
-    }
-    window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
+    setVisibleItemCount(totalFilteredItems || 0)
+  }, [filteredSections, totalFilteredItems])
 
   useEffect(() => {
     if (!hasActiveMenuFilters) return
