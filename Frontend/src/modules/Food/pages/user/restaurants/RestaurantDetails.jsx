@@ -1947,13 +1947,20 @@ function RestaurantDetailsContent() {
 
   // Implement infinite scrolling on window scroll
   useEffect(() => {
+    let ticking = false;
+
     const handleScroll = () => {
-      // If we are within 800px of the bottom of the page, load more items
-      if (window.innerHeight + window.scrollY >= document.documentElement.offsetHeight - 800) {
-        setVisibleItemCount((prevCount) => {
-          if (prevCount >= totalFilteredItems) return prevCount
-          return prevCount + 50
-        })
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          if (window.innerHeight + window.scrollY >= document.documentElement.offsetHeight - 800) {
+            setVisibleItemCount((prevCount) => {
+              if (prevCount >= totalFilteredItems) return prevCount
+              return prevCount + 50
+            })
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
     }
 
