@@ -710,7 +710,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 onClick={() => navigate('/food/delivery/profile')}
                 className="w-10 h-10 rounded-full border border-white/20 p-0.5 shadow-xl overflow-hidden bg-white/5 cursor-pointer active:scale-95 transition-all"
              >
-                <img src={profileImage || "https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png"} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                <img src={profileImage || "/delivery_avatar.png"} alt="Profile" className="w-full h-full object-cover rounded-full" />
              </div>
               <button 
                 onClick={async () => {
@@ -809,7 +809,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                     </div>
                     <div>
                       <h3 className="text-white font-black text-[11px] uppercase tracking-widest leading-none mb-1">{isOnline ? 'System Online' : 'System Offline'}</h3>
-                      <p className="text-gray-400 text-[10px] font-bold uppercase tracking-tight">{isOnline ? 'Waiting for order requests' : 'Go online to receive jobs'}</p>
+                      <p className="text-gray-400 text-[10px] font-bold uppercase tracking-tight">{isOnline ? 'Waiting for order requests' : 'Go online to receive orders'}</p>
                     </div>
                   </div>
                 </div>
@@ -954,17 +954,20 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 
                 {/* Avatar / Offline State */}
                 <div className="z-10 flex flex-col items-center mt-32 relative">
-                   <img 
-                     src="/MapRider.png" 
-                     alt="Offline Rider" 
-                     className="w-64 h-auto drop-shadow-[0_20px_40px_rgba(0,0,0,0.15)] object-contain"
-                     onError={(e) => {
-                        e.target.src = 'https://cdn-icons-png.flaticon.com/512/2950/2950150.png';
-                     }}
-                   />
+                   <div className="relative z-10 mt-10">
+                     <div className="absolute inset-0 bg-blue-500/20 blur-[60px] rounded-full scale-150 pointer-events-none"></div>
+                     <img 
+                       src="/delivery_avatar.png" 
+                       alt="Offline Rider" 
+                       className="relative w-56 h-56 md:w-64 md:h-64 rounded-full object-cover object-top border-[8px] border-white shadow-[0_20px_60px_rgba(0,0,0,0.25)]"
+                       onError={(e) => {
+                          e.target.src = 'https://cdn-icons-png.flaticon.com/512/2950/2950150.png';
+                       }}
+                     />
+                   </div>
                    <div className="mt-8 bg-white/90 backdrop-blur-md px-8 py-5 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] text-center border border-gray-100/50">
                       <h2 className="text-gray-900 font-black uppercase tracking-widest text-lg">You are Offline</h2>
-                      <p className="text-gray-500 font-bold text-xs uppercase tracking-wider mt-1.5">Go online to receive jobs</p>
+                      <p className="text-gray-500 font-bold text-xs uppercase tracking-wider mt-1.5">Go online to receive orders</p>
                    </div>
                 </div>
               </div>

@@ -263,10 +263,10 @@ export default function RestaurantOTP() {
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onFocus={() => setFocusedIndex(index)}
                     onBlur={() => setFocusedIndex(null)}
-                    className={`w-full aspect-square bg-gray-50 dark:bg-gray-900/50 text-center text-3xl font-black text-[#7e3866] border-2 border-transparent rounded-2xl outline-none transition-all ${
+                    className={`w-full aspect-square bg-gray-100 dark:bg-gray-800/50 text-center text-3xl font-black text-[#7e3866] border-2 border-gray-200 dark:border-gray-700 rounded-2xl outline-none transition-all ${
                       focusedIndex === index 
-                        ? "border-[#7e3866] bg-white scale-105 shadow-[0_10px_30px_rgba(126,56,102,0.1)]" 
-                        : "group-hover:border-gray-200 dark:group-hover:border-gray-700"
+                        ? "border-[#7e3866] bg-white dark:bg-gray-900 scale-105 shadow-[0_10px_30px_rgba(126,56,102,0.1)]" 
+                        : "hover:border-gray-300 dark:hover:border-gray-600"
                     }`}
                   />
                   <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full transition-all duration-300 ${focusedIndex === index ? "bg-[#7e3866] opacity-100" : "bg-gray-200 opacity-0"}`} />
