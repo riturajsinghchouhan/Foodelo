@@ -19,6 +19,7 @@ import { restaurantAPI, adminAPI } from "@food/api"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { flattenMenuItems, getMenuFromResponse } from "@food/utils/menuItems"
 import { calculateDistance, formatDistance } from "@food/utils/common"
+import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -358,10 +359,24 @@ export default function Under250() {
     const fetchRestaurantsUnder250 = async () => {
       try {
         setLoadingRestaurants(true)
-        const response = await restaurantAPI.getRestaurants(zoneId ? { zoneId } : {})
-        const restaurantsRaw = Array.isArray(response?.data?.data?.restaurants)
+        
+        const params = zoneId ? { zoneId } : {}
+        const normalizedUserCity = String(location?.city || "").trim().toLowerCase()
+        const hasUsableUserCity = normalizedUserCity && normalizedUserCity !== "current location" && normalizedUserCity !== "unknown city" && normalizedUserCity !== "select location"
+        if (hasUsableUserCity) params.city = String(location.city).trim()
+        
+        const response = await restaurantAPI.getRestaurants(params)
+        let restaurantsRaw = Array.isArray(response?.data?.data?.restaurants)
           ? response.data.data.restaurants
           : []
+          
+        if (hasUsableUserCity) {
+          restaurantsRaw = restaurantsRaw.filter((r) => {
+            const rCity = String(r?.city || r?.location?.city || r?.address?.city || "").trim().toLowerCase()
+            return !rCity || rCity === normalizedUserCity
+          })
+        }
+        
         const userLat = Number(location?.latitude)
         const userLng = Number(location?.longitude)
 
@@ -438,6 +453,7 @@ export default function Under250() {
                   (deliveryMinutes ? `${deliveryMinutes} mins` : "30 mins"),
                 distance: distanceInKm !== null ? formatDistance(distanceInKm) : fallbackDistance,
                 distanceInKm,
+                isOpen: getRestaurantAvailabilityStatus(restaurant, new Date(), { ignoreOperationalStatus: true }).isOpen,
                 originalIndex: index,
                 menuItems,
               }
@@ -658,6 +674,8 @@ export default function Under250() {
       originalPrice: item.originalPrice || item.price,
       priceOnOtherPlatforms: item.priceOnOtherPlatforms || null, // Include platform pricing for savings display
       otherPlatformGst: item.otherPlatformGst ?? null,
+      isVeg: item.isVeg,
+      foodType: item.foodType || (item.isVeg ? "Veg" : "Non-Veg"),
     }
 
     // Get source position for animation from event target
@@ -741,6 +759,7 @@ export default function Under250() {
       description: item.description || `${item.name} from ${restaurant.name}`,
       customisable: item.customisable || false,
       notEligibleForCoupons: item.notEligibleForCoupons || false,
+      isOpen: restaurant.isOpen,
     }
     const existingQuantity = quantities[item.id] || 0
     setItemDetailQuantity(existingQuantity > 0 ? existingQuantity : 1)
@@ -855,13 +874,10 @@ export default function Under250() {
     <div className={`relative min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
       <div
         ref={stickyHeaderRef}
-        className={`fixed top-0 left-0 right-0 z-40 w-full md:hidden transition-all duration-300 ${hasScrolledPastBanner
-          ? "bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-200"
-          : "bg-transparent"
-          }`}
+        className="sticky top-0 left-0 right-0 z-40 w-full md:hidden transition-all duration-300 bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur-sm shadow-sm border-b border-gray-200 dark:border-gray-800"
       >
         <div className="relative z-50 pt-2 sm:pt-3 pb-2">
-          <PageNavbar textColor="black" zIndex={20} showProfile={true} showLogo={false} />
+          <PageNavbar textColor="black" zIndex={20} showProfile={true} showLogo={true} />
         </div>
       </div>
 
@@ -1140,7 +1156,16 @@ export default function Under250() {
                                     <p className="text-xs md:text-sm lg:text-base text-gray-500 dark:text-gray-400">Best price</p>
                                   )}
                                 </div>
-                                {quantity > 0 ? (
+                                {(!restaurant.isOpen) ? (
+                                  <Button
+                                    variant={"ghost"}
+                                    size="sm"
+                                    disabled={true}
+                                    className="bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-300 dark:border-gray-700 cursor-not-allowed opacity-50 h-7 md:h-8 lg:h-9 px-3 md:px-4 lg:px-5 text-xs md:text-sm lg:text-base font-bold shadow-md"
+                                  >
+                                    Closed
+                                  </Button>
+                                ) : quantity > 0 ? (
                                   <Link to="/user/cart" onClick={(e) => e.stopPropagation()}>
                                     <Button
                                       variant={"ghost"}
@@ -1473,19 +1498,19 @@ export default function Under250() {
 
                   {/* Add Item Button */}
                   <Button
-                    className={`flex-1 h-[44px] md:h-[50px] lg:h-[56px] rounded-lg md:rounded-xl font-semibold flex items-center justify-center gap-2 text-sm md:text-base lg:text-lg ${shouldShowGrayscale
+                    className={`flex-1 h-[44px] md:h-[50px] lg:h-[56px] rounded-lg md:rounded-xl font-semibold flex items-center justify-center gap-2 text-sm md:text-base lg:text-lg ${(shouldShowGrayscale || !selectedItem.isOpen)
                       ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
                       : 'bg-[#7e3866] hover:bg-[#55254b] dark:bg-[#7e3866] dark:hover:bg-[#55254b] text-white'
                       }`}
                     onClick={(e) => {
-                      if (!shouldShowGrayscale) {
+                      if (!shouldShowGrayscale && selectedItem.isOpen) {
                         updateItemQuantity(selectedItem, itemDetailQuantity, e)
                         closeItemDetail()
                       }
                     }}
-                    disabled={shouldShowGrayscale}
+                    disabled={shouldShowGrayscale || !selectedItem.isOpen}
                   >
-                    <span>Add item</span>
+                    <span>{(!selectedItem.isOpen) ? 'Closed' : 'Add item'}</span>
                     <div className="flex items-center gap-1 md:gap-2">
                       {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
                         <span className="text-sm md:text-base lg:text-lg line-through text-red-200">
