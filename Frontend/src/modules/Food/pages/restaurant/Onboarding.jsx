@@ -1198,6 +1198,15 @@ export default function RestaurantOnboarding() {
     if (!step1.zoneId?.trim()) {
       errors.push("Service zone is required")
     }
+    if (!step1.location?.addressLine1?.trim()) {
+      errors.push("Shop no. / building no. is required")
+    }
+    if (!step1.location?.addressLine2?.trim()) {
+      errors.push("Floor / tower is required")
+    }
+    if (!step1.location?.landmark?.trim()) {
+      errors.push("Nearby landmark is required")
+    }
     if (!step1.location?.area?.trim()) {
       errors.push("Area/Sector/Locality is required")
     }
@@ -1626,7 +1635,11 @@ export default function RestaurantOnboarding() {
     })
   }
 
-  const renderStep1 = () => (
+  const renderStep1 = () => {
+    const hasCoordinates = Boolean(step1.location?.latitude && step1.location?.longitude);
+    const isOutOfZone = hasCoordinates && !step1.zoneId;
+
+    return (
     <div className="space-y-6">
       <section className="bg-white p-4 sm:p-6 rounded-md">
         <h2 className="text-lg font-semibold text-black mb-4">Restaurant information</h2>
@@ -1757,29 +1770,7 @@ export default function RestaurantOnboarding() {
           <p className="text-sm text-gray-700">
             Add your restaurant's location for order pick-up.
           </p>
-          <div>
-            <Label className="text-xs text-gray-700">Service zone*</Label>
-            <select
-              value={step1.zoneId || ""}
-              onChange={(e) => setStep1({ ...step1, zoneId: e.target.value })}
-              className="mt-1 w-full h-9 rounded-md border border-input bg-white px-3 text-sm"
-              disabled={zonesLoading || !isEditing}
-            >
-              <option value="">{zonesLoading ? "Loading zones..." : "Select a zone"}</option>
-              {zones.map((z) => {
-                const id = String(z?._id || z?.id || "")
-                const label = z?.name || z?.zoneName || z?.serviceLocation || id
-                return (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                )
-              })}
-            </select>
-            <p className="text-[11px] text-gray-500 mt-1">
-              Choose the service zone where your restaurant will be available.
-            </p>
-          </div>
+
           <div className="relative">
             <Label className="text-xs text-gray-700">Search location</Label>
             <div className="relative">
@@ -1850,7 +1841,7 @@ export default function RestaurantOnboarding() {
               })
             }
             className="bg-white text-sm"
-            placeholder="Shop no. / building no. (optional)"
+            placeholder="Shop no. / building no.*"
           />
           <Input
             value={step1.location?.addressLine2 || ""}
@@ -1861,7 +1852,7 @@ export default function RestaurantOnboarding() {
               })
             }
             className="bg-white text-sm"
-            placeholder="Floor / tower (optional)"
+            placeholder="Floor / tower*"
           />
           <Input
             value={step1.location?.landmark || ""}
@@ -1872,7 +1863,7 @@ export default function RestaurantOnboarding() {
               })
             }
             className="bg-white text-sm"
-            placeholder="Nearby landmark (optional)"
+            placeholder="Nearby landmark*"
           />
           <Input
             value={step1.location?.area || ""}
@@ -1885,33 +1876,19 @@ export default function RestaurantOnboarding() {
             className="bg-white text-sm"
             placeholder="Area / Sector / Locality*"
           />
-          <Select
+          <Input
             value={step1.location?.city || ""}
-            onValueChange={(value) =>
+            onChange={(e) =>
               setStep1({
                 ...step1,
-                location: { ...step1.location, city: value },
+                location: { ...step1.location, city: e.target.value },
               })
             }
-          >
-            <SelectTrigger className="bg-white text-sm text-gray-700">
-              <SelectValue placeholder="Select City*" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Indore">Indore</SelectItem>
-              <SelectItem value="Bhopal">Bhopal</SelectItem>
-              <SelectItem value="Gwalior">Gwalior</SelectItem>
-              <SelectItem value="Jabalpur">Jabalpur</SelectItem>
-              <SelectItem value="Mumbai">Mumbai</SelectItem>
-              <SelectItem value="Pune">Pune</SelectItem>
-              <SelectItem value="Delhi">Delhi</SelectItem>
-              <SelectItem value="Bangalore">Bangalore</SelectItem>
-              <SelectItem value="Ahmedabad">Ahmedabad</SelectItem>
-              <SelectItem value="Hyderabad">Hyderabad</SelectItem>
-              <SelectItem value="Chennai">Chennai</SelectItem>
-              <SelectItem value="Kolkata">Kolkata</SelectItem>
-            </SelectContent>
-          </Select>
+            className="bg-white text-sm"
+            placeholder="City"
+            disabled={!isEditing || hasCoordinates}
+            readOnly={hasCoordinates}
+          />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               value={step1.location?.state || ""}
@@ -1923,6 +1900,8 @@ export default function RestaurantOnboarding() {
               }
               className="bg-white text-sm"
               placeholder="State"
+              disabled={!isEditing || hasCoordinates}
+              readOnly={hasCoordinates}
             />
             <Input
               value={step1.location?.pincode || ""}
@@ -1934,7 +1913,32 @@ export default function RestaurantOnboarding() {
               }
               className="bg-white text-sm"
               placeholder="Pincode"
+              disabled={!isEditing || hasCoordinates}
+              readOnly={hasCoordinates}
             />
+          </div>
+          <div>
+            <Label className="text-xs text-gray-700">Service zone*</Label>
+            <select
+              value={step1.zoneId || ""}
+              onChange={(e) => setStep1({ ...step1, zoneId: e.target.value })}
+              className={`mt-1 w-full h-9 rounded-md border border-input bg-white px-3 text-sm ${isOutOfZone ? 'text-red-500 font-medium' : ''}`}
+              disabled={zonesLoading || !isEditing || hasCoordinates}
+            >
+              <option value="">{zonesLoading ? "Loading zones..." : isOutOfZone ? "Out of zone" : "Select a zone"}</option>
+              {zones.map((z) => {
+                const id = String(z?._id || z?.id || "")
+                const label = z?.name || z?.zoneName || z?.serviceLocation || id
+                return (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                )
+              })}
+            </select>
+            <p className="text-[11px] text-gray-500 mt-1">
+              Choose the service zone where your restaurant will be available.
+            </p>
           </div>
           <p className="text-[11px] text-gray-500 mt-1">
             Please ensure that this address is the same as mentioned on your FSSAI license.
@@ -1942,8 +1946,7 @@ export default function RestaurantOnboarding() {
         </div>
       </section>
     </div>
-  )
-
+  )}
 
   // Initialize Google Places Autocomplete for Step 1 location search.
   useEffect(() => {
@@ -2157,8 +2160,12 @@ export default function RestaurantOnboarding() {
   useEffect(() => {
     if (step !== 1) return
 
-    const lat = Number(step1.location?.latitude)
-    const lng = Number(step1.location?.longitude)
+    const rawLat = step1.location?.latitude
+    const rawLng = step1.location?.longitude
+    if (rawLat === "" || rawLat == null || rawLng === "" || rawLng == null) return
+    
+    const lat = Number(rawLat)
+    const lng = Number(rawLng)
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
 
     const key = `${lat.toFixed(5)},${lng.toFixed(5)}`

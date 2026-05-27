@@ -5,7 +5,7 @@ import { Link } from "react-router-dom"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
-import { authAPI } from "@food/api"
+import { authAPI, userAPI } from "@food/api"
 import { setAuthData as setUserAuthData } from "@food/utils/auth"
 
 export default function OTP() {
@@ -238,10 +238,10 @@ export default function OTP() {
       const needsName = data.isNewUser === true || !hasName;
 
       if (needsName) {
+        setUserAuthData("user", accessToken, user, refreshToken)
         setVerifiedOtp(code4)
         setShowNameInput(true)
-        setIsLoading(false)
-        submittingRef.current = false
+        setSuccess(false)
         return
       }
 
@@ -303,40 +303,20 @@ export default function OTP() {
     setNameError("")
 
     try {
-      const phone = authData?.method === "phone" ? authData.phone : null
-      const email = authData?.method === "email" ? authData.email : null
-      const purpose = authData?.isSignUp ? "register" : "login"
-      const referralCode = authData?.referralCode || null
-
-      // Second call with name to auto-register and login
-      const response = await authAPI.verifyOTP(
-        phone,
-        verifiedOtp,
-        purpose,
-        trimmedName,
-        email,
-        "user",
-        null,
-        referralCode,
-        deviceToken,
-        activePlatform
-      )
+      const response = await userAPI.updateProfile({ name: trimmedName })
       const data = response?.data?.data || response?.data || {}
+      const user = data.user || data
 
-      const accessToken = data.accessToken
-      const refreshToken = data.refreshToken ?? null
-      const user = data.user
+      const accessToken = localStorage.getItem("user_accessToken")
+      const refreshToken = localStorage.getItem("user_refreshToken")
 
-      if (!accessToken || !user) {
-        throw new Error("Invalid response from server")
+      if (!accessToken) {
+        throw new Error("Authentication data is missing")
       }
-      if (!refreshToken) {
-        throw new Error("Invalid response from server: missing refresh token")
-      }
-
-      sessionStorage.removeItem("userAuthData")
 
       setUserAuthData("user", accessToken, user, refreshToken)
+
+      sessionStorage.removeItem("userAuthData")
 
       window.dispatchEvent(new Event("userAuthChanged"))
 

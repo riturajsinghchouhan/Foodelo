@@ -555,72 +555,7 @@ export default function ExploreMore() {
     }
   }
 
-  const handleLogoutAllDevices = async () => {
-    if (isLoggingOut) return // Prevent multiple clicks
 
-    setIsLoggingOut(true)
-    setProfileOpen(false)
-
-    try {
-      // Call backend logout API to invalidate refresh token
-      try {
-        await restaurantAPI.logout()
-      } catch (apiError) {
-        // Continue with logout even if API call fails (network issues, etc.)
-        debugWarn("Logout API call failed, continuing with local cleanup:", apiError)
-      }
-
-      // Sign out from Firebase if restaurant logged in via Google
-      try {
-        const { signOut } = await import("firebase/auth")
-        // Firebase Auth is lazy-initialized now; ensure it before accessing firebaseAuth.currentUser
-        ensureFirebaseInitialized({ enableAuth: true, enableRealtimeDb: false })
-        const currentUser = firebaseAuth.currentUser
-        if (currentUser) {
-          await signOut(firebaseAuth)
-        }
-      } catch (firebaseError) {
-        // Continue even if Firebase logout fails
-        debugWarn("Firebase logout failed, continuing with local cleanup:", firebaseError)
-      }
-
-      // Clear auth for all modules (admin, restaurant, delivery, user)
-      clearAuthData()
-
-      // Clear any onboarding data from localStorage
-      localStorage.removeItem("restaurant_onboarding")
-
-      // Clear sessionStorage for all modules
-      sessionStorage.removeItem("restaurantAuthData")
-      sessionStorage.removeItem("adminAuthData")
-      sessionStorage.removeItem("deliveryAuthData")
-      sessionStorage.removeItem("userAuthData")
-
-      // Dispatch auth change events to notify other components
-      window.dispatchEvent(new Event("restaurantAuthChanged"))
-      window.dispatchEvent(new Event("adminAuthChanged"))
-      window.dispatchEvent(new Event("deliveryAuthChanged"))
-      window.dispatchEvent(new Event("userAuthChanged"))
-
-      // Small delay for UX, then navigate to welcome page
-      setTimeout(() => {
-        navigate("/food/restaurant/login", { replace: true })
-      }, 300)
-    } catch (error) {
-      // Even if there's an error, we should still clear local data and logout
-      debugError("Error during logout from all devices:", error)
-      clearAuthData()
-      localStorage.removeItem("restaurant_onboarding")
-      sessionStorage.removeItem("restaurantAuthData")
-      sessionStorage.removeItem("adminAuthData")
-      sessionStorage.removeItem("deliveryAuthData")
-      sessionStorage.removeItem("userAuthData")
-      window.dispatchEvent(new Event("restaurantAuthChanged"))
-      navigate("/food/restaurant/welcome", { replace: true })
-    } finally {
-      setIsLoggingOut(false)
-    }
-  }
 
   const handleDeleteAccount = async () => {
     if (isDeletingAccount) return
@@ -1385,14 +1320,7 @@ export default function ExploreMore() {
                   {isLoggingOut ? "Logging out..." : "Logout"}
                 </button>
 
-                {/* Logout from all devices Button */}
-                <button
-                  onClick={handleLogoutAllDevices}
-                  disabled={isLoggingOut}
-                  className="w-full bg-[#7e3866]/10 text-[#7e3866] border border-[#7e3866]/20 hover:bg-[#7e3866]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all"
-                >
-                  {isLoggingOut ? "Logging out..." : "Logout from all devices"}
-                </button>
+
 
                 {/* Delete Restaurant Button */}
                 <button

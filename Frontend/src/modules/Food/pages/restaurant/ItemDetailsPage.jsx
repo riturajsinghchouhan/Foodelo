@@ -102,6 +102,7 @@ export default function ItemDetailsPage() {
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [loadingItem, setLoadingItem] = useState(false)
   const [keyboardInset, setKeyboardInset] = useState(0)
+  const [isPureVeg, setIsPureVeg] = useState(false)
 
   const maxNameLength = 70
   const maxDescriptionLength = 1000
@@ -110,6 +111,31 @@ export default function ItemDetailsPage() {
   const nameLength = itemName.length
   const currentApprovalStatus = String(itemData?.approvalStatus || "").toLowerCase()
   const currentRejectionReason = String(itemData?.rejectionReason || "").trim()
+
+  useEffect(() => {
+    const checkVegStatus = async () => {
+      try {
+        const response = await restaurantAPI.getCurrentRestaurant()
+        const data = response?.data?.data?.restaurant || response?.data?.restaurant
+        if (data?.pureVegRestaurant) {
+          setIsPureVeg(true)
+          setFoodType("Veg")
+        }
+      } catch (err) {
+        try {
+          const storedUser = localStorage.getItem("restaurant_user")
+          if (storedUser) {
+            const user = JSON.parse(storedUser)
+            if (user?.restaurant?.pureVegRestaurant || user?.pureVegRestaurant) {
+              setIsPureVeg(true)
+              setFoodType("Veg")
+            }
+          }
+        } catch (e) {}
+      }
+    }
+    checkVegStatus()
+  }, [])
 
   const populateFormFromItem = (item = {}) => {
     setItemData(item)
@@ -988,16 +1014,18 @@ export default function ItemDetailsPage() {
                 {foodType === "Veg" && <Check className="w-4 h-4" />}
                 <span>Veg</span>
               </button>
-              <button
-                onClick={() => setFoodType("Non-Veg")}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Non-Veg"
-                  ? "border-red-600 border-2 text-red-600"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-              >
-                {foodType === "Non-Veg" && <Check className="w-4 h-4" />}
-                <span>Non-Veg</span>
-              </button>
+              {!isPureVeg && (
+                <button
+                  onClick={() => setFoodType("Non-Veg")}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Non-Veg"
+                    ? "border-red-600 border-2 text-red-600"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                >
+                  {foodType === "Non-Veg" && <Check className="w-4 h-4" />}
+                  <span>Non-Veg</span>
+                </button>
+              )}
             </div>
           </div>
 

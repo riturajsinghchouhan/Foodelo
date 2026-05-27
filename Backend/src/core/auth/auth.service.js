@@ -115,11 +115,6 @@ export const verifyUserOtpAndLogin = async (
   const trimmedName = typeof name === "string" ? name.trim() : "";
   const existingUser = await FoodUser.findOne({ phone });
 
-  // For first-time signup, require name before OTP verification so OTP is not consumed prematurely.
-  if (!existingUser && !trimmedName) {
-    throw new ValidationError("Name is required for first-time signup");
-  }
-
   const result = await verifyOtp(phone, otp);
 
   if (!result.valid) {
@@ -189,7 +184,7 @@ export const verifyUserOtpAndLogin = async (
 
   // Referral crediting: only for brand new accounts.
   const refRaw = typeof ref === "string" ? String(ref).trim() : "";
-  if (isNewUser && refRaw) {
+  if (!existingUser && refRaw) {
     try {
       if (mongoose.Types.ObjectId.isValid(refRaw)) {
         const referrerId = new mongoose.Types.ObjectId(refRaw);

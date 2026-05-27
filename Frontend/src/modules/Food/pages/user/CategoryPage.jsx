@@ -45,6 +45,7 @@ export default function CategoryPage() {
   const { location } = useLocation()
   const { zoneId, isOutOfService } = useZone(location)
   const [searchQuery, setSearchQuery] = useState("")
+  const [viewMode, setViewMode] = useState('restaurants')
   const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || 'all')
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [favorites, setFavorites] = useState(new Set())
@@ -1169,100 +1170,85 @@ export default function CategoryPage() {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
     let filtered = [...sourceData]
 
-    // Filter by category - Dynamic filtering based on menu items
-    if (selectedCategory && selectedCategory !== 'all') {
+    if (viewMode === 'dishes') {
       const expandedDishes = []
-
+      
       filtered.forEach(r => {
         if (r.menu) {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            // Get ALL matching dishes for this category
-            const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
-
-            if (categoryDishes.length > 0) {
-              const validDishes = vegMode
-                ? categoryDishes.filter((dish) => dish.foodType === "Veg")
-                : categoryDishes;
-
-              validDishes.forEach((dishForCard) => {
-                expandedDishes.push({
-                  ...r,
-                  id: `${r.id || r.restaurantId}-${dishForCard.itemId}`,
-                  dishId: dishForCard.itemId || `${r.id}-dish`,
-                  categoryDish: dishForCard,
-                  categoryDishName: dishForCard.name,
-                  categoryDishPrice: dishForCard.price,
-                  categoryDishImage: dishForCard.image,
-                })
-              })
+          let validDishes = [];
+          if (selectedCategory && selectedCategory !== 'all') {
+            const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
+            if (hasCategoryItem) {
+              const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
+              validDishes = vegMode ? categoryDishes.filter(d => d.foodType === "Veg") : categoryDishes;
             }
+          } else {
+             // For 'all' categories, extract all dishes
+             const allDishes = [];
+             r.menu.sections?.forEach(section => {
+                 section.items?.forEach(item => {
+                     allDishes.push({
+                        name: item.name,
+                        price: item.discountPercent > 0 ? Math.round((item.originalPrice || item.price || 0) * (1 - item.discountPercent/100)) : (item.originalPrice || item.price || 0),
+                        image: normalizeImageUrl(item.image?.url || item.image || section.image?.url || section.image),
+                        originalPrice: item.originalPrice || item.price || 0,
+                        itemId: item._id || item.id || `${item.name}-${item.price}`,
+                        foodType: item.foodType,
+                     })
+                 })
+                 section.subsections?.forEach(sub => {
+                     sub.items?.forEach(item => {
+                         allDishes.push({
+                            name: item.name,
+                            price: item.discountPercent > 0 ? Math.round((item.originalPrice || item.price || 0) * (1 - item.discountPercent/100)) : (item.originalPrice || item.price || 0),
+                            image: normalizeImageUrl(item.image?.url || item.image || sub.image?.url || sub.image || section.image?.url || section.image),
+                            originalPrice: item.originalPrice || item.price || 0,
+                            itemId: item._id || item.id || `${item.name}-${item.price}`,
+                            foodType: item.foodType,
+                         })
+                     })
+                 })
+             })
+             validDishes = vegMode ? allDishes.filter(d => d.foodType === "Veg") : allDishes;
           }
+          
+          validDishes.forEach((dishForCard) => {
+            expandedDishes.push({
+              ...r,
+              id: `${r.id || r.restaurantId}-${dishForCard.itemId}`,
+              dishId: dishForCard.itemId || `${r.id}-dish`,
+              categoryDish: dishForCard,
+              categoryDishName: dishForCard.name,
+              categoryDishPrice: dishForCard.price,
+              categoryDishImage: dishForCard.image,
+            })
+          })
         }
       })
 
       filtered = expandedDishes
 
-      if (filtered.length === 0) {
+      if (filtered.length === 0 && selectedCategory !== 'all') {
         const fallbackDishes = getCategoryFallbackDishesFromApprovedFoods(selectedCategory, sourceData)
         filtered = vegMode
           ? fallbackDishes.filter((dish) => dish.categoryDishFoodType === "Veg")
           : fallbackDishes
       }
-    }
-
-    return applyFiltersAndSorting(filtered)
-  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy])
-
-  const filteredAllRestaurants = useMemo(() => {
-    const sourceData = restaurantsData.length > 0 ? restaurantsData : []
-    let filtered = [...sourceData]
-
-    // Filter by category - Dynamic filtering based on menu items
-    // If category is selected, expand restaurants into dish cards (one card per matching dish)
-    if (selectedCategory && selectedCategory !== 'all') {
-      const expandedDishes = []
-
-      filtered.forEach(r => {
-        if (r.menu) {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            // Get ALL matching dishes for this category
-            const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
-
-            if (categoryDishes.length > 0) {
-              const validDishes = vegMode
-                ? categoryDishes.filter((dish) => dish.foodType === "Veg")
-                : categoryDishes;
-
-              validDishes.forEach((dishForCard) => {
-                expandedDishes.push({
-                  ...r,
-                  id: `${r.id || r.restaurantId}-${dishForCard.itemId}`,
-                  dishId: dishForCard.itemId || `${r.id}-dish`,
-                  categoryDish: dishForCard,
-                  categoryDishName: dishForCard.name,
-                  categoryDishPrice: dishForCard.price,
-                  categoryDishImage: dishForCard.image,
-                })
-              })
-            }
-          }
-        }
-      })
-
-      filtered = expandedDishes
-
-      if (filtered.length === 0) {
-        const fallbackDishes = getCategoryFallbackDishesFromApprovedFoods(selectedCategory, sourceData)
-        filtered = vegMode
-          ? fallbackDishes.filter((dish) => dish.categoryDishFoodType === "Veg")
-          : fallbackDishes
+    } else {
+      // viewMode === 'restaurants'
+      if (selectedCategory && selectedCategory !== 'all') {
+        filtered = filtered.filter(r => {
+          if (r.menu && checkCategoryInMenu(r.menu, selectedCategory)) return true;
+          const fallbackDishes = getCategoryFallbackDishesFromApprovedFoods(selectedCategory, [r]);
+          return fallbackDishes.length > 0;
+        });
       }
     }
 
     return applyFiltersAndSorting(filtered)
-  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy])
+  }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy, viewMode])
+
+  const filteredAllRestaurants = filteredRecommended;
 
   const showRestaurantSkeleton = useDelayedLoading(
     isLoadingFilterResults || loadingRestaurants || (isEnrichingMenus && selectedCategory !== 'all' && filteredRecommended.length === 0),
@@ -1304,8 +1290,32 @@ export default function CategoryPage() {
                 placeholder="Restaurant name or a dish..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 h-11 md:h-12 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-sm md:text-base dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
+                className="pl-9 pr-3 h-9 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-xs dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
               />
+            </div>
+
+            {/* View Mode Toggle */}
+            <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg flex-shrink-0">
+              <button
+                onClick={() => setViewMode('restaurants')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                  viewMode === 'restaurants'
+                    ? 'bg-white dark:bg-[#2a2a2a] text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                Places
+              </button>
+              <button
+                onClick={() => setViewMode('dishes')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                  viewMode === 'dishes'
+                    ? 'bg-white dark:bg-[#2a2a2a] text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                Dishes
+              </button>
             </div>
           </div>
 
@@ -1455,19 +1465,13 @@ export default function CategoryPage() {
       {/* Content */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-6 md:space-y-8 lg:space-y-10">
         <div className="max-w-7xl mx-auto">
-          {/* RECOMMENDED FOR YOU Section - Hide when "All" category is selected */}
-          {filteredRecommended.length > 0 && selectedCategory !== 'all' && (
+          {/* RECOMMENDED FOR YOU / Small Grid Section - Show only for dishes mode */}
+          {viewMode === 'dishes' && filteredRecommended.length > 0 && (
             <section>
-              <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
-                RECOMMENDED FOR YOU
-              </h2>
 
               {/* Small Restaurant Cards - Grid - Show all dishes when category is selected */}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-4">
-                {(isCategoryView
-                  ? filteredRecommended
-                  : filteredRecommended.slice(0, 6)
-                ).map((restaurant) => {
+                {filteredRecommended.map((restaurant) => {
                   return (
                     <Link
                       key={restaurant.id}
@@ -1523,7 +1527,7 @@ export default function CategoryPage() {
                           )}
 
                           {/* Offer Badge */}
-                          {restaurant.offer && (
+                          {restaurant.offer && viewMode === 'restaurants' && (
                             <div className="absolute top-1.5 left-1.5 bg-gradient-to-r from-[#7e3866] to-[#55254b] text-white text-[10px] md:text-xs font-semibold px-1.5 py-0.5 rounded shadow-sm">
                               {restaurant.offer}
                             </div>
@@ -1537,9 +1541,9 @@ export default function CategoryPage() {
                         </div>
 
                         <h3 className="font-semibold text-gray-900 dark:text-white text-xs md:text-sm line-clamp-1">
-                          {isCategoryView ? (restaurant.categoryDishName || restaurant.featuredDish || restaurant.name) : restaurant.name}
+                          {viewMode === 'dishes' || isCategoryView ? (restaurant.categoryDishName || restaurant.featuredDish || restaurant.name) : restaurant.name}
                         </h3>
-                        {isCategoryView && (
+                        {(viewMode === 'dishes' || isCategoryView) && (
                           <p className="text-[10px] md:text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
                             {restaurant.name}
                           </p>
@@ -1558,10 +1562,10 @@ export default function CategoryPage() {
             </section>
           )}
 
-          {/* ALL RESTAURANTS Section */}
-          <section className="relative">
+          {/* ALL RESTAURANTS / DISHES Section */}
+          <section className="relative mt-8">
             <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
-              ALL RESTAURANTS
+              {viewMode === 'dishes' ? 'ALL DISHES' : 'ALL RESTAURANTS'}
             </h2>
 
             {/* Loading Overlay */}
@@ -1631,10 +1635,10 @@ export default function CategoryPage() {
                           )}
 
                           {/* Category Dish Badge - Top Left (shows category dish if available, otherwise featured dish) */}
-                          {(isCategoryView ? restaurant.categoryDishPrice : (restaurant.categoryDishName || restaurant.featuredDish)) && (
+                          {((viewMode === 'dishes' || isCategoryView) ? restaurant.categoryDishPrice : (restaurant.categoryDishName || restaurant.featuredDish)) && (
                             <div className="absolute top-3 left-3 z-10">
                               <div className="bg-gray-900/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold shadow-md">
-                                {isCategoryView
+                                {(viewMode === 'dishes' || isCategoryView)
                                   ? `₹${restaurant.categoryDishPrice || restaurant.featuredPrice || 0}`
                                   : `${restaurant.categoryDishName || restaurant.featuredDish} • ₹${restaurant.categoryDishPrice || restaurant.featuredPrice}`}
                               </div>
@@ -1669,9 +1673,9 @@ export default function CategoryPage() {
                           <div className="flex items-start justify-between gap-2 mb-2 lg:mb-3">
                             <div className="flex-1 min-w-0">
                               <h3 className="text-md md:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white line-clamp-1 lg:line-clamp-2 leading-tight">
-                                {isCategoryView ? (restaurant.categoryDishName || restaurant.featuredDish || restaurant.name) : restaurant.name}
+                                {(viewMode === 'dishes' || isCategoryView) ? (restaurant.categoryDishName || restaurant.featuredDish || restaurant.name) : restaurant.name}
                               </h3>
-                              {isCategoryView && (
+                              {(viewMode === 'dishes' || isCategoryView) && (
                                 <p className="mt-1 text-sm md:text-base text-gray-500 dark:text-gray-400 line-clamp-1">
                                   {restaurant.name}
                                 </p>

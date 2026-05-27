@@ -109,23 +109,17 @@ const formatTimeLabel = (timeValue) => {
 const formatClosingCountdown = (minutesUntilClose, closingTime) => {
   if (minutesUntilClose === null || minutesUntilClose === undefined) return null
 
+  // Only show the closing countdown if there are 30 minutes or less remaining
+  if (minutesUntilClose > 30) {
+    return null
+  }
+
   if (minutesUntilClose <= 0) {
     const closingLabel = formatTimeLabel(closingTime)
     return closingLabel ? `Closes at ${closingLabel}` : null
   }
 
-  if (minutesUntilClose < 60) {
-    return `Closes in ${minutesUntilClose} min`
-  }
-
-  const hours = Math.floor(minutesUntilClose / 60)
-  const minutes = minutesUntilClose % 60
-
-  if (minutes === 0) {
-    return `Closes in ${hours}h`
-  }
-
-  return `Closes in ${hours}h ${minutes}m`
+  return `Closes in ${minutesUntilClose} min`
 }
 
 export const getRestaurantAvailabilityStatus = (restaurant, now = new Date(), options = {}) => {

@@ -802,7 +802,7 @@ export default function EditOwner() {
               <Input
                 value={formData.location?.addressLine1 || ""}
                 onChange={(e) => setFormData(prev => ({ ...prev, location: { ...prev.location, addressLine1: e.target.value } }))}
-                placeholder="Shop no. / building no."
+                placeholder="Shop no. / building no.*"
                 className="w-full"
                 disabled={loading || saving}
               />
@@ -815,29 +815,22 @@ export default function EditOwner() {
               />
               
               <div className="grid grid-cols-2 gap-3">
-                <Select
+                <Input
                   value={formData.location?.city || ""}
-                  onValueChange={(val) => setFormData(prev => ({ ...prev, location: { ...prev.location, city: val } }))}
-                >
-                  <SelectTrigger className="bg-white text-sm">
-                    <SelectValue placeholder="Select City*" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Indore">Indore</SelectItem>
-                    <SelectItem value="Bhopal">Bhopal</SelectItem>
-                    <SelectItem value="Mumbai">Mumbai</SelectItem>
-                    <SelectItem value="Pune">Pune</SelectItem>
-                    <SelectItem value="Delhi">Delhi</SelectItem>
-                    <SelectItem value="Bangalore">Bangalore</SelectItem>
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => setFormData(prev => ({ ...prev, location: { ...prev.location, city: e.target.value } }))}
+                  placeholder="City*"
+                  className="w-full bg-white text-sm"
+                  disabled={loading || saving || Boolean(formData.location?.latitude)}
+                  readOnly={Boolean(formData.location?.latitude)}
+                />
 
                 <Input
                   value={formData.location?.pincode || ""}
                   onChange={(e) => setFormData(prev => ({ ...prev, location: { ...prev.location, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) } }))}
                   placeholder="Pincode*"
-                  className="w-full"
-                  disabled={loading || saving}
+                  className="w-full bg-white text-sm"
+                  disabled={loading || saving || Boolean(formData.location?.latitude)}
+                  readOnly={Boolean(formData.location?.latitude)}
                 />
               </div>
             </div>
