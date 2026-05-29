@@ -85,10 +85,12 @@ export async function getRestaurantCommissionSnapshot(orderDoc) {
  */
 export async function createInitialTransaction(order) {
     const { commissionAmount } = await getRestaurantCommissionSnapshot(order);
+  const toNonNegativeNumber = (value) => Math.max(0, Number(value) || 0);
+  const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
     
     // Split logic
-    const totalCustomerPaid = order.pricing?.total || 0;
-    const riderShare = order.riderEarning || 0;
+    const totalCustomerPaid = toNonNegativeNumber(order.pricing?.total);
+    const riderShare = toNonNegativeNumber(order.riderEarning);
     // Prefer commission already computed & stored on the order (source of truth for this order),
     // fallback to rule snapshot for older orders.
     const restaurantCommissionFromOrder = Number(order.pricing?.restaurantCommission);
@@ -96,8 +98,16 @@ export async function createInitialTransaction(order) {
         Number.isFinite(restaurantCommissionFromOrder) && restaurantCommissionFromOrder > 0
             ? restaurantCommissionFromOrder
             : (commissionAmount || 0);
-    const restaurantNet = (order.pricing?.subtotal || 0) + (order.pricing?.packagingFee || 0) - restaurantCommission;
-    const platformNetProfit = (order.pricing?.platformFee || 0) + (order.pricing?.deliveryFee || 0) + restaurantCommission - riderShare;
+    const restaurantNet =
+      toNonNegativeNumber(order.pricing?.subtotal) +
+      toNonNegativeNumber(order.pricing?.packagingFee) -
+      toNonNegativeNumber(restaurantCommission);
+    const platformNetProfitRaw =
+      toNonNegativeNumber(order.pricing?.platformFee) +
+      toNonNegativeNumber(order.pricing?.deliveryFee) +
+      toNonNegativeNumber(restaurantCommission) -
+      riderShare;
+    const platformNetProfit = Math.max(0, round2(platformNetProfitRaw));
 
     const transaction = new FoodTransaction({
         orderId: order._id,
@@ -131,18 +141,18 @@ export async function createInitialTransaction(order) {
             packagingFee: Number(order.pricing?.packagingFee || 0) || 0,
             deliveryFee: Number(order.pricing?.deliveryFee || 0) || 0,
             platformFee: Number(order.pricing?.platformFee || 0) || 0,
-            restaurantCommission,
+            restaurantCommission: toNonNegativeNumber(restaurantCommission),
             discount: Number(order.pricing?.discount || 0) || 0,
             total: Number(order.pricing?.total || 0) || 0,
             currency: String(order.pricing?.currency || order.currency || 'INR'),
         },
         amounts: {
             totalCustomerPaid,
-            restaurantShare: Math.max(0, restaurantNet),
-            restaurantCommission,
+            restaurantShare: Math.max(0, round2(restaurantNet)),
+            restaurantCommission: toNonNegativeNumber(restaurantCommission),
             riderShare,
             platformNetProfit,
-            taxAmount: order.pricing?.tax || 0
+            taxAmount: toNonNegativeNumber(order.pricing?.tax)
         },
         gateway: {
             razorpayOrderId: order.payment?.razorpay?.orderId,

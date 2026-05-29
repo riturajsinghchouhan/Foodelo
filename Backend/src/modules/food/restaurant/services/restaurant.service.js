@@ -11,6 +11,7 @@ const normalizeName = (value) =>
         .trim()
         .toLowerCase()
         .replace(/-/g, ' ')
+        .replace(/[^a-z0-9\s]/g, '')
         .replace(/\s+/g, ' ');
 
 const normalizePhone = (value) => {

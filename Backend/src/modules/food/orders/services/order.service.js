@@ -312,12 +312,18 @@ export async function createOrder(userId, dto) {
     }
   }
 
-  // Phase 2: store financials in ledger only.
-  await foodTransactionService.createInitialTransaction({
-    ...(order.toObject?.() || order),
-    pricing: normalizedPricing,
-    payment,
-  });
+  // Phase 2: store financials in ledger only (best effort, never block order success).
+  try {
+    await foodTransactionService.createInitialTransaction({
+      ...(order.toObject?.() || order),
+      pricing: normalizedPricing,
+      payment,
+    });
+  } catch (err) {
+    logger.warn(
+      `Order created but transaction ledger save failed for order ${order?._id}: ${err?.message || err}`,
+    );
+  }
 
   if (paymentMethod === "razorpay" && payment?.razorpay?.orderId) {
     // Audit can still happen here or via FinanceService events
