@@ -612,7 +612,8 @@ export default function RestaurantOnboarding() {
 
   const previewUrlCacheRef = useRef(new Map())
   const locationSearchInputRef = useRef(null)
-  const placesAutocompleteRef = useRef(null)
+  const autocompleteServiceRef = useRef(null)
+  const placesServiceRef = useRef(null)
   const mapsScriptLoadedRef = useRef(false)
   const menuImagesInputRef = useRef(null)
   const menuPdfInputRef = useRef(null)
@@ -1797,28 +1798,65 @@ export default function RestaurantOnboarding() {
                     key={s.id}
                     type="button"
                     onClick={() => {
-                      const { lat, lng, display, addr } = s
-                      const area = addr.suburb || addr.neighbourhood || addr.city_district || addr.locality || ""
-                      const city = addr.city || addr.town || addr.village || ""
-                      const state = addr.state || ""
-                      const pincode = addr.postcode || ""
+                      if (s.isGoogle && placesServiceRef.current) {
+                        placesServiceRef.current.getDetails({
+                          placeId: s.id,
+                          fields: ["formatted_address", "address_components", "geometry"]
+                        }, (place, status) => {
+                          if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
+                            const formattedAddress = place?.formatted_address || ""
+                            const comps = Array.isArray(place?.address_components) ? place.address_components : []
+                            const get = (types) => comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name || ""
+                    
+                            const area = get(["sublocality_level_1", "sublocality", "neighborhood"]) || get(["locality"])
+                            const city = get(["locality"]) || get(["administrative_area_level_2"])
+                            const state = get(["administrative_area_level_1"]) || get(["administrative_area_level_2"])
+                            const pincode = get(["postal_code"])
+                            const lat = place?.geometry?.location?.lat?.()
+                            const lng = place?.geometry?.location?.lng?.()
 
-                      setStep1((prev) => ({
-                        ...prev,
-                        location: {
-                          ...prev.location,
-                          formattedAddress: display,
-                          addressLine1: display,
-                          area: area || prev.location.area,
-                          city: city || prev.location.city,
-                          state: state || prev.location.state,
-                          pincode: pincode || prev.location.pincode,
-                          latitude: lat,
-                          longitude: lng,
-                        },
-                      }))
-                      setLocationSearchValue(display)
-                      setLocationSuggestions([])
+                            setStep1((prev) => ({
+                              ...prev,
+                              location: {
+                                ...prev.location,
+                                formattedAddress: formattedAddress || s.display,
+                                addressLine1: formattedAddress || s.display,
+                                area: area || prev.location.area,
+                                city: city || prev.location.city,
+                                state: state || prev.location.state,
+                                pincode: pincode || prev.location.pincode,
+                                latitude: typeof lat === "number" ? Number(lat.toFixed(6)) : prev.location.latitude,
+                                longitude: typeof lng === "number" ? Number(lng.toFixed(6)) : prev.location.longitude,
+                              },
+                            }))
+                            setLocationSearchValue(formattedAddress || s.display)
+                            setLocationSuggestions([])
+                          }
+                        })
+                      } else {
+                        const { lat, lng, display, addr } = s
+                        const area = addr?.suburb || addr?.neighbourhood || addr?.city_district || addr?.locality || ""
+                        const city = addr?.city || addr?.town || addr?.village || ""
+                        const state = addr?.state || ""
+                        const pincode = addr?.postcode || ""
+
+                        setStep1((prev) => ({
+                          ...prev,
+                          location: {
+                            ...prev.location,
+                            formattedAddress: display,
+                            addressLine1: display,
+                            area: area || prev.location.area,
+                            city: city || prev.location.city,
+                            state: state || prev.location.state,
+                            pincode: pincode || prev.location.pincode,
+                            latitude: lat,
+                            longitude: lng,
+                          },
+                        }))
+                        setLocationSearchValue(display)
+                        setLocationSuggestions([])
+                      }
                     }}
                     className="w-full px-4 py-2 text-left text-[13px] hover:bg-orange-50 border-b border-gray-100 last:border-none font-medium text-gray-700"
                   >
@@ -1919,25 +1957,20 @@ export default function RestaurantOnboarding() {
           </div>
           <div>
             <Label className="text-xs text-gray-700">Service zone*</Label>
-            <select
-              value={step1.zoneId || ""}
-              onChange={(e) => setStep1({ ...step1, zoneId: e.target.value })}
-              className={`mt-1 w-full h-9 rounded-md border border-input bg-white px-3 text-sm ${isOutOfZone ? 'text-red-500 font-medium' : ''}`}
-              disabled={zonesLoading || !isEditing || hasCoordinates}
-            >
-              <option value="">{zonesLoading ? "Loading zones..." : isOutOfZone ? "Out of zone" : "Select a zone"}</option>
-              {zones.map((z) => {
-                const id = String(z?._id || z?.id || "")
-                const label = z?.name || z?.zoneName || z?.serviceLocation || id
-                return (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                )
-              })}
-            </select>
+            <Input
+              value={(() => {
+                if (zonesLoading) return "Detecting zone..."
+                if (hasCoordinates && !step1.zoneId) return "Zone is not available to this location"
+                if (!step1.zoneId) return ""
+                const z = zones.find((zone) => String(zone._id || zone.id) === String(step1.zoneId))
+                return z ? (z.name || z.zoneName || z.serviceLocation || step1.zoneId) : step1.zoneId
+              })()}
+              readOnly
+              className={`mt-1 bg-gray-50 text-sm ${hasCoordinates && !step1.zoneId ? 'text-red-500 font-medium border-red-500' : 'text-gray-600'}`}
+              placeholder="Auto-detected based on your address"
+            />
             <p className="text-[11px] text-gray-500 mt-1">
-              Choose the service zone where your restaurant will be available.
+              Service zone is automatically assigned based on your selected address.
             </p>
           </div>
           <p className="text-[11px] text-gray-500 mt-1">
@@ -1948,63 +1981,31 @@ export default function RestaurantOnboarding() {
     </div>
   )}
 
-  // Initialize Google Places Autocomplete for Step 1 location search.
+  // Initialize Google Places AutocompleteService
   useEffect(() => {
     if (step !== 1) return
-
     let cancelled = false
-    let autocomplete = null
 
     const init = async () => {
-      // Wait for the input ref to be attached
-      let inputElement = null
-      for (let i = 0; i < 50; i++) {
-        if (locationSearchInputRef.current) {
-          inputElement = locationSearchInputRef.current
-          break
-        }
-        await new Promise((r) => setTimeout(r, 100))
-      }
-
-      if (!inputElement || cancelled) return
+      const apiKey = await getGoogleMapsApiKey()
+      if (!apiKey || cancelled) return
 
       const loadMaps = async () => {
-        // 1. If already available with places, return true
-        if (window.google?.maps?.places?.Autocomplete) {
-          mapsScriptLoadedRef.current = true
-          return true
-        }
+        if (window.google?.maps?.places?.AutocompleteService) return true
 
-        // 2. Load API Key
-        const apiKey = await getGoogleMapsApiKey()
-        if (!apiKey) {
-          debugError("Google Maps API Key missing or invalid")
-          return false
-        }
-
-        // 3. Handle Auth Failure
-        window.gm_authFailure = () => {
-          debugError("Google Maps authentication failed.")
-          // Don't show toast here as we have Nominatim fallback
-        }
-
-        // 4. Check for existing script and force libraries=places if needed
         const scripts = Array.from(document.getElementsByTagName("script"))
         const mapsScript = scripts.find(s => s.src?.includes("maps.googleapis.com/maps/api/js"))
         
         if (mapsScript && !mapsScript.src.includes("libraries=places")) {
-          debugLog("Found maps script without places, removing to reload properly.")
           mapsScript.remove()
         } else if (mapsScript && mapsScript.src.includes("libraries=places")) {
-           // Wait if it's still loading
            for (let i = 0; i < 60; i++) {
-             if (window.google?.maps?.places?.Autocomplete) return true
+             if (window.google?.maps?.places?.AutocompleteService) return true
              if (cancelled) return false
              await new Promise(r => setTimeout(r, 100))
            }
         }
 
-        // 5. Create and append new script
         return new Promise((resolve) => {
           const script = document.createElement("script")
           script.id = "google-maps-sdk"
@@ -2012,100 +2013,22 @@ export default function RestaurantOnboarding() {
           script.async = true
           script.defer = true
           script.onload = () => {
-            setTimeout(() => {
-              const ok = !!window.google?.maps?.places?.Autocomplete
-              mapsScriptLoadedRef.current = ok
-              resolve(ok)
-            }, 200)
+            setTimeout(() => resolve(!!window.google?.maps?.places?.AutocompleteService), 200)
           }
           script.onerror = () => resolve(false)
           document.head.appendChild(script)
         })
       }
 
-      const parsePlace = (place) => {
-        const formattedAddress = place?.formatted_address || ""
-        const comps = Array.isArray(place?.address_components) ? place.address_components : []
-        const get = (types) => comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name || ""
-
-        const area = get(["sublocality_level_1", "sublocality", "neighborhood"]) || get(["locality"])
-        const city = get(["locality"]) || get(["administrative_area_level_2"])
-        const state = get(["administrative_area_level_1"]) || get(["administrative_area_level_2"])
-        const pincode = get(["postal_code"])
-        const lat = place?.geometry?.location?.lat?.()
-        const lng = place?.geometry?.location?.lng?.()
-
-        return {
-          formattedAddress,
-          area,
-          city,
-          state,
-          pincode,
-          latitude: typeof lat === "number" ? Number(lat.toFixed(6)) : "",
-          longitude: typeof lng === "number" ? Number(lng.toFixed(6)) : "",
-        }
-      }
-
       const ok = await loadMaps()
-      if (!ok || cancelled || !inputElement) return
-
-      if (inputElement.hasAttribute("data-google-places-initialized")) return
+      if (!ok || cancelled) return
 
       try {
-        autocomplete = new window.google.maps.places.Autocomplete(inputElement, {
-          fields: ["formatted_address", "address_components", "geometry"],
-          componentRestrictions: { country: "in" },
-          types: ["geocode", "establishment"]
-        })
-
-        inputElement.setAttribute("data-google-places-initialized", "true")
-        placesAutocompleteRef.current = autocomplete
-
-        autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace()
-          if (!place?.geometry) return
-
-          const parsed = parsePlace(place)
-          setStep1((prev) => ({
-            ...prev,
-            location: {
-              ...prev.location,
-              formattedAddress: parsed.formattedAddress || prev.location.formattedAddress,
-              addressLine1: parsed.formattedAddress || prev.location.addressLine1 || "",
-              area: parsed.area || prev.location.area,
-              city: parsed.city || prev.location.city,
-              state: parsed.state || prev.location.state,
-              pincode: parsed.pincode || prev.location.pincode,
-              latitude: parsed.latitude !== "" ? parsed.latitude : prev.location.latitude,
-              longitude: parsed.longitude !== "" ? parsed.longitude : prev.location.longitude,
-            },
-          }))
-          
-          setLocationSearchValue(parsed.formattedAddress)
-          inputElement.blur()
-        })
-
-        const pacContainerFix = () => {
-          const applyFix = () => {
-            const containers = document.querySelectorAll(".pac-container")
-            if (containers.length > 0) {
-              containers.forEach((container) => {
-                container.style.zIndex = "999999"
-                container.style.pointerEvents = "auto"
-                container.style.visibility = "visible"
-                container.style.display = "block"
-              })
-            }
-          }
-          applyFix()
-          setTimeout(applyFix, 100)
-          setTimeout(applyFix, 300)
-        }
-
-        inputElement.addEventListener("focus", pacContainerFix)
-        inputElement.addEventListener("input", pacContainerFix)
+        autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService()
+        const dummyDiv = document.createElement('div')
+        placesServiceRef.current = new window.google.maps.places.PlacesService(dummyDiv)
       } catch (e) {
-        debugError("Autocomplete error:", e)
+        debugError("AutocompleteService error:", e)
       }
     }
 
@@ -2113,17 +2036,31 @@ export default function RestaurantOnboarding() {
 
     return () => {
       cancelled = true
-      if (autocomplete) {
-        try { window.google?.maps?.event?.clearInstanceListeners(autocomplete) } catch {}
-      }
-      if (locationSearchInputRef.current) {
-        locationSearchInputRef.current.removeAttribute("data-google-places-initialized")
-      }
-      placesAutocompleteRef.current = null
     }
   }, [step])
 
-  // Hybrid Search Fallback (Nominatim)
+  const fallbackToNominatim = async (q) => {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&q=${encodeURIComponent(q)}&countrycodes=in`
+      const res = await fetch(url, { headers: { Accept: "application/json" } })
+      const json = await res.json()
+      const mapped = (Array.isArray(json) ? json : []).map(r => ({
+        id: r.place_id,
+        display: r.display_name || "",
+        lat: Number(r.lat),
+        lng: Number(r.lon),
+        addr: r.address || {},
+        isGoogle: false
+      }))
+      setLocationSuggestions(mapped)
+    } catch (e) {
+      debugError("Nominatim search failed:", e)
+    } finally {
+      setIsSearchingLocation(false)
+    }
+  }
+
+  // Hybrid Search (Google Maps AutocompleteService + Nominatim Fallback)
   useEffect(() => {
     if (step !== 1) return
     const q = String(locationSearchValue || "").trim()
@@ -2134,24 +2071,33 @@ export default function RestaurantOnboarding() {
     }
 
     const t = setTimeout(async () => {
-      try {
-        setIsSearchingLocation(true)
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&q=${encodeURIComponent(q)}&countrycodes=in`
-        const res = await fetch(url, { headers: { Accept: "application/json" } })
-        const json = await res.json()
-        const mapped = (Array.isArray(json) ? json : []).map(r => ({
-          id: r.place_id,
-          display: r.display_name || "",
-          lat: Number(r.lat),
-          lng: Number(r.lon),
-          addr: r.address || {},
-        }))
-        setLocationSuggestions(mapped)
-      } catch (e) {
-        debugError("Nominatim search failed:", e)
-      } finally {
-        setIsSearchingLocation(false)
+      setIsSearchingLocation(true)
+
+      if (autocompleteServiceRef.current) {
+        try {
+          autocompleteServiceRef.current.getPlacePredictions({
+            input: q,
+            componentRestrictions: { country: "in" }
+          }, (predictions, status) => {
+            if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions && predictions.length > 0) {
+              const mapped = predictions.slice(0, 5).map(p => ({
+                id: p.place_id,
+                display: p.description,
+                isGoogle: true
+              }))
+              setLocationSuggestions(mapped)
+              setIsSearchingLocation(false)
+            } else {
+              fallbackToNominatim(q)
+            }
+          })
+          return
+        } catch (e) {
+          debugError("Google getPlacePredictions failed:", e)
+        }
       }
+
+      fallbackToNominatim(q)
     }, 400)
 
     return () => clearTimeout(t)
@@ -2189,7 +2135,7 @@ export default function RestaurantOnboarding() {
             lastOutOfZoneToastKeyRef.current = null
           } else {
             if (lastOutOfZoneToastKeyRef.current !== key) {
-              toast.error("Selected location is outside all service zones")
+              toast.error("Zone is not available to this location, please change")
               lastOutOfZoneToastKeyRef.current = key
             }
             setStep1((prev) => (prev.zoneId ? { ...prev, zoneId: "" } : prev))
@@ -2962,16 +2908,6 @@ export default function RestaurantOnboarding() {
               <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider text-right">
                 Step {step} of 3
               </div>
-              <Button
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-50"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
             </div>
           </div>
 

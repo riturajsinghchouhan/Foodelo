@@ -64,6 +64,8 @@ export default function Category() {
   const [selectedImageFile, setSelectedImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 20
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -121,6 +123,17 @@ export default function Category() {
       )
     })
   }, [categories, searchQuery])
+
+  const totalPages = Math.ceil(filteredCategories.length / itemsPerPage)
+
+  const paginatedCategories = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    return filteredCategories.slice(startIndex, startIndex + itemsPerPage)
+  }, [filteredCategories, currentPage])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, showPendingOnly])
 
   const fetchCategories = async () => {
     try {
@@ -458,7 +471,7 @@ export default function Category() {
                   </td>
                 </tr>
               ) : (
-                filteredCategories.map((category) => {
+                paginatedCategories.map((category) => {
                   const creatorName = category?.createdByRestaurant?.name || category?.restaurant?.name || "Admin"
                   const approvalStatus = category?.approvalStatus || "pending"
                   const isRestaurantCategory = Boolean(category?.createdByRestaurantId || category?.restaurantId)
@@ -587,6 +600,39 @@ export default function Category() {
           </table>
         </div>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border border-slate-200 bg-white px-4 py-3 sm:px-6 mt-4 rounded-2xl shadow-sm">
+          <div className="flex flex-1 items-center justify-between flex-wrap gap-4">
+            <div>
+              <p className="text-sm text-slate-700">
+                Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
+                <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredCategories.length)}</span> of{" "}
+                <span className="font-medium">{filteredCategories.length}</span> results
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <div className="flex items-center px-2 sm:px-4 text-sm font-medium text-slate-700">
+                Page {currentPage} of {totalPages}
+              </div>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {typeof window !== "undefined" &&
         createPortal(

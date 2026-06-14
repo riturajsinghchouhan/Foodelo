@@ -53,14 +53,23 @@ export const searchUnified = async (query = {}, options = {}) => {
     let restaurantIds = new Set();
     let restaurantDetailsMap = new Map();
 
+    // We will keep track of which food item matched which restaurant so we can attach images
+    let categoryMatchedFoodsMap = new Map();
+
     // 2. Handle Category Filtering (Restaurants don't have categoryId, FoodItems do)
     if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
         const catFoodItems = await FoodItem.find({ 
             categoryId: new mongoose.Types.ObjectId(categoryId),
             approvalStatus: 'approved' 
-        }).select('restaurantId').lean();
+        }).lean();
         
-        const catRestaurantIds = [...new Set(catFoodItems.map(f => f.restaurantId.toString()))];
+        catFoodItems.forEach(f => {
+            if (f.restaurantId && !categoryMatchedFoodsMap.has(f.restaurantId.toString())) {
+                categoryMatchedFoodsMap.set(f.restaurantId.toString(), f);
+            }
+        });
+
+        const catRestaurantIds = Array.from(categoryMatchedFoodsMap.keys());
         if (catRestaurantIds.length > 0) {
             restaurantFilter._id = { $in: catRestaurantIds.map(id => new mongoose.Types.ObjectId(id)) };
         } else {
@@ -128,7 +137,21 @@ export const searchUnified = async (query = {}, options = {}) => {
             
         allMatching.forEach(r => {
             restaurantIds.add(r._id.toString());
-            restaurantDetailsMap.set(r._id.toString(), r);
+            
+            // If we matched by categoryId, attach the food item details so frontend shows dish images
+            if (categoryMatchedFoodsMap.has(r._id.toString())) {
+                const matchedFood = categoryMatchedFoodsMap.get(r._id.toString());
+                restaurantDetailsMap.set(r._id.toString(), {
+                    ...r,
+                    matchType: 'food',
+                    matchedDish: matchedFood.name,
+                    matchedDishImage: matchedFood.image,
+                    matchedDishId: matchedFood._id,
+                    matchedDishPrice: matchedFood.price
+                });
+            } else {
+                restaurantDetailsMap.set(r._id.toString(), r);
+            }
         });
     }
 

@@ -1124,67 +1124,6 @@ export default function Home() {
   const [showManageCollections, setShowManageCollections] = useState(false);
   const [selectedRestaurantSlug, setSelectedRestaurantSlug] = useState(null);
 
-  // Fetch categories (zone-aware) for the homepage category rail.
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      const zoneKey = String(zoneId || "global")
-      try {
-        // Dedupe repeated calls (StrictMode + zone settling). Cache per zoneKey and share in-flight request.
-        const cached = publicCategoriesCacheRef.current.get(zoneKey)
-        if (cached) {
-          if (!cancelled) setRealCategories(cached)
-          return
-        }
-
-        const inFlight = publicCategoriesInFlightRef.current.get(zoneKey)
-        if (inFlight) {
-          const categories = await inFlight
-          if (!cancelled) setRealCategories(categories)
-          return
-        }
-
-        setLoadingRealCategories(true)
-        const promise = (async () => {
-          const res = await adminAPI.getPublicCategories(zoneId ? { zoneId } : {})
-          const list =
-            res?.data?.data?.categories ||
-            res?.data?.categories ||
-            []
-          const categories = Array.isArray(list)
-            ? list.map((cat, idx) => ({
-              id: String(cat?.id || cat?._id || cat?.slug || idx),
-              name: cat?.name || "",
-              slug: cat?.slug || String(cat?.name || "").toLowerCase().replace(/\s+/g, "-"),
-              image:
-                normalizeImageUrl(cat?.image || cat?.imageUrl) ||
-                foodImages[idx % foodImages.length] ||
-                foodImages[0],
-              type: cat?.type || "",
-            }))
-            : []
-
-          publicCategoriesCacheRef.current.set(zoneKey, categories)
-          return categories
-        })()
-
-        publicCategoriesInFlightRef.current.set(zoneKey, promise)
-        const categories = await promise
-        publicCategoriesInFlightRef.current.delete(zoneKey)
-
-        if (!cancelled) setRealCategories(categories)
-      } catch (err) {
-        debugWarn("Failed to fetch categories:", err)
-        if (!cancelled) setRealCategories([])
-      } finally {
-        if (!cancelled) setLoadingRealCategories(false)
-      }
-    }
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [zoneId, normalizeImageUrl])
 
   // Memoize cartCount to prevent recalculation on every render - use cart directly
   const cartCount = useMemo(
@@ -1331,6 +1270,68 @@ export default function Home() {
     loading: effectiveZoneLoading,
     error: effectiveZoneError,
   } = useZone(effectiveLocation);
+
+  // Fetch categories (zone-aware) for the homepage category rail.
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      const zoneKey = String(effectiveZoneId || "global")
+      try {
+        // Dedupe repeated calls (StrictMode + zone settling). Cache per zoneKey and share in-flight request.
+        const cached = publicCategoriesCacheRef.current.get(zoneKey)
+        if (cached) {
+          if (!cancelled) setRealCategories(cached)
+          return
+        }
+
+        const inFlight = publicCategoriesInFlightRef.current.get(zoneKey)
+        if (inFlight) {
+          const categories = await inFlight
+          if (!cancelled) setRealCategories(categories)
+          return
+        }
+
+        setLoadingRealCategories(true)
+        const promise = (async () => {
+          const res = await adminAPI.getPublicCategories(effectiveZoneId ? { zoneId: effectiveZoneId } : {})
+          const list =
+            res?.data?.data?.categories ||
+            res?.data?.categories ||
+            []
+          const categories = Array.isArray(list)
+            ? list.map((cat, idx) => ({
+              id: String(cat?.id || cat?._id || cat?.slug || idx),
+              name: cat?.name || "",
+              slug: cat?.slug || String(cat?.name || "").toLowerCase().replace(/\s+/g, "-"),
+              image:
+                normalizeImageUrl(cat?.image || cat?.imageUrl) ||
+                foodImages[idx % foodImages.length] ||
+                foodImages[0],
+              type: cat?.type || "",
+            }))
+            : []
+
+          publicCategoriesCacheRef.current.set(zoneKey, categories)
+          return categories
+        })()
+
+        publicCategoriesInFlightRef.current.set(zoneKey, promise)
+        const categories = await promise
+        publicCategoriesInFlightRef.current.delete(zoneKey)
+
+        if (!cancelled) setRealCategories(categories)
+      } catch (err) {
+        debugWarn("Failed to fetch categories:", err)
+        if (!cancelled) setRealCategories([])
+      } finally {
+        if (!cancelled) setLoadingRealCategories(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [effectiveZoneId, normalizeImageUrl])
 
   // Fetch hero banners from public API (no auth required)
   useEffect(() => {

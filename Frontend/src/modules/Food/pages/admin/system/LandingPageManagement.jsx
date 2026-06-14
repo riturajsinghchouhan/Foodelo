@@ -80,12 +80,15 @@ export default function LandingPageManagement() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
 
-  // Restaurant Selection Modal for Banner Advertising
   const [showRestaurantModal, setShowRestaurantModal] = useState(false)
   const [selectedBannerId, setSelectedBannerId] = useState(null)
   const [selectedRestaurantIds, setSelectedRestaurantIds] = useState([])
   const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("")
   const [linkingRestaurants, setLinkingRestaurants] = useState(false)
+  const [zones, setZones] = useState([])
+  const [selectedZoneId, setSelectedZoneId] = useState("")
+  const [selectedRecommendedZoneId, setSelectedRecommendedZoneId] = useState("")
+  const [selectedGourmetZoneId, setSelectedGourmetZoneId] = useState("")
 
   // Helper function to filter out token-related errors
   const setErrorSafely = (errorMessage) => {
@@ -137,6 +140,17 @@ export default function LandingPageManagement() {
     }
   }
 
+  const fetchZones = async () => {
+    try {
+      const response = await adminAPI.getZones({ limit: 1000 })
+      if (response?.data?.success) {
+        setZones(response.data.data.zones || response.data.data || [])
+      }
+    } catch (err) {
+      console.error("Failed to load zones", err)
+    }
+  }
+
   // Fetch data on mount (authentication is handled by ProtectedRoute)
   useEffect(() => {
     fetchBanners()
@@ -144,6 +158,7 @@ export default function LandingPageManagement() {
     fetchDiningBanners()
     fetchAllRestaurants()
     fetchSettings()
+    fetchZones()
   }, [])
 
   // Fetch Top 10 and Gourmet when Explore More tab is active; refetch restaurants so dropdown is populated
@@ -373,6 +388,12 @@ export default function LandingPageManagement() {
   }
 
   const filteredRestaurantsForModal = allRestaurants.filter(restaurant => {
+    if (selectedZoneId) {
+      const rZoneId = restaurant.zone?._id || restaurant.zone || restaurant.zoneId?._id || restaurant.zoneId;
+      if (rZoneId !== selectedZoneId) {
+        return false;
+      }
+    }
     if (!restaurantSearchQuery.trim()) return true
     const query = restaurantSearchQuery.toLowerCase()
     return restaurant.name?.toLowerCase().includes(query) ||
@@ -383,12 +404,16 @@ export default function LandingPageManagement() {
     const query = recommendedSearchQuery.trim().toLowerCase()
     return allRestaurants
       .filter((restaurant) => {
+        if (selectedRecommendedZoneId) {
+          const rZoneId = restaurant.zone?._id || restaurant.zone || restaurant.zoneId?._id || restaurant.zoneId;
+          if (rZoneId !== selectedRecommendedZoneId) return false;
+        }
         if (!query) return true
         return restaurant.name?.toLowerCase().includes(query) ||
           restaurant.restaurantId?.toLowerCase().includes(query)
       })
       .slice(0, 80)
-  }, [allRestaurants, recommendedSearchQuery])
+  }, [allRestaurants, recommendedSearchQuery, selectedRecommendedZoneId])
 
   const recommendedRestaurantsSelected = useMemo(() => {
     const selectedIds = new Set(settings.recommendedRestaurantIds || [])
@@ -1793,15 +1818,31 @@ export default function LandingPageManagement() {
                       Choose multiple restaurants to display below filters on the user home page.
                     </p>
 
-                    <div className="relative mb-3">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <Input
-                        id="recommended-search"
-                        value={recommendedSearchQuery}
-                        onChange={(e) => setRecommendedSearchQuery(e.target.value)}
-                        placeholder="Search restaurants..."
-                        className="pl-9"
-                      />
+                    <div className="flex gap-3 mb-3">
+                      <div className="w-1/3">
+                        <select
+                          className="w-full h-10 px-3 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white text-sm"
+                          value={selectedRecommendedZoneId}
+                          onChange={(e) => setSelectedRecommendedZoneId(e.target.value)}
+                        >
+                          <option value="">All Zones</option>
+                          {zones.map((zone) => (
+                            <option key={zone._id || zone.id} value={zone._id || zone.id}>
+                              {zone.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input
+                          id="recommended-search"
+                          value={recommendedSearchQuery}
+                          onChange={(e) => setRecommendedSearchQuery(e.target.value)}
+                          placeholder="Search restaurants..."
+                          className="pl-9 h-10"
+                        />
+                      </div>
                     </div>
 
                     {recommendedRestaurantsSelected.length > 0 && (
@@ -1944,24 +1985,47 @@ export default function LandingPageManagement() {
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
                   <h2 className="text-lg font-bold text-slate-900 mb-4">Add Restaurant to Gourmet</h2>
                   <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="restaurant-gourmet">Select Restaurant</Label>
-                      <select
-                        id="restaurant-gourmet"
-                        value={selectedRestaurantGourmet}
-                        onChange={(e) => setSelectedRestaurantGourmet(e.target.value)}
-                        className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        disabled={restaurantsLoading}
-                      >
-                        <option value="">Select a restaurant...</option>
-                        {allRestaurants
-                          .filter(r => !gourmetRestaurants.some(gr => gr.restaurant?._id === r._id))
-                          .map((restaurant) => (
-                            <option key={restaurant._id} value={restaurant._id}>
-                              {restaurant.name}
+                    <div className="flex gap-3">
+                      <div className="w-1/3">
+                        <Label htmlFor="gourmet-zone">Filter by Zone</Label>
+                        <select
+                          id="gourmet-zone"
+                          value={selectedGourmetZoneId}
+                          onChange={(e) => setSelectedGourmetZoneId(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="">All Zones</option>
+                          {zones.map((zone) => (
+                            <option key={zone._id || zone.id} value={zone._id || zone.id}>
+                              {zone.name}
                             </option>
                           ))}
-                      </select>
+                        </select>
+                      </div>
+                      <div className="flex-1">
+                        <Label htmlFor="restaurant-gourmet">Select Restaurant</Label>
+                        <select
+                          id="restaurant-gourmet"
+                          value={selectedRestaurantGourmet}
+                          onChange={(e) => setSelectedRestaurantGourmet(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          disabled={restaurantsLoading}
+                        >
+                          <option value="">Select a restaurant...</option>
+                          {allRestaurants
+                            .filter(r => !gourmetRestaurants.some(gr => gr.restaurant?._id === r._id))
+                            .filter(r => {
+                              if (!selectedGourmetZoneId) return true;
+                              const rZoneId = r.zone?._id || r.zone || r.zoneId?._id || r.zoneId;
+                              return rZoneId === selectedGourmetZoneId;
+                            })
+                            .map((restaurant) => (
+                              <option key={restaurant._id} value={restaurant._id}>
+                                {restaurant.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
                     </div>
                     <Button
                       onClick={handleAddGourmetRestaurant}
@@ -2058,15 +2122,31 @@ export default function LandingPageManagement() {
             <div className="flex-1 overflow-hidden flex flex-col">
               {/* Search Bar and Selected Count */}
               <div className="px-6 pt-4 pb-3 space-y-3 bg-slate-50 border-b border-slate-200">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <Input
-                    type="text"
-                    placeholder="Search restaurants by name or ID..."
-                    value={restaurantSearchQuery}
-                    onChange={(e) => setRestaurantSearchQuery(e.target.value)}
-                    className="pl-10 h-11 bg-white border-slate-300 focus:border-blue-500 focus:ring-blue-500"
-                  />
+                <div className="flex gap-3">
+                  <div className="w-1/3">
+                    <select
+                      className="w-full h-11 px-3 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                      value={selectedZoneId}
+                      onChange={(e) => setSelectedZoneId(e.target.value)}
+                    >
+                      <option value="">All Zones</option>
+                      {zones.map((zone) => (
+                        <option key={zone._id || zone.id} value={zone._id || zone.id}>
+                          {zone.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search restaurants by name or ID..."
+                      value={restaurantSearchQuery}
+                      onChange={(e) => setRestaurantSearchQuery(e.target.value)}
+                      className="pl-10 h-11 bg-white border-slate-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
                 {selectedRestaurantIds.length > 0 && (
                   <div className="flex items-center gap-2">

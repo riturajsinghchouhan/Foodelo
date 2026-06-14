@@ -16,6 +16,47 @@ const createEmptyUploadedDocs = () => ({
   drivingLicensePhoto: null
 })
 
+// IndexedDB Helper to persist File objects across page refreshes
+const docsDB = {
+  getDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('FoodeloSignupDocsDB', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+      request.onupgradeneeded = (e) => {
+        e.target.result.createObjectStore('files');
+      };
+    });
+  },
+  async set(key, val) {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').put(val, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+  async get(key) {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readonly');
+      const req = tx.objectStore('files').get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async clear() {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+};
+
 const sanitizeUploadedDocValue = (value) => {
   if (!value) return null
 
@@ -104,11 +145,25 @@ export default function SignupStep2() {
   const [activePicker, setActivePicker] = useState(null) // { docType: string, title: string, ref: any }
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploading, setUploading] = useState({})
+  const hasRestoredRef = useRef(false)
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" })
-    document.documentElement.scrollTop = 0
-    document.body.scrollTop = 0
+    docsDB.get('documents').then((savedDocs) => {
+      hasRestoredRef.current = true;
+      if (savedDocs) {
+        setDocuments(savedDocs)
+        setUploadedDocs({
+          profilePhoto: savedDocs.profilePhoto ? { file: true } : null,
+          aadharPhoto: savedDocs.aadharPhoto ? { file: true } : null,
+          panPhoto: savedDocs.panPhoto ? { file: true } : null,
+          drivingLicensePhoto: savedDocs.drivingLicensePhoto ? { file: true } : null
+        })
+      }
+    }).catch(err => {
+      debugWarn("Failed to restore files from IDB", err);
+      hasRestoredRef.current = true;
+    })
   }, [])
 
   // Save uploaded docs to session storage whenever they change
@@ -116,17 +171,10 @@ export default function SignupStep2() {
     sessionStorage.setItem("deliverySignupDocs", JSON.stringify(uploadedDocs))
   }, [uploadedDocs])
 
+  // Persist actual File objects to IndexedDB so they survive page refreshes
   useEffect(() => {
-    return () => {
-      Object.values(documents).forEach((file) => {
-        if (file instanceof File) {
-          const previewUrl = file.previewUrl || file._previewUrl
-          if (previewUrl) {
-            URL.revokeObjectURL(previewUrl)
-          }
-        }
-      })
-    }
+    if (!hasRestoredRef.current) return;
+    docsDB.set('documents', documents).catch(err => debugWarn("Failed to save files to IDB", err))
   }, [documents])
 
   const getPreviewSrc = (docType) => {
@@ -135,7 +183,8 @@ export default function SignupStep2() {
     if (uploaded?.url) return uploaded.url
 
     const localFile = documents[docType]
-    if (localFile instanceof File) {
+    if (localFile instanceof File || localFile instanceof Blob) {
+      // Re-create URL if missing (e.g. after restoration from IndexedDB)
       if (!localFile._previewUrl) {
         localFile._previewUrl = URL.createObjectURL(localFile)
       }
@@ -278,6 +327,8 @@ export default function SignupStep2() {
       if (response?.data?.success) {
         sessionStorage.removeItem("deliverySignupDetails")
         sessionStorage.removeItem("deliverySignupDocs")
+        docsDB.clear().catch(() => {})
+        
         if (isCompleteProfile) {
           sessionStorage.removeItem("deliveryNeedsRegistration")
           toast.success("Registration successful. Please login with OTP.")
