@@ -271,11 +271,13 @@ function RestaurantDetailsContent() {
                     const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
 
                     // Try to find by slug match or name match
-                    const restaurantName = slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                    const normalizeSlug = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                    const targetNormalized = normalizeSlug(slug)
+                    
                     const matchingRestaurant = restaurants.find(r =>
                       r.slug === slug ||
-                      r.name?.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase() ||
-                      r.name?.toLowerCase() === restaurantName.toLowerCase()
+                      normalizeSlug(r.slug) === targetNormalized ||
+                      normalizeSlug(r.name) === targetNormalized
                     )
 
                     if (matchingRestaurant) {
@@ -620,8 +622,11 @@ function RestaurantDetailsContent() {
                 const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
 
                 // Try to find by exact name match
+                const normalizeName = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const targetNormalizedName = normalizeName(transformedRestaurant.name)
+                
                 const matchingRestaurant = restaurants.find(r =>
-                  r.name?.toLowerCase().trim() === transformedRestaurant.name?.toLowerCase().trim()
+                  normalizeName(r.name) === targetNormalizedName
                 )
 
                 if (matchingRestaurant) {
