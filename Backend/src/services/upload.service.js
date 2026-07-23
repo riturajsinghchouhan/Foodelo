@@ -28,7 +28,7 @@ const getProcessingOptions = (folder) => {
     } else if (folder.includes('food/restaurants') || folder.includes('restaurants')) { 
         // cover, menu, pan, gst, fssai
         width = 1200; height = 800; quality = 80; prefix = 'restaurant';
-    } else if (folder.includes('landing/banners') || folder.includes('banners')) {
+    } else if (folder.includes('landing/banners') || folder.includes('banners') || folder.includes('banner')) {
         width = 1600; height = 600; quality = 85; prefix = 'banner';
     }
 
