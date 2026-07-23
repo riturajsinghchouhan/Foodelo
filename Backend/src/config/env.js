@@ -46,7 +46,7 @@ export const config = {
     bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS || 10),
 
     // Uploads
-    uploadPath: process.env.UPLOAD_PATH || 'uploads/',
+    uploadDir: process.env.UPLOAD_DIR || 'uploads/',
 
     // Redis
     redisEnabled: process.env.REDIS_ENABLED === 'true',
@@ -55,10 +55,7 @@ export const config = {
     // BullMQ
     bullmqEnabled: process.env.BULLMQ_ENABLED === 'true',
 
-    // Cloudinary
-    cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
-    cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
-    cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
+
 
     // Firebase / FCM
     firebaseProjectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
@@ -125,13 +122,11 @@ export const updateConfig = () => {
     config.authRateLimitWindowMinutes = Number(process.env.AUTH_RATE_LIMIT_WINDOW || config.authRateLimitWindowMinutes);
     config.authRateLimitMax = Number(process.env.AUTH_RATE_LIMIT_MAX || config.authRateLimitMax);
     config.bcryptSaltRounds = Number(process.env.BCRYPT_SALT_ROUNDS || config.bcryptSaltRounds);
-    config.uploadPath = process.env.UPLOAD_PATH || config.uploadPath;
+    config.uploadDir = process.env.UPLOAD_DIR || config.uploadDir;
     config.redisEnabled = process.env.REDIS_ENABLED === 'true';
     config.redisUrl = process.env.REDIS_URL || config.redisUrl;
     config.bullmqEnabled = process.env.BULLMQ_ENABLED === 'true';
-    config.cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || config.cloudinaryCloudName;
-    config.cloudinaryApiKey = process.env.CLOUDINARY_API_KEY || config.cloudinaryApiKey;
-    config.cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET || config.cloudinaryApiSecret;
+
     config.firebaseProjectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || config.firebaseProjectId;
     config.firebaseDatabaseUrl = process.env.VITE_FIREBASE_DATABASE_URL || config.firebaseDatabaseUrl;
     config.firebaseServiceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || config.firebaseServiceAccountPath;

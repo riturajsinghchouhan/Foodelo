@@ -371,7 +371,7 @@ export async function downloadRestaurantMenuPdf(req, res, next) {
         const fallbackUrl = restaurant.menuPdf;
         const restaurantName = restaurant.restaurantName || 'menu';
 
-        // Fetch the PDF from Cloudinary
+        // Fetch the PDF from Server
         const axios = (await import('axios')).default;
         try {
             const candidateUrls = [primaryUrl, fallbackUrl].filter(Boolean);
@@ -406,7 +406,7 @@ export async function downloadRestaurantMenuPdf(req, res, next) {
             // Send the PDF data
             res.send(pdfResponse.data);
         } catch (fetchError) {
-            console.error('❌ Error fetching PDF from Cloudinary:', {
+            console.error('❌ Error fetching PDF from Server:', {
                 message: fetchError.message,
                 status: fetchError.response?.status,
                 primaryUrl: String(primaryUrl).substring(0, 100),

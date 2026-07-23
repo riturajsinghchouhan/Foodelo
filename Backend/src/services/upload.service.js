@@ -2,9 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
+import { config } from '../config/env.js';
 
-// Map UPLOAD_DIR to project root /src/uploads for local or /var/www/uploads for VPS
-const UPLOAD_BASE_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'src', 'uploads');
+const UPLOAD_BASE_DIR = (config.uploadDir && path.isAbsolute(config.uploadDir)) 
+    ? config.uploadDir 
+    : path.join(process.cwd(), config.uploadDir || 'src/uploads');
 
 const ensureDirectoryExists = (dirPath) => {
     if (!fs.existsSync(dirPath)) {

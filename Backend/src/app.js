@@ -114,9 +114,9 @@ app.use('/api', responseTimeLogger);
 app.use('/api', routes);
 
 // Static Uploads Serving
-const uploadDir = (process.env.UPLOAD_PATH && path.isAbsolute(process.env.UPLOAD_PATH)) 
-    ? process.env.UPLOAD_PATH 
-    : path.join(process.cwd(), 'src', 'uploads');
+const uploadDir = (config.uploadDir && path.isAbsolute(config.uploadDir)) 
+    ? config.uploadDir 
+    : path.join(process.cwd(), config.uploadDir || 'src/uploads');
 
 app.use('/uploads', express.static(uploadDir));
 app.use('/api/v1/uploads', express.static(uploadDir));
