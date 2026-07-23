@@ -11,7 +11,7 @@ const generateOtpCode = () => {
 };
 
 /**
- * Sends SMS via MSG91 API
+ * Sends SMS via MSG91 API (Legacy)
  * @param {string} phone - 10-digit mobile number
  * @param {string} otp
  */
@@ -53,6 +53,61 @@ const sendSmsViaMsg91 = async (phone, otp) => {
         }
     } catch (error) {
         logger.error(`Error sending SMS to ${phone} via MSG91: ${error.message}`);
+        // Do NOT throw — OTP is already stored in DB; SMS failure should not block the flow
+    }
+};
+
+/**
+ * Sends SMS via SMS INDIA HUB API
+ * @param {string} phone - 10-digit mobile number
+ * @param {string} otp
+ */
+const sendSmsViaSmsIndiaHub = async (phone, otp) => {
+    try {
+        const digits = String(phone || '').replace(/\D/g, '');
+        let msisdn = digits;
+        if (msisdn.length === 10) {
+            msisdn = `91${msisdn}`;
+        } else if (!msisdn.startsWith('91')) {
+            msisdn = `91${msisdn}`;
+        }
+
+        const url = new URL('https://cloud.smsindiahub.in/api/mt/SendSMS');
+        url.searchParams.append('APIKey', config.smsIndiaHubApiKey);
+        url.searchParams.append('senderid', config.smsIndiaHubSenderId);
+        url.searchParams.append('channel', '2');
+        url.searchParams.append('DCS', '0');
+        url.searchParams.append('flashsms', '0');
+        url.searchParams.append('number', msisdn);
+        
+        // This text must match the registered DLT template exactly.
+        // If it fails with "Template mismatch", you must update this string.
+        url.searchParams.append('text', `Your Foodelo verification code is ${otp}. Please do not share this with anyone.`);
+        url.searchParams.append('route', '1');
+        if (config.smsIndiaHubDltTemplateId) {
+            url.searchParams.append('dlttemplateid', config.smsIndiaHubDltTemplateId);
+        }
+
+        logger.info(`[SMS] Sending OTP to ${msisdn} via SMS INDIA HUB...`);
+        const response = await fetch(url.toString(), { method: 'GET' });
+        const resultText = await response.text();
+        logger.info(`[SMS] Raw response for ${msisdn}: ${resultText}`);
+
+        let parsed = null;
+        try { parsed = JSON.parse(resultText); } catch (_) { }
+
+        if (parsed && parsed.ErrorCode && parsed.ErrorCode !== '000') {
+            const errMsg = `SMS INDIA HUB ERROR for ${phone}: ${parsed.ErrorMessage || resultText}`;
+            logger.error(errMsg);
+            // eslint-disable-next-line no-console
+            console.error(`❌ [SMS ERROR] ${errMsg}`);
+        } else if (!response.ok) {
+            logger.error(`SMS API HTTP error for ${phone}: ${response.status} – ${resultText}`);
+        } else {
+            logger.info(`✅ SMS sent successfully to ${msisdn} via SMS INDIA HUB`);
+        }
+    } catch (error) {
+        logger.error(`Error sending SMS to ${phone} via SMS INDIA HUB: ${error.message}`);
         // Do NOT throw — OTP is already stored in DB; SMS failure should not block the flow
     }
 };
@@ -115,7 +170,7 @@ export const createOrUpdateOtp = async (phone) => {
 
     // Only send SMS if not in default OTP mode
     if (!config.useDefaultOtp && !phone.endsWith('9755633147') && !phone.endsWith('8624862400')) {
-        await sendSmsViaMsg91(phone, otp);
+        await sendSmsViaSmsIndiaHub(phone, otp);
     }
 
     return otp;

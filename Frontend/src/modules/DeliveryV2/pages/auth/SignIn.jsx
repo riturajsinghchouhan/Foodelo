@@ -13,7 +13,7 @@ const DEFAULT_COUNTRY_CODE = "+91"
 export default function DeliverySignIn() {
   const navigate = useNavigate()
   const [phone, setPhone] = useState(() => {
-    const stored = sessionStorage.getItem("deliveryAuthData")
+    const stored = localStorage.getItem("deliveryAuthData")
     if (stored) {
       try {
         const data = JSON.parse(stored)
@@ -53,7 +53,7 @@ export default function DeliverySignIn() {
         purpose: "login",
         module: "delivery",
       }
-      sessionStorage.setItem("deliveryAuthData", JSON.stringify(authData))
+      localStorage.setItem("deliveryAuthData", JSON.stringify(authData))
       toast.success("Verification code sent to your phone!")
       navigate("/food/delivery/otp")
     } catch (err) {
