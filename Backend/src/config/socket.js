@@ -1,10 +1,13 @@
 import { Server } from 'socket.io';
+import { Emitter } from '@socket.io/redis-emitter';
 import { config } from './env.js';
 import { logger } from '../utils/logger.js';
+import { haversineMeters, shouldBroadcastLocation } from '../utils/geo.js';
 import { verifyAccessToken } from '../core/auth/token.util.js';
 import { getFirebaseDB } from './firebase.js';
 
 let io = null;
+let redisEmitter = null;
 
 function logDeliverySocket(message, extra = {}) {
     const suffix = Object.keys(extra).length ? ` ${JSON.stringify(extra)}` : '';
@@ -42,6 +45,9 @@ const roomNames = {
  * @returns {Promise<Server>}
  */
 export const initSocket = async (server) => {
+    logger.info(
+        `[SocketInit] initSocket called redisEnabled=${config.redisEnabled} redisUrlPresent=${Boolean(config.redisUrl)} socketCorsOrigin=${config.socketCorsOrigin}`
+    );
     io = new Server(server, {
         cors: {
             origin: config.socketCorsOrigin,
@@ -119,6 +125,7 @@ export const initSocket = async (server) => {
         if (userId && role) {
             if (role === 'RESTAURANT') socket.join(roomNames.restaurant(userId));
             if (role === 'USER') socket.join(roomNames.user(userId));
+            if (role === 'ADMIN') socket.join('admin'); // Admin panel broadcasts
             if (role === 'DELIVERY_PARTNER') {
                 socket.join(roomNames.delivery(userId));
                 socket.join('all_delivery'); // Global delivery broadcast room
@@ -129,6 +136,14 @@ export const initSocket = async (server) => {
                 });
             }
         }
+
+        // Generic joinRoom (used by Admin bulk upload page)
+        socket.on('joinRoom', (roomName) => {
+            if (typeof roomName === 'string' && roomName.trim()) {
+                socket.join(roomName.trim());
+                logger.info(`Socket ${socket.id} (${role}:${userId}) joined room: ${roomName.trim()}`);
+            }
+        });
 
         // Explicit join (used by existing restaurant client hook).
         socket.on('join-restaurant', (restaurantId) => {
@@ -170,7 +185,7 @@ export const initSocket = async (server) => {
             socket.emit('delivery-room-joined', { room, deliveryPartnerId: String(deliveryPartnerId) });
         });
 
-        // ─── Live Tracking Events ───────────────────────────────────────
+        // â”€â”€â”€ Live Tracking Events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
         // Users / restaurants subscribe to an order's real-time tracking room.
         socket.on('join-tracking', (orderId) => {
@@ -186,6 +201,7 @@ export const initSocket = async (server) => {
         // Delivery partner emits live GPS location for an active order.
         // Broadcasts to the tracking room so users see the bike move in real time.
         const _lastLocationBroadcast = {};
+        const _lastPolylineBroadcast = {}; // Separate throttle for heavy polyline data
         socket.on('update-location', async (data) => {
             if (socket.user?.role !== 'DELIVERY_PARTNER') return;
             if (!data || !data.orderId) return;
@@ -199,25 +215,34 @@ export const initSocket = async (server) => {
             const speed = Number.isFinite(Number(data.speed)) ? Number(data.speed) : 0;
             const accuracy = Number.isFinite(Number(data.accuracy)) ? Number(data.accuracy) : null;
 
-            // Throttle: max one broadcast per 2s per orderId
+            // Throttle: max one broadcast per 5s per orderId
+            // (aligned with frontend 10s emit — reduces server→client events by ~60%)
             const now = Date.now();
             const lastTS = _lastLocationBroadcast[data.orderId] || 0;
-            if (now - lastTS < 2000) return;
+            if (now - lastTS < 5000) return;
             _lastLocationBroadcast[data.orderId] = now;
 
-            const payload = {
+            // ── MINIFIED tracking payload (sent to users watching the map) ──
+            // Only essential fields for 60fps client-side interpolation.
+            // Polyline/ETA are large strings that rarely change — sent on 30s cadence.
+            const trackingPayload = {
                 orderId: String(data.orderId),
                 deliveryPartnerId: String(userId),
                 lat,
                 lng,
-                boy_lat: lat, // Add boy_lat/lng for compatibility
-                boy_lng: lng,
-                riderLocation: [lat, lng], // Add array format for safety
                 heading,
                 speed,
-                accuracy,
-                timestamp: now
+                timestamp: now,
+                status: data.status || 'on_the_way',
             };
+
+            // Send polyline/eta only every 30 seconds (they're large and change rarely)
+            const lastPolyTS = _lastPolylineBroadcast[data.orderId] || 0;
+            if (now - lastPolyTS >= 30000) {
+                _lastPolylineBroadcast[data.orderId] = now;
+                if (data.polyline) trackingPayload.polyline = data.polyline;
+                if (data.eta != null && data.eta !== '') trackingPayload.eta = data.eta;
+            }
 
             logDeliverySocket('Location update received', {
                 socketId: socket.id,
@@ -230,18 +255,18 @@ export const initSocket = async (server) => {
 
             // Broadcast to tracking room (all users watching this order)
             const trackingRoom = roomNames.tracking(data.orderId);
-            socket.to(trackingRoom).emit('location-update', payload);
+            socket.to(trackingRoom).emit('location-update', trackingPayload);
 
             // Also emit to the specific user room if userId is provided
             if (data.userId) {
-                socket.to(roomNames.user(data.userId)).emit('location-update', payload);
+                socket.to(roomNames.user(data.userId)).emit('location-update', trackingPayload);
             }
 
             if (data.restaurantId) {
-                socket.to(roomNames.restaurant(data.restaurantId)).emit('location-update', payload);
+                socket.to(roomNames.restaurant(data.restaurantId)).emit('location-update', trackingPayload);
             }
 
-            // ─── Scalable Persistence (BullMQ + Redis "Hot" Buffering) ───
+            // â”€â”€â”€ Scalable Persistence (BullMQ + Redis "Hot" Buffering) â”€â”€â”€
             try {
                 const { getTrackingQueue } = await import('../queues/index.js');
                 const { getRedisClient } = await import('../config/redis.js');
@@ -270,7 +295,7 @@ export const initSocket = async (server) => {
                 logger.error(`Real-time persistence layer error: ${err.message}`);
             }
 
-            // ─── Firebase Realtime Database Sync (Cost Optimization) ───
+            // â”€â”€â”€ Firebase Realtime Database Sync (Cost Optimization) â”€â”€â”€
             try {
                 const db = getFirebaseDB();
                 if (db) {
@@ -279,13 +304,13 @@ export const initSocket = async (server) => {
                     orderRef.update({
                         lat,
                         lng,
-                        boy_lat: lat,
-                        boy_lng: lng,
                         heading,
                         speed,
                         accuracy,
                         last_updated: now,
-                        status: data.status || 'on_the_way'
+                        status: data.status || 'on_the_way',
+                        ...(data.polyline ? { polyline: data.polyline } : {}),
+                        ...(data.eta != null && data.eta !== '' ? { eta: data.eta } : {}),
                     }).catch(e => logger.error(`Firebase orderRef update error: ${e.message}`));
 
                     // 2. Update global delivery boy status node
@@ -321,7 +346,7 @@ export const initSocket = async (server) => {
             }
         });
 
-        // 🆕 Resync State on Reconnect
+        // ðŸ†• Resync State on Reconnect
         socket.on('resync', async () => {
           try {
             if (role === 'DELIVERY_PARTNER') {
@@ -357,16 +382,44 @@ export const initSocket = async (server) => {
                 });
               }
             }
+
+            if (
+              role === 'DELIVERY_PARTNER' &&
+              Array.isArray(state.pendingOffers) &&
+              state.pendingOffers.length > 0
+            ) {
+              logDeliverySocket('Resync recovered pending offers', {
+                socketId: socket.id,
+                deliveryPartnerId: String(userId || ''),
+                pendingOfferCount: state.pendingOffers.length,
+              });
+
+              socket.emit('pending_offers', {
+                offers: state.pendingOffers,
+                count: state.pendingOffers.length,
+                recoveredAt: Date.now(),
+              });
+
+              for (const offer of state.pendingOffers) {
+                socket.emit('new_order_available', {
+                  ...offer,
+                  recovered: true,
+                  recoveredAt: Date.now(),
+                });
+              }
+            }
+
             socket.emit('resync_complete', { timestamp: Date.now() });
             if (role === 'DELIVERY_PARTNER') {
               logDeliverySocket('Resync complete', {
                 socketId: socket.id,
                 deliveryPartnerId: String(userId || ''),
                 hasActiveOrder: Boolean(state.activeOrder),
+                pendingOfferCount: Array.isArray(state.pendingOffers) ? state.pendingOffers.length : 0,
               });
             }
           } catch (err) {
-            logger.error(`Resync failed for ${role}:${userId} — ${err.message}`);
+            logger.error(`Resync failed for ${role}:${userId} â€” ${err.message}`);
           }
         });
     });
@@ -375,15 +428,38 @@ export const initSocket = async (server) => {
     return io;
 };
 
+export const initRedisEmitter = (redisClient) => {
+    if (redisClient && !redisEmitter) {
+        redisEmitter = new Emitter(redisClient);
+        logger.info('Redis Emitter initialized for API broadcasting.');
+        return;
+    }
+
+    if (!redisClient) {
+        logger.warn('[SocketInit] initRedisEmitter called without a Redis client');
+        return;
+    }
+
+    logger.info('[SocketInit] Redis emitter already initialized; reusing existing emitter');
+};
+
 /**
- * Returns the initialized Socket.IO instance.
- * @returns {Server | null}
+ * Returns the initialized Socket.IO instance or Redis Emitter.
+ * @returns {Server | Emitter | null}
  */
 export const getIO = () => {
-    if (!io) {
-        logger.warn('Socket.IO not initialized');
-    }
-    return io;
+    if (io) return io;
+    if (redisEmitter) return redisEmitter;
+    
+    logger.warn(
+        `[SocketInit] Socket.IO not initialized (No local Server or Redis Emitter). redisEnabled=${config.redisEnabled} redisUrlPresent=${Boolean(config.redisUrl)} pid=${process.pid}`
+    );
+    
+    // Return a mock object to prevent crashes if called when disabled
+    return {
+        to: () => ({ emit: () => {} }),
+        emit: () => {}
+    };
 };
 
 export const rooms = roomNames;

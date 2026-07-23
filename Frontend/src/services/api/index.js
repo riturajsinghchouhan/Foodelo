@@ -81,6 +81,55 @@ const getUserMeOnce = () => {
   return userMeInFlight;
 };
 
+/** Dedupe FCM token POST — skip if same token was saved recently (avoids spam on route changes). */
+function createSaveFcmTokenOnce(client) {
+  const savedAt = new Map();
+  const inFlight = new Map();
+  const TTL_MS = 24 * 60 * 60 * 1000;
+
+  return (token, platform = "web") => {
+    if (!token) return Promise.reject(new Error("FCM token is required"));
+    const normalizedToken = String(token);
+    const normalizedPlatform = platform === "mobile" ? "mobile" : "web";
+    const key = `${normalizedPlatform}:${normalizedToken}`;
+
+    const last = savedAt.get(key);
+    if (last && Date.now() - last < TTL_MS) {
+      return Promise.resolve({
+        data: { success: true, message: "FCM token already saved", deduped: true },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config: {},
+      });
+    }
+
+    if (inFlight.has(key)) return inFlight.get(key);
+
+    const path =
+      normalizedPlatform === "mobile"
+        ? "/fcm-tokens/mobile/save"
+        : "/fcm-tokens/save";
+
+    const promise = client
+      .post(path, { token: normalizedToken, platform: normalizedPlatform })
+      .then((res) => {
+        savedAt.set(key, Date.now());
+        return res;
+      })
+      .finally(() => {
+        inFlight.delete(key);
+      });
+
+    inFlight.set(key, promise);
+    return promise;
+  };
+}
+
+const saveUserFcmTokenOnce = createSaveFcmTokenOnce(userClient);
+const saveRestaurantFcmTokenOnce = createSaveFcmTokenOnce(restaurantClient);
+const saveDeliveryFcmTokenOnce = createSaveFcmTokenOnce(deliveryClient);
+
 /** Auth API - user OTP + admin login via new backend */
 export const authAPI = {
   sendOTP: (phone, _purpose = "login", _email = null) => {
@@ -118,7 +167,8 @@ export const authAPI = {
       (typeof localStorage !== "undefined"
         ? localStorage.getItem("user_refreshToken")
         : null);
-    return authService.logout(token, fcmToken, platform);
+    const resolvedFcmToken = fcmToken || (typeof localStorage !== "undefined" ? localStorage.getItem("fcm_web_registered_token_user") : null);
+    return authService.logout(token, resolvedFcmToken, platform);
   },
 };
 
@@ -151,17 +201,31 @@ export const notificationAPI = {
 
 /** Admin API - new backend only (GET /auth/me, PATCH /auth/admin/profile, POST /auth/admin/change-password) */
 export const adminAPI = {
+  // Sub Admins
+  getSubAdmins: (params = {}) => adminClient.get("/food/admin/sub-admins", { params }),
+  createSubAdmin: (body) => adminClient.post("/food/admin/sub-admins", body),
+  updateSubAdmin: (id, body) => adminClient.put(`/food/admin/sub-admins/${id}`, body),
+  deleteSubAdmin: (id) => adminClient.delete(`/food/admin/sub-admins/${id}`),
+
   getSidebarBadges: () =>
     adminClient.get("/food/admin/sidebar-badges"),
+  getEnvSettings: () => adminClient.get("/food/admin/env"),
+  updateEnvSettings: (data) => adminClient.put("/food/admin/env", data),
+  getBusinessSettings: () => adminClient.get("/food/admin/business-settings"),
+  updateBusinessSettings: (data) => {
+    // If data is a FormData object (e.g. has files), pass it directly, else pass as JSON
+    const config = data instanceof FormData ? { headers: { "Content-Type": "multipart/form-data" } } : {};
+    return adminClient.put("/food/admin/business-settings", data, config);
+  },
   login: (email, password) => authService.adminLogin(email, password),
-  /** POST /auth/admin/forgot-password/request-otp – only accepts registered admin email */
+  /** POST /auth/admin/forgot-password/request-otp â€“ only accepts registered admin email */
   requestForgotPasswordOtp: (email) =>
     adminClient.post("/auth/admin/forgot-password/request-otp", {
       email: String(email || "")
         .trim()
         .toLowerCase(),
     }),
-  /** POST /auth/admin/forgot-password/reset – verify OTP and set new password in one call */
+  /** POST /auth/admin/forgot-password/reset â€“ verify OTP and set new password in one call */
   resetPasswordWithOtp: (email, otp, newPassword) =>
     adminClient.post("/auth/admin/forgot-password/reset", {
       email: String(email || "")
@@ -191,14 +255,17 @@ export const adminAPI = {
       "/auth/admin/change-password",
       { currentPassword, newPassword }
     ),
-  logout: (refreshToken) => {
+  /** Public API for fee settings */
+  getPublicFeeSettings: () =>
+    apiClient.get("/food/admin/fee-settings/public"),
+  logout: (refreshToken, fcmToken = null, platform = "web") => {
     const token =
       refreshToken ||
       (typeof localStorage !== "undefined"
         ? localStorage.getItem("admin_refreshToken")
         : null);
-    const fcmToken = typeof localStorage !== "undefined" ? localStorage.getItem("fcm_web_registered_token_admin") : null;
-    return authService.logout(token, fcmToken, "web");
+    const resolvedFcmToken = fcmToken || (typeof localStorage !== "undefined" ? localStorage.getItem("fcm_web_registered_token_admin") : null);
+    return authService.logout(token, resolvedFcmToken, platform);
   },
   // Restaurant approvals and join requests
   getPendingRestaurants: () =>
@@ -234,6 +301,9 @@ export const adminAPI = {
   /** Dashboard summary stats (admin home) */
   getDashboardStats: (params = {}) =>
     adminClient.get("/food/admin/dashboard-stats", { params }),
+  /** Live monitor: restaurants + delivery partners with locations */
+  getLiveMonitorStatus: () =>
+    adminClient.get("/food/admin/live-monitor/status"),
   /** List restaurant withdrawal requests (admin). */
   getWithdrawals: (params = {}) =>
     adminClient.get("/food/admin/withdrawals", { params }),
@@ -263,6 +333,12 @@ export const adminAPI = {
     adminClient.patch(`/food/admin/delivery/${String(id)}/approve`, {}),
   rejectDeliveryPartner: (id, reason) =>
     adminClient.patch(`/food/admin/delivery/${String(id)}/reject`, { reason: String(reason || "").trim() }),
+  deleteDeliveryPartner: (id) =>
+    adminClient.delete(`/food/admin/delivery/${String(id)}`),
+  getAvailableDeliveryPartners: (params) =>
+    adminClient.get("/food/admin/delivery/available-partners", { params }),
+  assignDeliveryPartner: (orderId, partnerId) =>
+    adminClient.post(`/food/admin/orders/${String(orderId)}/assign-delivery`, { deliveryPartnerId: partnerId }),
   /** GET /food/admin/delivery/support-tickets - list all delivery support tickets (query: status, priority, search, page, limit). */
   getDeliverySupportTickets: (params) =>
     adminClient.get("/food/admin/delivery/support-tickets", { params }),
@@ -345,11 +421,26 @@ export const adminAPI = {
   /** Update restaurant location (admin). Body includes lat/lng + address fields. */
   updateRestaurantLocation: (id, body) =>
     adminClient.patch(`/food/admin/restaurants/${String(id)}/location`, body ?? {}),
+  updateRestaurantOutletTimings: (id, outletTimings) =>
+    adminClient.patch(`/food/admin/restaurants/${String(id)}/outlet-timings`, { outletTimings }),
+  /** Update restaurant zone rank (admin) */
+  updateRestaurantZoneRank: (id, rank) =>
+    adminClient.patch(`/food/admin/restaurants/${String(id)}/zone-rank`, { rank }),
   /** Restaurant menu (admin) */
   getRestaurantMenuById: (id, config = {}) =>
     adminClient.get(`/food/admin/restaurants/${id}/menu`, config),
   updateRestaurantMenuById: (id, body) =>
     adminClient.patch(`/food/admin/restaurants/${id}/menu`, body ?? {}),
+  uploadMenuBulk: (restaurantId, file) => {
+    const formData = new FormData();
+    formData.append("restaurantId", restaurantId);
+    formData.append("file", file);
+    return adminClient.post("/food/admin/menu/bulk-upload", formData);
+  },
+  getMenuItemsStatus: (restaurantId) =>
+    adminClient.get(`/food/admin/menu/items-status/${restaurantId}`),
+  regenerateMenuItemImage: (restaurantId, sectionIndex, itemIndex, itemId) =>
+    adminClient.post("/food/admin/menu/regenerate-image", { restaurantId, sectionIndex, itemIndex, itemId }),
   /** Foods (admin) - separate collection */
   getFoods: (params = {}) =>
     adminClient.get("/food/admin/foods", { params }),
@@ -376,14 +467,28 @@ export const adminAPI = {
     adminClient.get(`/food/admin/customers/${String(id)}`),
   updateCustomerStatus: (id, isActive) =>
     adminClient.patch(`/food/admin/customers/${String(id)}/status`, { isActive: isActive !== false }),
-  /** Orders (admin) – list, get by id, assign delivery partner */
+  topupCustomerWallet: (id, amount, description) =>
+    adminClient.post(`/food/admin/customers/${String(id)}/wallet-topup`, { amount: Number(amount), description }),
+  deductCustomerWallet: (id, amount, description) =>
+    adminClient.post(`/food/admin/customers/${String(id)}/wallet-deduct`, { amount: Number(amount), description }),
+  /** Orders (admin) â€“ list, get by id, assign delivery partner */
   getOrders: (params = {}) =>
     adminClient.get("/food/admin/orders", { params: { limit: 50, page: 1, ...params } }),
   getOrderById: (orderId) =>
     adminClient.get(`/food/admin/orders/${String(orderId)}`),
+  acceptOrder: (orderId) =>
+    adminClient.patch(`/food/admin/orders/${String(orderId)}/status`, { orderStatus: "confirmed", note: "Accepted by admin" }),
+  rejectOrder: (orderId, reason = "") =>
+    adminClient.patch(`/food/admin/orders/${String(orderId)}/status`, { orderStatus: "cancelled_by_admin", note: reason }),
+  cancelOrder: (orderId, reason = "Cancelled by admin") =>
+    adminClient.patch(`/food/admin/orders/${String(orderId)}/status`, { orderStatus: "cancelled_by_admin", note: reason }),
+  markOrderDelivered: (orderId, note = "Marked as delivered by admin") =>
+    adminClient.patch(`/food/admin/orders/${String(orderId)}/status`, { orderStatus: "delivered", note }),
+  resendDeliveryNotification: (orderId) =>
+    adminClient.post(`/food/admin/orders/${String(orderId)}/resend-notification`, {}),
   deleteOrder: (orderId) =>
     adminClient.delete(`/food/admin/orders/${String(orderId)}`),
-  /** Dispatch settings – auto vs manual assign (global) */
+  /** Dispatch settings â€“ auto vs manual assign (global) */
   /** Create restaurant (admin). Single API: POST /food/admin/restaurants. Body: JSON with image URLs. */
   createRestaurant: (body) =>
     adminClient.post("/food/admin/restaurants", body ?? {}),
@@ -437,12 +542,9 @@ export const adminAPI = {
   /** Public env variables (safe subset). Used for runtime keys like Google Maps. */
   // getPublicEnvVariables removed: rely on import.meta.env instead.
 
-  /** Public categories (user app) - zone-aware */
+  /** Public categories (user app) - zone-aware, cached + deduped */
   getPublicCategories: (params = {}, config = {}) =>
-    userClient.get("/food/restaurant/categories/public", {
-      params: params ?? {},
-      ...config,
-    }),
+    getPublicCategoriesOnce(params, config),
 
   /** Offers & Coupons (admin) */
   getAllOffers: (params = {}) =>
@@ -500,6 +602,8 @@ export const adminAPI = {
   /** Restaurant Commission (admin) */
   getRestaurantCommissionBootstrap: () =>
     adminClient.get("/food/admin/restaurant-commissions/bootstrap"),
+  updateGlobalRestaurantCommissionSettings: (body) =>
+    adminClient.post("/food/admin/restaurant-commissions/global", body),
   getRestaurantCommissions: (params = {}) =>
     adminClient.get("/food/admin/restaurant-commissions", { params }),
   getRestaurantCommissionById: (id) =>
@@ -514,7 +618,7 @@ export const adminAPI = {
     adminClient.patch(`/food/admin/restaurant-commissions/${String(id)}/toggle`, {}),
   /** Backward-compatible alias used in UI */
   getApprovedRestaurants: (params = {}) =>
-    adminClient.get("/food/admin/restaurants", { params: { status: "approved", limit: 1000, ...params } }),
+    adminClient.get("/food/admin/restaurants", { params: { status: "live_and_banned", limit: 1000, ...params } }),
 
   /** Delivery Boy Commission Rules (admin) */
   getCommissionRules: () =>
@@ -586,6 +690,8 @@ export const adminAPI = {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
+  updateBusinessToggles: (body) =>
+    adminClient.patch("/food/admin/business-settings/toggles", body ?? {}),
 };
 
 /** Restaurant API - OTP login via new backend; no email/password. */
@@ -605,6 +711,9 @@ export const restaurantAPI = {
   /** Finance dashboard for `hub-finance`. */
   getFinance: (params = {}) =>
     restaurantClient.get("/food/restaurant/finance", { params: params || {} }),
+  /** Restaurant overview dashboard KPIs and charts. */
+  getDashboardStats: (params = {}) =>
+    restaurantClient.get("/food/restaurant/dashboard-stats", { params: params || {} }),
   /** Fetch restaurant by owner (stub for missing backend endpoint). */
   getRestaurantByOwner: () =>
     Promise.resolve({
@@ -625,10 +734,17 @@ export const restaurantAPI = {
   /** List withdrawal history for current restaurant. */
   getWithdrawalHistory: () =>
     restaurantClient.get("/food/restaurant/withdrawals"),
+    
+  // Promocodes
+  getPromocodes: () => restaurantClient.get("/food/promocodes"),
+  createPromocode: (data) => restaurantClient.post("/food/promocodes", data),
+  togglePromocodeStatus: (id, isActive) => restaurantClient.patch(`/food/promocodes/${id}`, { isActive }),
+  deletePromocode: (id) => restaurantClient.delete(`/food/promocodes/${id}`),
+
   /** Update restaurant profile fields (name/cuisines/location/menuImages). */
   updateProfile: (body) =>
     restaurantClient
-      .patch("/food/restaurant/profile", body ?? {})
+      .patch("/food/restaurant/profile", body ?? {}, { timeout: 300000 })
       .then((res) => {
         // Keep cache coherent to avoid an immediate refetch storm.
         restaurantCurrentCached = res;
@@ -710,16 +826,20 @@ export const restaurantAPI = {
         })
         .map((o) => {
           const isPct = o.discountType === "percentage";
+          const discountValue = Number(o.discountValue) || 0;
+          const flatDiscount = isPct ? 0 : discountValue;
           return {
             couponCode: o.couponCode,
             discountType: o.discountType,
-            discountPercentage: isPct ? Number(o.discountValue) || 0 : 0,
-            originalPrice: 0,
+            discountValue,
+            discountPercentage: isPct ? discountValue : 0,
+            discount: flatDiscount,
+            originalPrice: flatDiscount,
             discountedPrice: 0,
             minOrderValue: Number(o.minOrderValue || 0),
             minOrder: Number(o.minOrderValue || 0),
             maxDiscount: o.maxDiscount != null ? Number(o.maxDiscount) : null,
-            customerGroup: o.customerScope || "all",
+            customerGroup: o.customerScope === "first-time" ? "new" : "all",
             isGlobalCoupon: true,
             endDate: o.endDate || null,
             showInCart: o.showInCart !== false,
@@ -753,33 +873,26 @@ export const restaurantAPI = {
   /** Menu (restaurant dashboard) */
   getMenu: (params = {}) =>
     restaurantClient.get("/food/restaurant/menu", { params }),
-  /** Orders (restaurant dashboard) */
-  getOrders: (params = {}) =>
-    restaurantClient.get("/food/restaurant/orders", {
-      params: { limit: 50, page: 1, ...params },
-    }),
   getOrderById: (orderId) =>
     restaurantClient.get(`/food/restaurant/orders/${String(orderId)}`),
   updateMenu: (body) =>
     restaurantClient.patch("/food/restaurant/menu", body ?? {}),
-  saveFcmToken: (token, platform = "web") => {
-    if (!token) return Promise.reject(new Error("FCM token is required"));
-    const path =
-      platform === "mobile" ? "/fcm-tokens/mobile/save" : "/fcm-tokens/save";
-    return restaurantClient.post(path, { token: String(token), platform });
-  },
+  saveFcmToken: saveRestaurantFcmTokenOnce,
   removeFcmToken: (token, platform = "web") => {
     if (!token) return Promise.reject(new Error("FCM token is required"));
     return restaurantClient.delete(
-      `/fcm-tokens/remove/${encodeURIComponent(String(token))}`,
-      { data: { token: String(token), platform } }
+      `/fcm-tokens/remove`,
+      {
+        params: { platform },
+        data: { token: String(token), platform }
+      }
     );
   },
   /** Outlet timings (restaurant dashboard) */
   getOutletTimings: () =>
     restaurantClient.get("/food/restaurant/outlet-timings"),
   saveOutletTimings: (outletTimings) =>
-    restaurantClient.post(
+    restaurantClient.put(
       "/food/restaurant/outlet-timings",
       { outletTimings: outletTimings || {} }
     ),
@@ -790,6 +903,8 @@ export const restaurantAPI = {
     restaurantClient.post("/food/restaurant/foods/bulk", items ?? []),
   updateFood: (id, body) =>
     restaurantClient.patch(`/food/restaurant/foods/${String(id)}`, body ?? {}),
+  deleteFood: (id) =>
+    restaurantClient.delete(`/food/restaurant/foods/${String(id)}`),
   /** Orders (restaurant dashboard) */
   getOrders: (() => {
     // Single-flight de-dupe to avoid duplicate GETs in React StrictMode / double-mount.
@@ -800,7 +915,7 @@ export const restaurantAPI = {
     let cacheAt = 0;
     const CACHE_MS = 800;
 
-    const buildKey = (p = {}) => JSON.stringify({ limit: 50, page: 1, ...p });
+    const buildKey = (p = {}) => JSON.stringify({ limit: 30, page: 1, ...p });
 
     return (params = {}) => {
       const key = buildKey(params);
@@ -815,13 +930,17 @@ export const restaurantAPI = {
       inFlightKey = key;
       inFlight = restaurantClient
         .get("/food/restaurant/orders", {
-          params: { limit: 50, page: 1, ...params }
+          params: { limit: 30, page: 1, ...params },
         })
         .then((res) => {
           // Backend paginated shape: { data: { data: [...], meta: {...} } }
           // Normalize to { data: { data: { orders: [...], meta } } } for restaurant UI pages.
           const payload = res?.data?.data || {};
-          const rowsRaw = Array.isArray(payload.data) ? payload.data : [];
+          const rowsRaw = Array.isArray(payload.orders)
+            ? payload.orders
+            : Array.isArray(payload.data)
+              ? payload.data
+              : [];
 
           // Normalize backend order fields to match existing restaurant UI expectations.
           // UI historically uses: order.status, order.address, order.total, order.paymentMethod
@@ -844,7 +963,7 @@ export const restaurantAPI = {
             const paymentMethod = o.payment?.method || o.paymentMethod || null;
             return { ...o, status, address, total, paymentMethod };
           });
-          const meta = payload.meta || {};
+          const meta = payload.meta || payload.pagination || {};
           const normalized = {
             ...res,
             data: {
@@ -945,7 +1064,7 @@ export const restaurantAPI = {
     restaurantClient.patch(`/food/restaurant/addons/${String(id)}`, body ?? {}),
   deleteAddon: (id) =>
     restaurantClient.delete(`/food/restaurant/addons/${String(id)}`),
-  logout: (refreshToken) => {
+  logout: (refreshToken, fcmToken = null, platform = "web") => {
     restaurantCurrentInFlight = null;
     restaurantCurrentCached = null;
     restaurantCurrentCacheTime = 0;
@@ -954,8 +1073,8 @@ export const restaurantAPI = {
       (typeof localStorage !== "undefined"
         ? localStorage.getItem("restaurant_refreshToken")
         : null);
-    const fcmToken = typeof localStorage !== "undefined" ? localStorage.getItem("fcm_web_registered_token_restaurant") : null;
-    return authService.logout(token, fcmToken, "web");
+    const resolvedFcmToken = fcmToken || (typeof localStorage !== "undefined" ? localStorage.getItem("fcm_web_registered_token_restaurant") : null);
+    return authService.logout(token, resolvedFcmToken, platform);
   },
   /** Backend has no email/password login; use phone OTP only. */
   login: (_email, _password) =>
@@ -968,7 +1087,7 @@ export const restaurantAPI = {
     if (!formData || !(formData instanceof FormData)) {
       return Promise.reject(new Error("FormData is required"));
     }
-    return restaurantClient.post("/food/restaurant/register", formData);
+    return restaurantClient.post("/food/restaurant/register", formData, { timeout: 300000 });
   },
   /** Public: list approved restaurants for user app */
   getRestaurants: (params = {}, config = {}) =>
@@ -1049,10 +1168,12 @@ function createInFlightCache({ ttlMs }) {
 
 // Public user-app endpoints can be called by multiple components/effects on refresh (and React StrictMode in dev).
 // A small in-flight + short TTL cache collapses duplicate requests without changing functionality.
-const publicRestaurantsCache = createInFlightCache({ ttlMs: 3000 });
-const publicRestaurantMenuCache = createInFlightCache({ ttlMs: 3000 });
-const publicRestaurantOutletTimingsCache = createInFlightCache({ ttlMs: 3000 });
-const publicGenericGetCache = createInFlightCache({ ttlMs: 3000 });
+const publicRestaurantsCache = createInFlightCache({ ttlMs: 300000 }); // 5 minutes
+const publicRestaurantMenuCache = createInFlightCache({ ttlMs: 300000 });
+const publicRestaurantOutletTimingsCache = createInFlightCache({ ttlMs: 300000 });
+const publicCategoriesCache = createInFlightCache({ ttlMs: 300000 });
+const publicFoodsCache = createInFlightCache({ ttlMs: 300000 });
+const publicGenericGetCache = createInFlightCache({ ttlMs: 300000 });
 
 export const publicGetOnce = (url, config = {}) => {
   const safeUrl = typeof url === "string" ? url.trim() : "";
@@ -1076,23 +1197,98 @@ export const publicGetOnce = (url, config = {}) => {
   );
 };
 
+/** Cached public landing settings — shared by Home, BottomNav, DesktopNavbar, Under250. */
+export const getPublicLandingSettings = (zoneId = null) =>
+  publicGetOnce("/food/landing/settings/public", {
+    params: zoneId ? { zoneId } : {},
+  }).then((res) => res?.data?.data ?? res?.data ?? {});
+
+/** Cached explore icons — shared across Home and landing config. */
+export const getPublicExploreIcons = (zoneId = null) =>
+  publicGetOnce("/food/explore-icons/public", {
+    params: zoneId ? { zoneId } : {},
+  }).then((res) => res?.data?.data ?? res?.data ?? {});
+
+const getPublicCategoriesOnce = (params = {}, config = {}) => {
+  const { noCache, ...axiosConfig } = config || {};
+  const keyParams =
+    params && typeof params === "object" ? { ...params } : {};
+  if (keyParams._ts) delete keyParams._ts;
+
+  if (noCache) {
+    return userClient.get("/food/restaurant/categories/public", {
+      params: keyParams,
+      ...axiosConfig,
+    });
+  }
+
+  const key = `categories:${stableStringify(keyParams)}`;
+  return publicCategoriesCache.getOrCreate(key, () =>
+    userClient.get("/food/restaurant/categories/public", {
+      params: keyParams,
+      ...axiosConfig,
+    }),
+  );
+};
+
+/** Cached public categories — shared by Home, CategoryPage, SearchResults, etc. */
+export const getPublicCategories = (zoneId = null, config = {}) =>
+  getPublicCategoriesOnce(zoneId ? { zoneId } : {}, config).then(
+    (res) => res?.data?.data ?? res?.data ?? {},
+  );
+
+const getPublicFoodsOnce = (params = {}, config = {}) => {
+  const { noCache, ...axiosConfig } = config || {};
+  const keyParams =
+    params && typeof params === "object" ? { ...params } : {};
+  if (keyParams._ts) delete keyParams._ts;
+
+  if (noCache) {
+    return userClient.get("/food/restaurant/foods/public", {
+      params: keyParams,
+      ...axiosConfig,
+    });
+  }
+
+  const key = `foods:${stableStringify(keyParams)}`;
+  return publicFoodsCache.getOrCreate(key, () =>
+    userClient.get("/food/restaurant/foods/public", {
+      params: keyParams,
+      ...axiosConfig,
+    }),
+  );
+};
+
+/** Cached public foods — zone-scoped approved items for CategoryPage fallbacks. */
+export const getPublicFoods = (params = {}, config = {}) =>
+  getPublicFoodsOnce(params, config).then(
+    (res) => res?.data?.data ?? res?.data ?? {},
+  );
+
 const getPublicRestaurantsOnce = (params = {}, config = {}) => {
   const { noCache, ...axiosConfig } = config || {};
   if (noCache) {
     return userClient.get("/food/restaurant/restaurants", {
-      params: { limit: 1000, ...params },
+      params: { limit: 15, ...params },
       ...axiosConfig,
     });
   }
-  const keyParams = { limit: 1000, ...params };
+  const keyParams = { limit: 15, ...params };
   // `_ts` is an explicit cache-buster in many call sites; ignore it for dedupe purposes.
   if (keyParams && typeof keyParams === "object") {
     delete keyParams._ts;
+    // Round coords so minor GPS jitter does not bust the cache.
+    if (Number.isFinite(Number(keyParams.lat))) {
+      keyParams.lat = Math.round(Number(keyParams.lat) * 100000) / 100000;
+    }
+    if (Number.isFinite(Number(keyParams.lng))) {
+      keyParams.lng = Math.round(Number(keyParams.lng) * 100000) / 100000;
+    }
   }
   const key = `restaurants:${stableStringify(keyParams)}`;
   return publicRestaurantsCache.getOrCreate(key, () =>
     userClient.get("/food/restaurant/restaurants", {
-      params: { limit: 1000, ...params },
+      params: { limit: 15, ...params },
       ...axiosConfig,
     }),
   );
@@ -1227,7 +1423,7 @@ export const deliveryAPI = {
     })),
   getReferralStats: () =>
     deliveryClient.get("/food/delivery/referrals/stats"),
-  logout: (refreshToken) => {
+  logout: (refreshToken, fcmToken = null, platform = "web") => {
     deliveryMeCached = null;
     deliveryMeCacheTime = 0;
     try {
@@ -1238,8 +1434,8 @@ export const deliveryAPI = {
       (typeof localStorage !== "undefined"
         ? localStorage.getItem("delivery_refreshToken")
         : null);
-    const fcmToken = typeof localStorage !== "undefined" ? localStorage.getItem("fcm_web_registered_token_delivery") : null;
-    return authService.logout(token, fcmToken, "web");
+    const resolvedFcmToken = fcmToken || (typeof localStorage !== "undefined" ? localStorage.getItem("fcm_web_registered_token_delivery") : null);
+    return authService.logout(token, resolvedFcmToken, platform);
   },
   /** POST /food/delivery/register - multipart FormData (new partner, no token). */
   register: (formData) => {
@@ -1282,20 +1478,13 @@ export const deliveryAPI = {
     }
     return deliveryClient.patch("/food/delivery/profile/bank-details", formData);
   },
-  saveFcmToken: (token, platform = "web") => {
-    if (!token) return Promise.reject(new Error("FCM token is required"));
-    const path =
-      platform === "mobile" ? "/fcm-tokens/mobile/save" : "/fcm-tokens/save";
-    return deliveryClient.post(
-      path,
-      { token: String(token), platform }
-    );
-  },
+  saveFcmToken: saveDeliveryFcmTokenOnce,
   removeFcmToken: (token, platform = "web") => {
     if (!token) return Promise.reject(new Error("FCM token is required"));
     return deliveryClient.delete(
-      `/fcm-tokens/remove/${encodeURIComponent(String(token))}`,
+      `/fcm-tokens/remove`,
       {
+        params: { platform },
         data: { token: String(token), platform }
       }
     );
@@ -1310,10 +1499,10 @@ export const deliveryAPI = {
   getSupportTicketById: (id) =>
     deliveryClient.get(`/food/delivery/support-tickets/${id}`),
   /** PATCH /food/delivery/availability - set online/offline (and optional lat/lng). */
-  updateOnlineStatus: (isOnline) =>
+  updateOnlineStatus: (isOnline, shiftStartPicBase64 = null, shiftStartAddress = null) =>
     deliveryClient.patch(
       "/food/delivery/availability",
-      { status: isOnline ? "online" : "offline" }
+      { status: isOnline ? "online" : "offline", shiftStartPicBase64, shiftStartAddress }
     ),
   updateLocation: (latitude, longitude, isOnline, extras = {}) =>
     deliveryClient.patch(
@@ -1449,7 +1638,13 @@ export const deliveryAPI = {
         latitude: location.lat,
         longitude: location.lng,
         billImageUrl: data.billImageUrl,
+        otp: data.otp,
       }
+    ),
+  requestPickupOtp: (orderId) =>
+    deliveryClient.post(
+      `/food/delivery/orders/${String(orderId)}/request-pickup-otp`,
+      {}
     ),
   confirmReachedDrop: (orderId) =>
     deliveryClient.patch(
@@ -1566,6 +1761,13 @@ export const userAPI = {
   /** PATCH /food/user/profile (Bearer USER) */
   updateProfile: (body) =>
     userClient.patch("/food/user/profile", body ?? {}),
+    
+  // Promocodes
+  getActivePromocodes: (restaurantId) =>
+    userClient.get(`/food/promocodes/restaurant/${restaurantId}`),
+  validatePromocode: (data) =>
+    userClient.post("/food/promocodes/validate", data),
+    
   /** Upload and set user profile image (multipart). Field name: file */
   uploadProfileImage: (file) => {
     if (!file) return Promise.reject(new Error("File is required"));
@@ -1662,31 +1864,22 @@ export const userAPI = {
     userClient.get("/food/user/safety-emergency-reports", {
       params: params ?? {}
     }),
-  /**
-   * Legacy UI compatibility: update "current user location".
-   * We already persist the user's selected location in localStorage in the UI.
-   * Keep this as a no-op success so existing flows don't break.
-   */
-  updateLocation: (_payload) =>
-    Promise.resolve({
-      data: { success: true, message: "Location saved (client)", data: null },
-    }),
+  /** GET /food/user/location (Bearer USER) */
+  getLocation: () => userClient.get("/food/user/location"),
+  /** PUT /food/user/location (Bearer USER) */
+  updateLocation: (payload) =>
+    userClient.put("/food/user/location", payload ?? {}),
   saveFcmToken: (token, options = {}) => {
-    if (!token) return Promise.reject(new Error("FCM token is required"));
     const platform = options?.platform === "mobile" ? "mobile" : "web";
-    const path =
-      platform === "mobile" ? "/fcm-tokens/mobile/save" : "/fcm-tokens/save";
-    return userClient.post(
-      path,
-      { token: String(token), platform }
-    );
+    return saveUserFcmTokenOnce(token, platform);
   },
   removeFcmToken: (token, options = {}) => {
     if (!token) return Promise.reject(new Error("FCM token is required"));
     const platform = options?.platform === "mobile" ? "mobile" : "web";
     return userClient.delete(
-      `/fcm-tokens/remove/${encodeURIComponent(String(token))}`,
+      `/fcm-tokens/remove`,
       {
+        params: { platform },
         data: { token: String(token), platform }
       }
     );
@@ -1699,7 +1892,16 @@ export const userAPI = {
   deleteAccount: () =>
     userClient.delete("/food/user/account"),
 };
-export const locationAPI = createStubAPI();
+export const locationAPI = {
+  /** GET /food/location/reverse-geocode?lat=&lng= (public) */
+  reverseGeocode: (latitude, longitude) =>
+    userClient.get("/food/location/reverse-geocode", {
+      params: { lat: latitude, lng: longitude },
+    }),
+  /** POST /food/location/distance — road + straight-line legs */
+  computeDistance: (body) =>
+    userClient.post("/food/location/distance", body ?? {}),
+};
 export const zoneAPI = {
   /** Public: detect active service zone for a lat/lng point. */
   detectZone: (lat, lng) =>
@@ -1728,7 +1930,7 @@ export const uploadAPI = {
     }
 
     return userClient.post("/uploads/image", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 300000,
     });
   },
   /**
@@ -1748,11 +1950,11 @@ export const uploadAPI = {
     }
 
     return userClient.post("/uploads/file", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 300000,
     });
   },
 };
-/** Order API (user app – Bearer USER token). Minimal calls: single create/verify, list/details cached by caller. */
+/** Order API (user app â€“ Bearer USER token). Minimal calls: single create/verify, list/details cached by caller. */
 export const orderAPI = {
   calculateOrder: (payload) =>
     userClient.post("/food/orders/calculate", payload ?? {}),
@@ -1867,9 +2069,9 @@ export const diningAPI = {
     userClient.get("/food/dining/restaurants/public", { params }),
   getOccupiedSeatsPublic: (restaurantId) =>
     userClient.get(`/food/dining/restaurants/${String(restaurantId)}/occupied-seats/public`),
-  getHeroBanners: () => userClient.get("/food/hero-banners/dining/public"),
-  getRestaurantBySlug: (slug) =>
-    userClient.get(`/food/restaurant/restaurants/${String(slug)}`),
+  getHeroBanners: () => userClient.get("/food/hero-banners/ads/public"),
+  getRestaurantBySlug: (slug, config = {}) =>
+    userClient.get(`/food/restaurant/restaurants/${String(slug)}`, config),
   getOfferBanners: () => Promise.resolve({ data: { success: true, data: [] } }),
   getStories: () => Promise.resolve({ data: { success: true, data: [] } }),
   getBankOffers: () => Promise.resolve({ data: { success: true, data: [] } }),
@@ -1896,4 +2098,5 @@ export const heroBannerAPI = createStubAPI();
 export const publicAPI = {
   getPrivacy: (key = "privacy") => userClient.get(`/food/pages/${key}`),
   getTerms: (key = "terms") => userClient.get(`/food/pages/${key}`),
+  getBusinessSettings: () => apiClient.get("/food/admin/business-settings/public"),
 };

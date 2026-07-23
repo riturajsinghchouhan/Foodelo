@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useNavigate } from "react-router-dom"
-import Lenis from "lenis"
+import useRestaurantLenis from "@food/hooks/useRestaurantLenis"
 import {
   ArrowLeft,
   Search,
@@ -29,14 +29,15 @@ import {
   Calendar,
   MapPin,
   LogOut,
+  Ticket,
 } from "lucide-react"
+import RestaurantBentoGrid from "@food/components/restaurant/RestaurantBentoGrid"
 import { Card, CardContent } from "@food/components/ui/card"
 import { DateRangeCalendar } from "@food/components/ui/date-range-calendar"
 import { clearModuleAuth, clearAuthData, getCurrentUser } from "@food/utils/auth"
 import { restaurantAPI, notificationAPI } from "@food/api"
 import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
 import { toast } from "sonner"
-import BottomNavOrders from "@food/components/restaurant/BottomNavOrders"
 import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -198,7 +199,7 @@ function TimePickerWheel({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          className="bg-white rounded-lg shadow-2xl w-full max-w-xs overflow-hidden"
+          className="bg-white rounded-lg shadow-2xl restaurant-modal-inline max-w-xs overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-center py-8 px-4 relative">
@@ -324,7 +325,7 @@ function TimePickerWheel({
           <div className="border-t border-gray-200 px-4 py-4 flex justify-center">
             <button
               onClick={handleConfirm}
-              className="text-[#7e3866] hover:text-[#6a2f56] font-bold text-base transition-colors"
+              className="text-primary hover:text-[#6a2f56] font-bold text-base transition-colors"
             >
               Okay
             </button>
@@ -500,7 +501,48 @@ export default function ExploreMore() {
     try {
       // Call backend logout API to invalidate refresh token
       try {
-        await restaurantAPI.logout()
+        let fcmToken = null;
+        let platform = "web";
+        try {
+          if (typeof window !== "undefined") {
+            if (window.flutter_inappwebview) {
+              platform = "mobile";
+              const handlerNames = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"];
+              for (const handlerName of handlerNames) {
+                try {
+                  const t = await Promise.race([
+                    window.flutter_inappwebview.callHandler(handlerName, { module: "restaurant" }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1500))
+                  ]);
+                  if (t && typeof t === "string" && t.length > 20) {
+                    fcmToken = t.trim();
+                    break;
+                  }
+                } catch (e) {
+                  console.warn(`Bridge handler ${handlerName} failed or timed out`, e);
+                }
+              }
+              if (!fcmToken) {
+                fcmToken = localStorage.getItem("fcm_web_registered_token_restaurant") || null;
+              }
+            } else {
+              fcmToken = localStorage.getItem("fcm_web_registered_token_restaurant") || null;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to get FCM token during logout", e);
+        }
+
+        // Add explicit call to removeFcmToken API before logout
+        if (fcmToken) {
+          try {
+            await restaurantAPI.removeFcmToken(fcmToken, platform);
+          } catch (e) {
+            console.warn("Failed to remove FCM token directly", e);
+          }
+        }
+
+        await restaurantAPI.logout(null, fcmToken, platform);
       } catch (apiError) {
         // Continue with logout even if API call fails (network issues, etc.)
         debugWarn("Logout API call failed, continuing with local cleanup:", apiError)
@@ -554,8 +596,6 @@ export default function ExploreMore() {
       setIsLoggingOut(false)
     }
   }
-
-
 
   const handleDeleteAccount = async () => {
     if (isDeletingAccount) return
@@ -697,32 +737,16 @@ export default function ExploreMore() {
     }
   }, [profileOpen, scheduleOffOpen, dateTimePickerOpen, successPopupOpen, existingScheduleOpen, searchOpen, deleteAccountConfirmOpen])
 
-  // Lenis smooth scrolling
-  useEffect(() => {
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-    })
-
-    function raf(time) {
-      lenis.raf(time)
-      requestAnimationFrame(raf)
-    }
-
-    requestAnimationFrame(raf)
-
-    return () => {
-      lenis.destroy()
-    }
-  }, [])
+  // Lenis smooth scrolling (using RestaurantLayout's scroll context)
+  useRestaurantLenis()
 
   // Section data
   const manageOutletItems = [
     { id: 1, label: "Outlet info", icon: Info, route: "/food/restaurant/outlet-info" },
     { id: 2, label: "Outlet timings", icon: Clock, route: "/food/restaurant/outlet-timings" },
-    { id: 3, label: "Dining Reservations", icon: Calendar, route: "/food/restaurant/reservations" },
+    // { id: 3, label: "Dining Reservations", icon: Calendar, route: "/food/restaurant/reservations" },
     { id: 4, label: "Menu categories", icon: Settings, route: "/food/restaurant/menu-categories" },
+    { id: 6, label: "Promo Codes", icon: Ticket, route: "/food/restaurant/promocodes" },
   ]
 
   const settingsItems = [
@@ -794,7 +818,7 @@ export default function ExploreMore() {
       >
         {title}
       </motion.h2>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="restaurant-bento-grid restaurant-bento-grid--explore">
         {items.map((item, index) => {
           const IconComponent = item.icon
           return (
@@ -807,7 +831,7 @@ export default function ExploreMore() {
                 delay: delay + 0.1 + (index * 0.02),
                 ease: [0.25, 0.1, 0.25, 1]
               }}
-              className="flex flex-col items-center"
+              className="flex flex-col items-stretch h-full"
             >
               <motion.button
                 whileHover={{ scale: 1.02, y: -1 }}
@@ -820,7 +844,7 @@ export default function ExploreMore() {
                     navigate(item.route)
                   }
                 }}
-                className="w-full flex items-center justify-center p-6 bg-white rounded-lg shadow-md border-2 border-gray-200 hover:shadow-md transition-shadow duration-200 min-h-[110px]"
+                className="restaurant-bento-card w-full flex flex-1 flex-col items-center justify-center p-6 min-h-[110px] lg:min-h-[130px] hover:border-primary/20 transition-all duration-200"
               >
                 <div className="relative flex items-center justify-center">
                   {item.customIcon ? (
@@ -861,7 +885,7 @@ export default function ExploreMore() {
         duration: 0.2,
         ease: [0.25, 0.1, 0.25, 1]
       }}
-      className="min-h-screen bg-white overflow-x-hidden pb-24"
+      className="restaurant-page min-h-full bg-white overflow-x-hidden pb-24"
     >
       {/* Header */}
       <motion.div
@@ -894,7 +918,7 @@ export default function ExploreMore() {
             </button>
             <button
               onClick={() => setProfileOpen(true)}
-              className={`p-2 transition-all duration-200 rounded-full ${profileOpen ? "bg-[#7e3866] text-white shadow-lg" : "bg-gray-100 hover:bg-gray-200 text-gray-900"}`}
+              className={`p-2 transition-all duration-200 rounded-full ${profileOpen ? "bg-primary text-white shadow-lg" : "bg-gray-100 hover:bg-gray-200 text-gray-900"}`}
               aria-label="Profile"
             >
               <UserRound className="w-5 h-5" />
@@ -916,14 +940,14 @@ export default function ExploreMore() {
           }}
         >
           <Card 
-            className="bg-white border-gray-200 py-3 mb-6 rounded-lg shadow-0 hover:border-[#7e3866]/30 hover:bg-[#7e3866]/5 transition-all active:scale-[0.99] cursor-pointer"
+            className="bg-white border-gray-200 py-3 mb-6 rounded-lg shadow-0 hover:border-primary/30 hover:bg-primary/5 transition-all active:scale-[0.99] cursor-pointer"
             onClick={() => navigate("/food/restaurant/outlet-info")}
           >
             <CardContent className="px-4">
               <div className="w-full flex items-center justify-between">
                 <div className="flex items-center gap-3 flex-1">
-                  <div className="p-2 bg-gray-100 rounded-lg group-hover:bg-[#7e3866]/10 transition-colors">
-                    <Store className="w-5 h-5 text-gray-900 group-hover:text-[#7e3866]" />
+                  <div className="p-2 bg-gray-100 rounded-lg group-hover:bg-primary/10 transition-colors">
+                    <Store className="w-5 h-5 text-gray-900 group-hover:text-primary" />
                   </div>
                   <div className="flex-1 min-w-0 text-left">
                     <h2 className="text-base font-semibold text-gray-900 mb-0.5">
@@ -991,12 +1015,12 @@ export default function ExploreMore() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 24 }}
               transition={{ duration: 0.22 }}
-              className="fixed inset-x-4 bottom-28 z-[61] mx-auto w-auto max-w-md rounded-3xl bg-white p-5 shadow-2xl"
+              className="fixed left-1/2 top-1/2 z-[61] -translate-x-1/2 -translate-y-1/2 restaurant-modal-inline max-w-md rounded-3xl bg-white p-5 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#7e3866]/10">
-                  <LogOut className="w-5 h-5 text-[#7e3866]" />
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                  <LogOut className="w-5 h-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-bold text-gray-900">Logout?</h3>
                 <p className="mt-1 text-sm text-gray-500">Are you sure you want to logout?</p>
@@ -1018,7 +1042,7 @@ export default function ExploreMore() {
                     setLogoutConfirmOpen(false)
                   }}
                   disabled={isLoggingOut}
-                  className="rounded-2xl bg-[#7e3866] px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#6a2f56] active:scale-95 disabled:opacity-50"
+                  className="rounded-2xl bg-primary px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#6a2f56] active:scale-95 disabled:opacity-50"
                 >
                   {isLoggingOut ? "Logging out..." : "Yes"}
                 </button>
@@ -1045,7 +1069,7 @@ export default function ExploreMore() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 24 }}
               transition={{ duration: 0.22 }}
-              className="fixed inset-x-4 bottom-28 z-[61] mx-auto w-auto max-w-md rounded-3xl bg-white p-5 shadow-2xl"
+              className="fixed left-1/2 top-1/2 z-[61] -translate-x-1/2 -translate-y-1/2 restaurant-modal-inline max-w-md rounded-3xl bg-white p-5 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="text-center">
@@ -1103,7 +1127,7 @@ export default function ExploreMore() {
                 damping: 30,
                 stiffness: 300
               }}
-              className="fixed top-0 left-0 right-0 bg-white shadow-lg z-50 h-screen"
+              className="fixed top-0 left-0 right-0 bg-white shadow-lg z-50 h-dvh max-h-dvh"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Search Header */}
@@ -1125,7 +1149,7 @@ export default function ExploreMore() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     autoFocus
-                    className="w-full px-4 py-2 pr-10 bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7e3866] text-gray-900 placeholder-gray-500"
+                    className="w-full px-4 py-2 pr-10 bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-gray-900 placeholder-gray-500"
                   />
                   {searchQuery && (
                     <button
@@ -1227,7 +1251,7 @@ export default function ExploreMore() {
                 damping: 30,
                 stiffness: 300
               }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[2.5rem] shadow-[0_-15px_50px_-12px_rgba(0,0,0,0.3)] z-50 max-h-[90vh] overflow-y-auto"
+              className="restaurant-modal-sheet bg-white rounded-t-[2.5rem] shadow-[0_-15px_50px_-12px_rgba(0,0,0,0.3)] z-50 max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -1252,7 +1276,7 @@ export default function ExploreMore() {
                   className="w-full flex items-start gap-4 text-left p-2 -m-2 hover:bg-gray-50 rounded-xl transition-colors group"
                 >
                   {/* Avatar */}
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center shrink-0 overflow-hidden ring-4 ring-[#7e3866]/10 group-hover:ring-[#7e3866]/20 transition-all">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center shrink-0 overflow-hidden ring-4 ring-primary/10 group-hover:ring-primary/20 transition-all">
                     {userData.profileImage?.url ? (
                       <img
                         src={userData.profileImage.url}
@@ -1260,8 +1284,8 @@ export default function ExploreMore() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#7e3866]/5 to-[#7e3866]/20">
-                        <User className="w-8 h-8 text-[#7e3866]" />
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/5 to-primary/20">
+                        <User className="w-8 h-8 text-primary" />
                       </div>
                     )}
                   </div>
@@ -1284,7 +1308,7 @@ export default function ExploreMore() {
                         {userData.email}
                       </p>
                     )}
-                    <p className="text-[10px] font-bold text-[#7e3866] uppercase tracking-widest mt-2 bg-[#7e3866]/5 w-fit px-2.5 py-1 rounded-full border border-[#7e3866]/10">
+                    <p className="text-[10px] font-bold text-primary uppercase tracking-widest mt-2 bg-primary/5 w-fit px-2.5 py-1 rounded-full border border-primary/10">
                       {userData.role}
                     </p>
                   </div>
@@ -1314,13 +1338,11 @@ export default function ExploreMore() {
                 <button
                   onClick={handleLogout}
                   disabled={isLoggingOut}
-                  className="w-full bg-[#7e3866]/10 text-[#7e3866] border border-[#7e3866]/20 hover:bg-[#7e3866]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-bold py-4 px-4 rounded-2xl transition-all flex items-center justify-center gap-2"
                 >
-                  <LogOut className="w-5 h-5 text-[#7e3866]" />
+                  <LogOut className="w-5 h-5 text-primary" />
                   {isLoggingOut ? "Logging out..." : "Logout"}
                 </button>
-
-
 
                 {/* Delete Restaurant Button */}
                 <button
@@ -1343,46 +1365,7 @@ export default function ExploreMore() {
                 </button>
               </div>
 
-              {/* Footer Links */}
-              <div className="px-6 py-4 border-t border-gray-200">
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to terms of service
-                      debugLog("Terms of Service clicked")
-                    }}
-                  >
-                    Terms of Service
-                  </a>
-                  <span className="text-gray-400">|</span>
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to privacy policy
-                      debugLog("Privacy Policy clicked")
-                    }}
-                  >
-                    Privacy Policy
-                  </a>
-                  <span className="text-gray-400">|</span>
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to code of conduct
-                      debugLog("Code of Conduct clicked")
-                    }}
-                  >
-                    Code of Conduct
-                  </a>
-                </div>
-              </div>
+
             </motion.div>
           </>
         )}
@@ -1412,7 +1395,7 @@ export default function ExploreMore() {
                 damping: 30,
                 stiffness: 300
               }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
+              className="restaurant-modal-sheet bg-white rounded-t-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -1468,7 +1451,7 @@ export default function ExploreMore() {
                 damping: 30,
                 stiffness: 300
               }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
+              className="restaurant-modal-sheet bg-white rounded-t-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -1550,7 +1533,7 @@ export default function ExploreMore() {
                 {/* Submit Button */}
                 <button
                   onClick={handleSubmitScheduleOff}
-                  className="w-full bg-[#7e3866] hover:bg-[#6a2f56] text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-md active:scale-[0.98] mt-4"
+                  className="w-full bg-primary hover:bg-[#6a2f56] text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-md active:scale-[0.98] mt-4"
                 >
                   Submit
                 </button>
@@ -1616,7 +1599,7 @@ export default function ExploreMore() {
               className="fixed inset-0 flex items-center justify-center z-[10000] px-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+              <div className="bg-white rounded-2xl shadow-2xl restaurant-modal-inline max-w-sm p-6 text-center">
                 <div className="flex justify-center mb-4">
                   <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
                     <CheckCircle className="w-10 h-10 text-green-600" />
@@ -1636,7 +1619,7 @@ export default function ExploreMore() {
                     setStartTime({ hour: "9", minute: "00", period: "am" })
                     setEndTime({ hour: "5", minute: "00", period: "pm" })
                   }}
-                  className="w-full bg-[#7e3866] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#6a2f56] transition-all shadow-md active:scale-[0.98]"
+                  className="w-full bg-primary text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#6a2f56] transition-all shadow-md active:scale-[0.98]"
                 >
                   Done 
                 </button>
@@ -1670,7 +1653,7 @@ export default function ExploreMore() {
                 damping: 30,
                 stiffness: 300
               }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
+              className="restaurant-modal-sheet bg-white rounded-t-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -1754,7 +1737,6 @@ export default function ExploreMore() {
           </>
         )}
       </AnimatePresence>
-      <BottomNavOrders />
     </motion.div>
   )
 }

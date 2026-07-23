@@ -1,18 +1,36 @@
 import React, { useState, useEffect } from 'react'
 import AppRoutes from './routes'
 import SplashScreen from '@/shared/components/SplashScreen.jsx'
+import PageLoader from '@/shared/components/PageLoader.jsx'
 
 function App() {
   const [showSplash, setShowSplash] = useState(() => {
-    // Check if splash was already shown (persistent)
-    const splashShown = localStorage.getItem('foodelo_splash_shown')
-    return !splashShown
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase()
+      if (
+        path.includes('/terms') ||
+        path.includes('/privacy') ||
+        path.includes('/support') ||
+        path.includes('/restaurant') ||
+        path.includes('/delivery') ||
+        path.includes('/admin')
+      ) {
+        return false
+      }
+      // Check if splash screen was already shown in this session
+      if (sessionStorage.getItem('splashShown')) {
+        return false
+      }
+    }
+    return true
   })
 
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSplashFinish = () => {
-    localStorage.setItem('foodelo_splash_shown', 'true')
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('splashShown', 'true')
+    }
     setShowSplash(false)
   }
 
@@ -21,10 +39,10 @@ function App() {
     return (
       <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-white dark:bg-[#0a0a0a]">
         <div className="relative w-16 h-16 flex items-center justify-center">
-          <div className="absolute inset-0 border-4 border-[#7e3866]/10 rounded-full" />
-          <div className="absolute inset-0 border-4 border-t-[#7e3866] rounded-full animate-spin" />
+          <div className="absolute inset-0 border-4 border-primary/10 rounded-full" />
+          <div className="absolute inset-0 border-4 border-t-primary rounded-full animate-spin" />
         </div>
-        <h1 className="text-2xl font-black text-[#7e3866] italic uppercase tracking-tighter mt-6">FOODELO</h1>
+        <h1 className="text-2xl font-black text-primary italic uppercase tracking-tighter mt-6">Foodelo</h1>
       </div>
     )
   }
@@ -32,6 +50,7 @@ function App() {
   return (
     <>
       {showSplash && <SplashScreen onFinish={handleSplashFinish} />}
+      <PageLoader />
       <AppRoutes />
     </>
   )

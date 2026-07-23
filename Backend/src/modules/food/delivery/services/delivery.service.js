@@ -33,14 +33,29 @@ export const registerDeliveryPartner = async (payload, files) => {
     if (files?.aadharPhoto?.[0]) {
         images.aadharPhoto = await uploadImageBuffer(files.aadharPhoto[0].buffer, 'food/delivery/aadhar');
     }
+    if (files?.aadharFrontPhoto?.[0]) {
+        images.aadharFrontPhoto = await uploadImageBuffer(files.aadharFrontPhoto[0].buffer, 'food/delivery/aadhar');
+    }
+    if (files?.aadharBackPhoto?.[0]) {
+        images.aadharBackPhoto = await uploadImageBuffer(files.aadharBackPhoto[0].buffer, 'food/delivery/aadhar');
+    }
     if (files?.panPhoto?.[0]) {
         images.panPhoto = await uploadImageBuffer(files.panPhoto[0].buffer, 'food/delivery/pan');
     }
-    if (files?.drivingLicensePhoto?.[0]) {
-        images.drivingLicensePhoto = await uploadImageBuffer(
-            files.drivingLicensePhoto[0].buffer,
+    if (files?.drivingLicenseFrontPhoto?.[0]) {
+        images.drivingLicenseFrontPhoto = await uploadImageBuffer(
+            files.drivingLicenseFrontPhoto[0].buffer,
             'food/delivery/license'
         );
+    }
+    if (files?.drivingLicenseBackPhoto?.[0]) {
+        images.drivingLicenseBackPhoto = await uploadImageBuffer(
+            files.drivingLicenseBackPhoto[0].buffer,
+            'food/delivery/license'
+        );
+    }
+    if (files?.rcPhoto?.[0]) {
+        images.rcPhoto = await uploadImageBuffer(files.rcPhoto[0].buffer, 'food/delivery/rc');
     }
 
     const partner = await FoodDeliveryPartner.create({
@@ -296,12 +311,27 @@ export const updateDeliveryAvailability = async (userId, payload) => {
     if (!partner) {
         throw new ValidationError('Delivery partner not found');
     }
-    const { status, latitude, longitude } = payload || {};
+    const { status, latitude, longitude, shiftStartPicBase64, shiftStartAddress } = payload || {};
     let validStatus = 'offline';
     if (status === 'online' || status === true) validStatus = 'online';
     else if (status === 'offline' || status === false) validStatus = 'offline';
     
     partner.availabilityStatus = validStatus;
+
+    if (validStatus === 'online' && shiftStartPicBase64) {
+        try {
+            const buffer = Buffer.from(shiftStartPicBase64, 'base64');
+            partner.shiftStartPic = await uploadImageBuffer(buffer, 'food/delivery/shift');
+            partner.shiftStartTime = new Date();
+            if (shiftStartAddress) {
+                partner.shiftStartAddress = shiftStartAddress;
+            }
+        } catch (error) {
+            console.error('Error uploading shift start pic:', error);
+            throw new ValidationError('Failed to upload shift start picture');
+        }
+    }
+
     if (typeof latitude === 'number' && typeof longitude === 'number') {
         partner.lastLocation = {
             type: 'Point',
@@ -422,11 +452,12 @@ export const getDeliveryPartnerWallet = async (deliveryPartnerId) => {
 
     const totalWithdrawn = 0;
     const totalBalance = totalEarned + totalBonus;
-    const availableCashLimit = Math.max(0, totalCashLimit - cashInHand);
+    const availableCashLimit = Math.max(0, totalCashLimit - cashInHand + totalBalance);
+    const pocketBalance = Math.max(0, totalBalance - cashInHand);
 
     return {
         totalBalance,
-        pocketBalance: totalBalance,
+        pocketBalance,
         cashInHand,
         totalWithdrawn,
         totalEarned,
@@ -619,7 +650,8 @@ export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {
     const statusFilter = normalizeStatusFilter(query.status);
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 50, 1), 1000);
 
-    const { start, end } = computeRange(period, date);
+    const start = query.startDate ? new Date(query.startDate) : computeRange(period, date).start;
+    const end = query.endDate ? new Date(query.endDate) : computeRange(period, date).end;
 
     const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
     const match = { 'dispatch.deliveryPartnerId': partnerId };
@@ -661,8 +693,8 @@ export const getDeliveryPocketDetails = async (deliveryPartnerId, query = {}) =>
     if (!deliveryPartnerId || !mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
         throw new ValidationError('Delivery partner not found');
     }
-    const date = query.date ? new Date(query.date) : new Date();
-    const { start, end } = getWeekRange(date);
+    const start = query.startDate ? new Date(query.startDate) : getWeekRange(query.date ? new Date(query.date) : new Date()).start;
+    const end = query.endDate ? new Date(query.endDate) : getWeekRange(query.date ? new Date(query.date) : new Date()).end;
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 1000, 1), 2000);
 
     const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);

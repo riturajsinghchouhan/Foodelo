@@ -1,13 +1,11 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
-import { useEffect, Suspense, lazy } from "react"
+import { useEffect, Suspense, lazy, useRef } from "react"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader"
 import AuthInitializer from "@food/components/AuthInitializer"
 import PushSoundEnableButton from "@food/components/PushSoundEnableButton"
 import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
-import { isModuleAuthenticated } from "@food/utils/auth"
-import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
 
 // Lazy Loading Components
 const UserRouter = lazy(() => import("@food/components/user/UserRouter"))
@@ -40,55 +38,35 @@ function ScrollToTop() {
   return null;
 }
 
-function RestaurantGlobalNotificationListenerInner() {
-  useRestaurantNotifications()
-  return null
-}
-
-function RestaurantGlobalNotificationListener() {
-  const location = useLocation()
-  const isRestaurantRoute =
-    location.pathname.startsWith("/food/restaurant") &&
-    !location.pathname.startsWith("/food/restaurants")
-  const isRestaurantAuthRoute =
-    location.pathname === "/food/restaurant/login" ||
-    location.pathname === "/food/restaurant/auth/sign-in" ||
-    location.pathname === "/food/restaurant/signup" ||
-    location.pathname === "/food/restaurant/signup-email" ||
-    location.pathname === "/food/restaurant/forgot-password" ||
-    location.pathname === "/food/restaurant/otp" ||
-    location.pathname === "/food/restaurant/welcome" ||
-    location.pathname === "/food/restaurant/auth/google-callback"
-  const isOrderManagedRoute =
-    location.pathname === "/food/restaurant" ||
-    location.pathname === "/food/restaurant/orders" ||
-    location.pathname.startsWith("/food/restaurant/orders/")
-
-  const shouldListen =
-    isRestaurantRoute &&
-    !isRestaurantAuthRoute &&
-    !isOrderManagedRoute &&
-    isModuleAuthenticated("restaurant")
-
-  if (!shouldListen) {
-    return null
-  }
-
-  return <RestaurantGlobalNotificationListenerInner />
-}
-
 export default function App() {
   const location = useLocation()
+  const fcmRegisteredModulesRef = useRef(new Set())
 
   useEffect(() => {
+    const path = location.pathname || ""
+    let moduleName = "user"
+    if (path.includes("/food/restaurant") || path.includes("/restaurant")) {
+      moduleName = "restaurant"
+    } else if (path.includes("/food/delivery") || path.includes("/delivery")) {
+      moduleName = "delivery"
+    } else if (path.includes("/food/admin") || path.includes("/admin")) {
+      moduleName = "admin"
+    }
+
+    if (moduleName === "admin") return
+    if (fcmRegisteredModulesRef.current.has(moduleName)) return
+
     registerWebPushForCurrentModule(location.pathname)
+      .then(() => {
+        fcmRegisteredModulesRef.current.add(moduleName)
+      })
+      .catch(() => {})
   }, [location.pathname])
 
   return (
     <AuthInitializer>
       <>
         <ScrollToTop />
-        <RestaurantGlobalNotificationListener />
         <PushSoundEnableButton />
         <Suspense fallback={<Loader />}>
           <Routes>

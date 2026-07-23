@@ -5,7 +5,6 @@ import {
   isRestaurantOnboardingComplete,
 } from "@food/utils/onboardingUtils";
 import { motion, AnimatePresence } from "framer-motion";
-import Lenis from "lenis";
 import {
   Printer,
   Volume2,
@@ -24,14 +23,21 @@ import {
   FileText,
 } from "lucide-react";
 import { toast } from "sonner";
-import BottomNavOrders from "@food/components/restaurant/BottomNavOrders";
-import RestaurantNavbar from "@food/components/restaurant/RestaurantNavbar";
-const notificationSound = "/zomato_sms.mp3";
+import notificationSound from "@food/assets/audio/alert.mp3";
 import { restaurantAPI, diningAPI } from "@food/api";
+import { useAuthStore } from "@/core/auth/auth.store";
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications";
+import useRestaurantLenis from "@food/hooks/useRestaurantLenis";
+import usePaginatedRestaurantOrders, {
+  RESTAURANT_ORDERS_PAGE_SIZE,
+  RESTAURANT_ORDER_TAB_STATUS,
+} from "@food/hooks/usePaginatedRestaurantOrders";
+import RestaurantOrdersPagination from "@food/components/restaurant/RestaurantOrdersPagination";
+import RestaurantBentoGrid from "@food/components/restaurant/RestaurantBentoGrid";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import ResendNotificationButton from "@food/components/restaurant/ResendNotificationButton";
+import { loadBusinessSettings } from "@food/utils/businessSettings";
 const debugLog = (...args) => {};
 const debugWarn = (...args) => {};
 const debugError = (...args) => {};
@@ -40,14 +46,15 @@ const STORAGE_KEY = "restaurant_online_status";
 
 // Top filter tabs
 const filterTabs = [
-  { id: "all", label: "All" },
+  { id: "new", label: "New" },
   { id: "preparing", label: "Preparing" },
   { id: "ready", label: "Ready" },
   { id: "out-for-delivery", label: "Out for delivery" },
   { id: "scheduled", label: "Scheduled" },
-  { id: "table-booking", label: "Table Booking" },
   { id: "completed", label: "Completed" },
   { id: "cancelled", label: "Cancelled" },
+  { id: "dead", label: "Dead Orders" },
+  { id: "all", label: "All" },
 ];
 
 const allOrdersStatusPriority = {
@@ -60,6 +67,7 @@ const allOrdersStatusPriority = {
   delivered: 6,
   completed: 6,
   cancelled: 7,
+  dead: 8,
 };
 
 const getAllOrdersTimestamp = (order) =>
@@ -105,87 +113,35 @@ const transformOrderForList = (order) => ({
 
 // Completed Orders List Component
 function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { orders: rawOrders, meta, page, loading, setPage } = usePaginatedRestaurantOrders({
+    status: RESTAURANT_ORDER_TAB_STATUS.completed,
+    refreshToken,
+  });
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchOrders = async () => {
-      try {
-        const response = await restaurantAPI.getOrders();
-
-        if (!isMounted) return;
-
-        if (response.data?.success && response.data.data?.orders) {
-          const completedOrders = response.data.data.orders.filter(
-            (order) =>
-              order.status === "delivered" || order.status === "completed",
-          );
-
-          const transformedOrders = completedOrders.map((order) => ({
-            orderId: order.orderId || order._id,
-            mongoId: order._id,
-            status: order.status || "delivered",
-            customerName: order.userId?.name || order.customerName || "Customer",
-            type: "Home Delivery",
-            tableOrToken: null,
-            timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            deliveredAt:
-              order.deliveredAt || order.updatedAt || order.createdAt,
-            itemsSummary:
-              order.items
-                ?.map((item) => `${item.quantity}x ${item.name}`)
-                .join(", ") || "No items",
-            photoUrl: order.items?.[0]?.image || null,
-            photoAlt: order.items?.[0]?.name || "Order",
-            amount: order.pricing?.total || order.total || 0,
-            paymentMethod: order.paymentMethod || order.payment?.method || null,
-          }));
-
-          transformedOrders.sort((a, b) => {
-            const dateA = new Date(a.deliveredAt);
-            const dateB = new Date(b.deliveredAt);
-            return dateB - dateA;
-          });
-
-          if (isMounted) {
-            setOrders(transformedOrders);
-            setLoading(false);
-          }
-        } else {
-          if (isMounted) {
-            setOrders([]);
-            setLoading(false);
-          }
-        }
-      } catch (error) {
-        if (!isMounted) return;
-
-        if (error.code !== "ERR_NETWORK" && error.response?.status !== 404) {
-          debugError("Error fetching completed orders:", error);
-        }
-
-        if (isMounted) {
-          setOrders([]);
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchOrders();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [refreshToken]);
+  const orders = rawOrders.map((order) => ({
+    orderId: order.orderId || order._id,
+    mongoId: order._id,
+    status: order.status || "delivered",
+    customerName: order.userId?.name || order.customerName || "Customer",
+    type: "Home Delivery",
+    tableOrToken: null,
+    timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    deliveredAt: order.deliveredAt || order.updatedAt || order.createdAt,
+    itemsSummary:
+      order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
+      "No items",
+    photoUrl: order.items?.[0]?.image || null,
+    photoAlt: order.items?.[0]?.name || "Order",
+    amount: order.pricing?.total || order.total || 0,
+    paymentMethod: order.paymentMethod || order.payment?.method || null,
+  }));
 
   if (loading) {
     return (
-      <div className="pt-4 pb-6">
+      <div className="pt-1 pb-6">
         <div className="flex items-baseline justify-between mb-3">
           <h2 className="text-base font-semibold text-black">
             Completed orders
@@ -198,17 +154,17 @@ function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
   }
 
   return (
-    <div className="pt-4 pb-6">
+    <div className="pt-1 pb-6">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-base font-semibold text-black">Completed orders</h2>
-        <span className="text-xs text-gray-500">{orders.length} total</span>
+        <span className="text-xs text-gray-500">{meta.total} total</span>
       </div>
       {orders.length === 0 ? (
         <div className="text-center py-8 text-gray-500 text-sm">
           No completed orders yet
         </div>
       ) : (
-        <div>
+        <RestaurantBentoGrid variant="orders">
           {orders.map((order) => {
             const deliveredDate = order.deliveredAt
               ? new Date(order.deliveredAt).toLocaleDateString("en-US", {
@@ -223,7 +179,7 @@ function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
             return (
               <div
                 key={order.orderId || order.mongoId}
-                className="w-full bg-white rounded-xl p-3 mb-2.5 border border-gray-100 shadow-sm transition-all">
+                className="restaurant-bento-card w-full p-3 mb-2.5 lg:mb-0 h-full transition-all">
                 <button
                   type="button"
                   onClick={() =>
@@ -303,99 +259,53 @@ function CompletedOrders({ onSelectOrder, refreshToken = 0 }) {
               </div>
             );
           })}
-        </div>
+        </RestaurantBentoGrid>
       )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
 
 // Cancelled Orders List Component
 function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { orders: rawOrders, meta, page, loading, setPage } = usePaginatedRestaurantOrders({
+    status: RESTAURANT_ORDER_TAB_STATUS.cancelled,
+    refreshToken,
+  });
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchOrders = async () => {
-      try {
-        const response = await restaurantAPI.getOrders();
-
-        if (!isMounted) return;
-
-        if (response.data?.success && response.data.data?.orders) {
-          // Filter cancelled orders (both restaurant and user cancelled)
-          const cancelledOrders = response.data.data.orders.filter(
-            (order) => order.status === "cancelled",
-          );
-
-          const transformedOrders = cancelledOrders.map((order) => ({
-            orderId: order.orderId || order._id,
-            mongoId: order._id,
-            status: order.status || "cancelled",
-            customerName: order.userId?.name || order.customerName || "Customer",
-            type: "Home Delivery",
-            tableOrToken: null,
-            timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            cancelledAt:
-              order.cancelledAt || order.updatedAt || order.createdAt,
-            cancelledBy: order.cancelledBy || "unknown",
-            cancellationReason:
-              order.cancellationReason || "No reason provided",
-            itemsSummary:
-              order.items
-                ?.map((item) => `${item.quantity}x ${item.name}`)
-                .join(", ") || "No items",
-            photoUrl: order.items?.[0]?.image || null,
-            photoAlt: order.items?.[0]?.name || "Order",
-            amount: order.pricing?.total || order.total || 0,
-            paymentMethod: order.paymentMethod || order.payment?.method || null,
-            restaurantNote: order.restaurantNote || null,
-          }));
-
-          transformedOrders.sort((a, b) => {
-            const dateA = new Date(a.cancelledAt);
-            const dateB = new Date(b.cancelledAt);
-            return dateB - dateA;
-          });
-
-          if (isMounted) {
-            setOrders(transformedOrders);
-            setLoading(false);
-          }
-        } else {
-          if (isMounted) {
-            setOrders([]);
-            setLoading(false);
-          }
-        }
-      } catch (error) {
-        if (!isMounted) return;
-
-        if (error.code !== "ERR_NETWORK" && error.response?.status !== 404) {
-          debugError("Error fetching cancelled orders:", error);
-        }
-
-        if (isMounted) {
-          setOrders([]);
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchOrders();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [refreshToken]);
+  const orders = rawOrders.map((order) => ({
+    orderId: order.orderId || order._id,
+    mongoId: order._id,
+    status: order.status || "cancelled",
+    customerName: order.userId?.name || order.customerName || "Customer",
+    type: "Home Delivery",
+    tableOrToken: null,
+    timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    cancelledAt: order.cancelledAt || order.updatedAt || order.createdAt,
+    cancelledBy: order.cancelledBy || "unknown",
+    cancellationReason: order.cancellationReason || "No reason provided",
+    itemsSummary:
+      order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
+      "No items",
+    photoUrl: order.items?.[0]?.image || null,
+    photoAlt: order.items?.[0]?.name || "Order",
+    amount: order.pricing?.total || order.total || 0,
+    paymentMethod: order.paymentMethod || order.payment?.method || null,
+    restaurantNote: order.restaurantNote || null,
+  }));
 
   if (loading) {
     return (
-      <div className="pt-4 pb-6">
+      <div className="pt-1 pb-6">
         <div className="flex items-baseline justify-between mb-3">
           <h2 className="text-base font-semibold text-black">
             Cancelled orders
@@ -408,17 +318,17 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
   }
 
   return (
-    <div className="pt-4 pb-6">
+    <div className="pt-1 pb-6">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-base font-semibold text-black">Cancelled orders</h2>
-        <span className="text-xs text-gray-500">{orders.length} total</span>
+        <span className="text-xs text-gray-500">{meta.total} total</span>
       </div>
       {orders.length === 0 ? (
         <div className="text-center py-8 text-gray-500 text-sm">
           No cancelled orders yet
         </div>
       ) : (
-        <div>
+        <RestaurantBentoGrid variant="orders">
           {orders.map((order) => {
             const cancelledDate = order.cancelledAt
               ? new Date(order.cancelledAt).toLocaleDateString("en-US", {
@@ -440,7 +350,7 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
             return (
               <div
                 key={order.orderId || order.mongoId}
-                className="w-full bg-white rounded-xl p-3 mb-2.5 border border-gray-100 shadow-sm transition-all">
+                className="restaurant-bento-card w-full p-3 mb-2.5 lg:mb-0 h-full transition-all">
                 <button
                   type="button"
                   onClick={() =>
@@ -536,8 +446,184 @@ function CancelledOrders({ onSelectOrder, refreshToken = 0 }) {
               </div>
             );
           })}
-        </div>
+        </RestaurantBentoGrid>
       )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
+    </div>
+  );
+}
+
+// Dead Orders List Component
+function DeadOrders({ onSelectOrder, refreshToken = 0 }) {
+  const { orders: rawOrders, meta, page, loading, setPage } = usePaginatedRestaurantOrders({
+    status: RESTAURANT_ORDER_TAB_STATUS.dead,
+    refreshToken,
+  });
+
+  const orders = rawOrders.map((order) => ({
+    orderId: order.orderId || order._id,
+    mongoId: order._id,
+    status: "dead",
+    customerName: order.userId?.name || order.customerName || "Customer",
+    type: "Home Delivery",
+    tableOrToken: null,
+    timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    cancelledAt: order.cancelledAt || order.updatedAt || order.createdAt,
+    cancellationReason:
+      order.cancellationReason ||
+      "Auto-killed: Order was not delivered within 1 hour",
+    itemsSummary:
+      order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
+      "No items",
+    photoUrl: order.items?.[0]?.image || null,
+    photoAlt: order.items?.[0]?.name || "Order",
+    amount: order.pricing?.total || order.total || 0,
+    paymentMethod: order.paymentMethod || order.payment?.method || null,
+  }));
+
+  if (loading) {
+    return (
+      <div className="pt-1 pb-6">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-base font-semibold text-black">
+            Dead orders
+          </h2>
+          <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+        </div>
+        <div className="text-center py-8 text-gray-500 text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-1 pb-6">
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-base font-semibold text-black">Dead orders</h2>
+        <span className="text-xs text-gray-500">{meta.total} total</span>
+      </div>
+      {orders.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">
+          No dead orders found
+        </div>
+      ) : (
+        <RestaurantBentoGrid variant="orders">
+          {orders.map((order) => {
+            const cancelledDate = order.cancelledAt
+              ? new Date(order.cancelledAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "N/A";
+
+            return (
+              <div
+                key={order.orderId || order.mongoId}
+                className="restaurant-bento-card w-full p-3 mb-2.5 lg:mb-0 h-full transition-all">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onSelectOrder?.({
+                      orderId: order.orderId,
+                      status: "Dead",
+                      customerName: order.customerName,
+                      type: order.type,
+                      tableOrToken: order.tableOrToken,
+                      timePlaced: cancelledDate,
+                      itemsSummary: order.itemsSummary,
+                      paymentMethod: order.paymentMethod,
+                    })
+                  }
+                  className="w-full text-left flex gap-3 items-stretch">
+                  <div className="h-16 w-16 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center flex-shrink-0 my-auto border border-gray-100">
+                    {order.photoUrl ? (
+                      <img
+                        src={order.photoUrl}
+                        alt={order.photoAlt}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center px-1">
+                        <span className="text-[9px] font-medium text-gray-400 text-center leading-tight">
+                          {order.photoAlt}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 flex flex-col justify-between min-h-[80px]">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-[13px] font-bold text-slate-900 leading-none">
+                          Order #{order.orderId}
+                        </p>
+                        <p className="text-[10px] text-gray-500 mt-1 font-medium capitalize">
+                          {order.customerName}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border border-zinc-200 bg-zinc-100 text-zinc-600">
+                          <span className="h-1 w-1 rounded-full bg-zinc-500" />
+                          Dead Order
+                        </span>
+                        <span className="text-[9px] text-gray-400 font-medium">
+                          {cancelledDate}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-600 line-clamp-1">
+                        {order.itemsSummary}
+                      </p>
+                      {order.cancellationReason && (
+                        <p className="text-[10px] text-red-600 mt-1 line-clamp-1">
+                          Reason: {order.cancellationReason}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-2 flex items-end justify-between gap-2">
+                      <div className="flex flex-col gap-1">
+                        <p className="text-[11px] text-gray-500">
+                          {order.type}
+                        </p>
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-[11px] text-gray-500">
+                          Amount
+                        </span>
+                        <span className="text-xs font-medium text-black">
+                          ₹{order.amount.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            );
+          })}
+        </RestaurantBentoGrid>
+      )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
@@ -616,13 +702,13 @@ function TableBookings() {
     );
 
   return (
-    <div className="pt-4 pb-6 px-1">
+    <div className="pt-1 pb-6 px-1">
       <div className="flex items-baseline justify-between mb-4 px-1">
         <h2 className="text-base font-semibold text-black">Table Bookings</h2>
         <div className="flex items-center gap-3">
            <button 
             onClick={handleRefresh}
-            className="text-[10px] font-black text-primary-orange uppercase tracking-widest hover:opacity-80 transition-opacity"
+            className="text-[10px] font-black text-primary uppercase tracking-widest hover:opacity-80 transition-opacity"
           >
             Refresh
           </button>
@@ -722,71 +808,105 @@ function TableBookings() {
   );
 }
 
+// New Orders List Component
+function NewOrders({ onSelectOrder }) {
+  const pollMs =
+    typeof window !== "undefined" && window.restaurantSocketConnected
+      ? 45000
+      : 15000;
+  const { orders: rawOrders, meta, page, loading, setPage } =
+    usePaginatedRestaurantOrders({
+      status: RESTAURANT_ORDER_TAB_STATUS.new,
+      enablePoll: true,
+      pollMs,
+    });
+
+  const orders = rawOrders
+    .map(transformOrderForList)
+    .sort((a, b) => b.sortTimestamp - a.sortTimestamp);
+
+  if (loading) {
+    return (
+      <div className="pt-1 pb-6">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-base font-semibold text-black">New orders</h2>
+          <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+        </div>
+        <div className="text-center py-8 text-gray-500 text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-1 pb-6">
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-black">New orders</h2>
+          <span className="text-xs text-gray-500">({meta.total})</span>
+        </div>
+      </div>
+      {orders.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">
+          No new orders found
+        </div>
+      ) : (
+        <RestaurantBentoGrid variant="orders">
+          {orders.map((order) => (
+            <OrderCard
+              key={order.orderId || order.mongoId}
+              {...order}
+              onSelect={onSelectOrder}
+            />
+          ))}
+        </RestaurantBentoGrid>
+      )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
+    </div>
+  );
+}
+
 function AllOrders({ onSelectOrder, onCancel }) {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const pollMs =
+    typeof window !== "undefined" && window.restaurantSocketConnected
+      ? 45000
+      : 15000;
+  const { orders: rawOrders, meta, page, loading, setPage } =
+    usePaginatedRestaurantOrders({
+      status: RESTAURANT_ORDER_TAB_STATUS.all,
+      enablePoll: true,
+      pollMs,
+    });
   const [currentTime, setCurrentTime] = useState(new Date());
   const [markingReadyOrderIds, setMarkingReadyOrderIds] = useState({});
+  const [orderOverrides, setOrderOverrides] = useState({});
 
   useEffect(() => {
-    let isMounted = true;
-    let intervalId = null;
-    let countdownIntervalId = null;
-
-    const fetchOrders = async () => {
-      try {
-        const response = await restaurantAPI.getOrders();
-
-        if (!isMounted) return;
-
-        if (response.data?.success && response.data.data?.orders) {
-          const transformedOrders = response.data.data.orders
-            .map(transformOrderForList)
-            .sort((a, b) => {
-              const priorityDiff =
-                (allOrdersStatusPriority[a.status] ?? 999) -
-                (allOrdersStatusPriority[b.status] ?? 999);
-              if (priorityDiff !== 0) return priorityDiff;
-              return b.sortTimestamp - a.sortTimestamp;
-            });
-
-          setOrders(transformedOrders);
-        } else {
-          setOrders([]);
-        }
-      } catch (error) {
-        if (!isMounted) return;
-
-        if (
-          error.code !== "ERR_NETWORK" &&
-          error.response?.status !== 404 &&
-          error.response?.status !== 401
-        ) {
-          debugError("Error fetching all orders:", error);
-        }
-
-        setOrders([]);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchOrders();
-    intervalId = setInterval(fetchOrders, 10000);
-    countdownIntervalId = setInterval(() => {
-      if (isMounted) {
-        setCurrentTime(new Date());
-      }
+    const countdownIntervalId = setInterval(() => {
+      setCurrentTime(new Date());
     }, 1000);
-
-    return () => {
-      isMounted = false;
-      if (intervalId) clearInterval(intervalId);
-      if (countdownIntervalId) clearInterval(countdownIntervalId);
-    };
+    return () => clearInterval(countdownIntervalId);
   }, []);
+
+  const orders = rawOrders
+    .map(transformOrderForList)
+    .map((order) => {
+      const key = order.mongoId || order.orderId;
+      return orderOverrides[key] ? { ...order, ...orderOverrides[key] } : order;
+    })
+    .sort((a, b) => {
+      const priorityDiff =
+        (allOrdersStatusPriority[a.status] ?? 999) -
+        (allOrdersStatusPriority[b.status] ?? 999);
+      if (priorityDiff !== 0) return priorityDiff;
+      return b.sortTimestamp - a.sortTimestamp;
+    });
 
   const handleMarkReady = async ({ orderId, mongoId }) => {
     const orderKey = mongoId || orderId;
@@ -795,18 +915,14 @@ function AllOrders({ onSelectOrder, onCancel }) {
     try {
       setMarkingReadyOrderIds((prev) => ({ ...prev, [orderKey]: true }));
       await restaurantAPI.markOrderReady(orderKey);
-      setOrders((prev) =>
-        prev.map((order) =>
-          (order.mongoId || order.orderId) === orderKey
-            ? {
-                ...order,
-                status: "ready",
-                eta: null,
-                sortTimestamp: Date.now(),
-              }
-            : order,
-        ),
-      );
+      setOrderOverrides((prev) => ({
+        ...prev,
+        [orderKey]: {
+          status: "ready",
+          eta: null,
+          sortTimestamp: Date.now(),
+        },
+      }));
       toast.success("Order marked as ready");
     } catch (error) {
       debugError("Error marking order as ready from All orders:", error);
@@ -820,7 +936,7 @@ function AllOrders({ onSelectOrder, onCancel }) {
 
   if (loading) {
     return (
-      <div className="pt-4 pb-6">
+      <div className="pt-1 pb-6">
         <div className="flex items-baseline justify-between mb-3">
           <h2 className="text-base font-semibold text-black">All orders</h2>
           <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
@@ -831,11 +947,11 @@ function AllOrders({ onSelectOrder, onCancel }) {
   }
 
   return (
-    <div className="pt-4 pb-6">
+    <div className="pt-1 pb-6">
       <div className="flex items-baseline justify-between mb-3">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold text-black">All orders</h2>
-          <span className="text-xs text-gray-500">({orders.length})</span>
+          <span className="text-xs text-gray-500">({meta.total})</span>
         </div>
         <button 
           onClick={() => navigate('/food/restaurant/orders/all')}
@@ -852,7 +968,7 @@ function AllOrders({ onSelectOrder, onCancel }) {
           No orders found
         </div>
       ) : (
-        <div>
+        <RestaurantBentoGrid variant="orders">
           {orders.map((order) => {
             const normalizedStatus = String(order.status || "").toLowerCase();
             let etaDisplay = order.eta;
@@ -895,8 +1011,15 @@ function AllOrders({ onSelectOrder, onCancel }) {
               />
             );
           })}
-        </div>
+        </RestaurantBentoGrid>
       )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
@@ -906,7 +1029,7 @@ function SearchResults({ query, results, isLoading, onSelectOrder }) {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center p-20">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-orange mb-4" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
         <p className="text-gray-500 text-sm">Searching for "{query}"...</p>
       </div>
     );
@@ -915,7 +1038,7 @@ function SearchResults({ query, results, isLoading, onSelectOrder }) {
   const transformedResults = (results || []).map(transformOrderForList);
 
   return (
-    <div className="pt-4 pb-6">
+    <div className="pt-1 pb-6">
       <div className="flex items-center gap-2 mb-4">
         <h2 className="text-base font-semibold text-black">Search results for</h2>
         <span className="bg-gray-200 px-2 py-0.5 rounded text-sm text-gray-700 italic">"{query}"</span>
@@ -931,7 +1054,7 @@ function SearchResults({ query, results, isLoading, onSelectOrder }) {
           <p className="text-gray-500 text-xs">Try searching for a different order ID or customer name</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <RestaurantBentoGrid variant="orders">
           {transformedResults.map((order) => (
             <OrderCard
               key={order.orderId || order.mongoId}
@@ -939,7 +1062,7 @@ function SearchResults({ query, results, isLoading, onSelectOrder }) {
               onSelect={onSelectOrder}
             />
           ))}
-        </div>
+        </RestaurantBentoGrid>
       )}
     </div>
   );
@@ -948,62 +1071,34 @@ function SearchResults({ query, results, isLoading, onSelectOrder }) {
 // Scheduled Orders Component
 function ScheduledOrders({ onSelectOrder, refreshToken }) {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { orders: rawOrders, meta, page, loading, setPage } =
+    usePaginatedRestaurantOrders({
+      status: RESTAURANT_ORDER_TAB_STATUS.scheduled,
+      refreshToken,
+    });
 
-  useEffect(() => {
-    const fetchScheduledOrders = async () => {
-      try {
-        setLoading(true);
-        const response = await restaurantAPI.getOrders({ page: 1, limit: 100 });
-        const list = response?.data?.data?.orders || [];
-
-        // Filter for scheduled orders that are NOT yet out for delivery/delivered
-        // And match 'created' or 'confirmed' status with scheduledAt
-        const scheduled = list
-          .filter((o) => {
-            const hasScheduledDate = o.scheduledAt || o.isScheduled;
-            const status = String(o.orderStatus || o.status || "").toLowerCase();
-            // In Scheduled tab, show anything that is scheduled and not yet finished
-            // regardless of whether the kitchen has already started "preparing" it.
-            return (
-              hasScheduledDate &&
-              ["created", "confirmed", "preparing", "ready"].includes(status)
-            );
-          })
-          .map(transformOrderForList)
-          .sort((a, b) => {
-            // Sort by scheduled time
-            const timeA = new Date(a.scheduledAt || 0).getTime();
-            const timeB = new Date(b.scheduledAt || 0).getTime();
-            return timeA - timeB;
-          });
-
-        setOrders(scheduled);
-      } catch (error) {
-        debugError("Error fetching scheduled orders:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchScheduledOrders();
-  }, [refreshToken]);
+  const orders = rawOrders
+    .map(transformOrderForList)
+    .sort((a, b) => {
+      const timeA = new Date(a.scheduledAt || 0).getTime();
+      const timeB = new Date(b.scheduledAt || 0).getTime();
+      return timeA - timeB;
+    });
 
   if (loading) {
     return (
       <div className="flex justify-center p-10">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-orange" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="pt-4 pb-6">
+    <div className="pt-1 pb-6">
       <div className="flex items-baseline justify-between mb-3">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold text-black">Scheduled orders</h2>
-          <span className="text-xs text-gray-500">({orders.length})</span>
+          <span className="text-xs text-gray-500">({meta.total})</span>
         </div>
         <button
           onClick={() => navigate("/food/restaurant/orders/all")}
@@ -1029,7 +1124,7 @@ function ScheduledOrders({ onSelectOrder, refreshToken }) {
           No scheduled orders found
         </div>
       ) : (
-        <div className="space-y-3">
+        <RestaurantBentoGrid variant="orders">
           {orders.map((order) => (
             <OrderCard
               key={order.orderId || order.mongoId}
@@ -1037,25 +1132,31 @@ function ScheduledOrders({ onSelectOrder, refreshToken }) {
               onSelect={onSelectOrder}
             />
           ))}
-        </div>
+        </RestaurantBentoGrid>
       )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
 
-// Helper to calculate initial countdown based on order creation time (3 minutes window)
+// Helper to calculate initial countdown based on popup display time (3 minutes window)
 const getInitialCountdown = (order) => {
-  if (!order?.createdAt) return 180;
-  const now = Date.now();
-  const created = new Date(order.createdAt).getTime();
-  const diffInSeconds = Math.floor((now - created) / 1000);
-  const remaining = 180 - diffInSeconds;
-  return Math.max(0, Math.min(180, remaining));
+  // Always return 180 seconds (3 minutes) when the popup is shown, 
+  // so orders queued behind others don't run out of time in the background.
+  return 180;
 }
 
 export default function OrdersMain() {
   const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState("all");
+  useRestaurantLenis();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const [activeFilter, setActiveFilter] = useState("new");
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -1069,10 +1170,29 @@ export default function OrdersMain() {
   const mouseEndX = useRef(0);
   const isMouseDown = useRef(false);
 
+  /**
+   * Extract the best available order ID to use for API calls.
+   * Prefers the MongoDB _id (most reliable), then orderMongoId / mongoId,
+   * then falls back to the short orderId string.
+   */
+  const resolveOrderActionId = (orderLike) => {
+    if (!orderLike) return null;
+    const raw =
+      orderLike._id ||
+      orderLike.orderMongoId ||
+      orderLike.mongoId ||
+      orderLike.orderId ||
+      orderLike.order_id ||
+      orderLike.id ||
+      null;
+    const id = String(raw || '').trim();
+    return id || null;
+  };
+
   // New order popup states
   const [showNewOrderPopup, setShowNewOrderPopup] = useState(false);
   const [popupOrder, setPopupOrder] = useState(null); // Store order for popup (from Socket.IO or API)
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [prepTime, setPrepTime] = useState(11);
   const [countdown, setCountdown] = useState(180); // 3 minutes in seconds
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(true);
@@ -1097,8 +1217,14 @@ export default function OrdersMain() {
   const [isReverifying, setIsReverifying] = useState(false);
   const audioUnlockedRef = useRef(false);
   const showNewOrderPopupRef = useRef(showNewOrderPopup);
+  useEffect(() => {
+    showNewOrderPopupRef.current = showNewOrderPopup;
+  }, [showNewOrderPopup]);
   const isMutedRef = useRef(isMuted);
   const newOrderRef = useRef(null);
+  // Refs to always have latest popup order & dismiss helper available in event listeners
+  const popupOrderRef = useRef(null);
+  const cancelDismissRef = useRef(null);
 
   // Pending counts for tabs
   const [pendingBookingsCount, setPendingBookingsCount] = useState(0);
@@ -1107,6 +1233,7 @@ export default function OrdersMain() {
 
   // Fetch pending counts and settings
   useEffect(() => {
+    if (!isAuthenticated) return;
     const fetchCounts = async () => {
       try {
         // Fetch current restaurant data
@@ -1157,9 +1284,11 @@ export default function OrdersMain() {
     };
 
     fetchCounts();
-    const interval = setInterval(fetchCounts, 30000); // Check every 30 seconds
+    const interval = setInterval(() => {
+      if (isAuthenticated) fetchCounts();
+    }, 30000); // Check every 30 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
   // Global search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -1206,17 +1335,25 @@ export default function OrdersMain() {
     return keys.some((k) => shownOrdersRef.current.has(k));
   };
 
-  const resolveOrderActionId = (orderLike) => {
-    const raw =
-      orderLike?.orderMongoId ||
-      orderLike?._id ||
-      orderLike?.orderId ||
-      orderLike?.order_id ||
-      orderLike?.id;
-    const value = raw == null ? "" : String(raw).trim();
-    return value || null;
+  const getOrderActionIds = (orderLike) => {
+    const ids = [
+      orderLike?.orderMongoId,
+      orderLike?._id,
+      orderLike?.orderId,
+      orderLike?.order_id,
+      orderLike?.id,
+    ];
+    return ids
+      .map((v) => (v == null ? "" : String(v).trim()))
+      .filter(Boolean);
   };
 
+  const doOrdersMatch = (order1, order2) => {
+    if (!order1 || !order2) return false;
+    const ids1 = getOrderActionIds(order1);
+    const ids2 = getOrderActionIds(order2);
+    return ids1.some((id) => ids2.includes(id));
+  };
   const normalizeOrderStatusValue = (value) =>
     String(value || "")
       .toLowerCase()
@@ -1259,7 +1396,7 @@ export default function OrdersMain() {
   };
 
   // Restaurant notifications hook for real-time orders
-  const { newOrder, clearNewOrder, isConnected } = useRestaurantNotifications();
+  const { newOrder, orderQueue, clearNewOrder, isConnected } = useRestaurantNotifications();
 
   const rejectReasons = [
     "Restaurant is too busy",
@@ -1273,6 +1410,7 @@ export default function OrdersMain() {
   // Fetch restaurant verification status
   useEffect(() => {
     const fetchRestaurantStatus = async () => {
+      if (!isAuthenticated) return;
       try {
         const response = await restaurantAPI.getCurrentRestaurant();
         const restaurant =
@@ -1329,7 +1467,7 @@ export default function OrdersMain() {
         handleProfileRefresh,
       );
     };
-  }, [navigate]);
+  }, [navigate, isAuthenticated]);
 
   // Handle reverify (resubmit for approval)
   const handleReverify = async () => {
@@ -1392,30 +1530,12 @@ export default function OrdersMain() {
     }
   };
 
-  // Lenis smooth scrolling
-  useEffect(() => {
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-    });
-
-    function raf(time) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-
-    requestAnimationFrame(raf);
-
-    return () => {
-      lenis.destroy();
-    };
-  }, []);
-
-  // Show new order popup when real order notification arrives from Socket.IO
+  // Show new order popup when real order notification arrives
+  // Queue-aware: if a popup is already open, mark order as shown and let
+  // the queue handle it when the current popup is dismissed.
   useEffect(() => {
     if (newOrder) {
-      debugLog("?? New order received via Socket.IO:", newOrder);
+      debugLog("?? New order (queue head) changed:", newOrder);
 
       if (isAnyCancelledStatus(newOrder?.status || newOrder?.orderStatus)) {
         clearNewOrder();
@@ -1432,80 +1552,99 @@ export default function OrdersMain() {
         toast.info(
           `New scheduled order received for ${new Date(scheduledAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`,
         );
+        clearNewOrder(); // remove from queue so next order can be shown
         requestOrdersRefresh();
-        return; // Do not show the immediate popup
+        return;
       }
 
       if (!hasOrderBeenShown(newOrder)) {
         markOrderAsShown(newOrder);
-        setPopupOrder(newOrder);
-        setShowNewOrderPopup(true);
-        setCountdown(getInitialCountdown(newOrder)); // Calculate relative to createdAt
+        if (!showNewOrderPopupRef.current) {
+          // Popup is free — show it immediately
+          setPopupOrder(newOrder);
+          setShowNewOrderPopup(true);
+          setCountdown(getInitialCountdown(newOrder));
+        }
+        // If popup is already open, the queue will auto-show this order
+        // once the current popup is dismissed (via clearNewOrder → dequeue).
         requestOrdersRefresh();
       }
     }
   }, [newOrder]);
 
+  // Keep popupOrderRef in sync so the cancel event listener always has the latest value
+  useEffect(() => {
+    popupOrderRef.current = popupOrder;
+  }, [popupOrder]);
+
+  // Keep cancelDismissRef pointing to the latest dismiss function
+  useEffect(() => {
+    cancelDismissRef.current = (payload) => {
+      const currentPopupOrder = popupOrderRef.current;
+      const currentNewOrder = newOrderRef.current;
+      const activePopupOrder = currentPopupOrder || currentNewOrder;
+
+      // We always want to mark the cancelled order as shown
+      markOrderAsShown(payload);
+
+      // If there is an active popup and it's NOT the order that was just cancelled, do NOT close it!
+      if (activePopupOrder && payload && !doOrdersMatch(activePopupOrder, payload)) {
+        debugLog("?? Ignoring cancellation event because popup is showing a different order");
+        return;
+      }
+
+      // Mark as shown so checkOrdersToPopup never re-opens it
+      if (activePopupOrder) markOrderAsShown(activePopupOrder);
+
+      setShowNewOrderPopup(false);
+      setPopupOrder(null);
+      clearNewOrder();
+      setCountdown(180);
+      setPrepTime(11);
+      requestOrdersRefresh();
+    };
+  });
+
+  // Register cancel listener ONCE on mount using stable refs — no stale closures
   useEffect(() => {
     const onRestaurantOrderStatusUpdate = (event) => {
       const payload = event?.detail || {};
       const payloadStatus = payload?.orderStatus || payload?.status;
+      const updatedBy = payload?.updatedBy;
+
+      const normalizedStatus = normalizeOrderStatusValue(payloadStatus);
+
+      // --- ADMIN ACCEPTANCE LOGIC ---
+      if (
+        (normalizedStatus === "confirmed" || normalizedStatus === "preparing") &&
+        updatedBy === "ADMIN"
+      ) {
+        if (cancelDismissRef.current) {
+          cancelDismissRef.current(payload);
+        }
+        toast.success("Order assigned by admin to you");
+        return;
+      }
+
       if (!isAnyCancelledStatus(payloadStatus)) return;
 
-      const activePopupOrder = popupOrder || newOrder;
-      if (!activePopupOrder) return;
+      // Use ref-based dismiss so we always act on latest state
+      if (cancelDismissRef.current) {
+        cancelDismissRef.current(payload);
+      }
 
-      const activeIds = [
-        activePopupOrder?.orderMongoId,
-        activePopupOrder?.orderId,
-        activePopupOrder?._id,
-        activePopupOrder?.id,
-      ]
-        .map((v) => (v == null ? "" : String(v).trim()))
-        .filter(Boolean);
-
-      const payloadIds = [
-        payload?.orderMongoId,
-        payload?.orderId,
-        payload?._id,
-        payload?.id,
-      ]
-        .map((v) => (v == null ? "" : String(v).trim()))
-        .filter(Boolean);
-
-      const isSameOrder = payloadIds.some((id) => activeIds.includes(id));
-      if (!isSameOrder) return;
-
-      const cancelledStatus = normalizeOrderStatusValue(payloadStatus);
-      setPopupOrder((prev) => {
-        const base = prev || activePopupOrder || {};
-        return {
-          ...base,
-          status: cancelledStatus,
-          orderStatus: cancelledStatus,
-        };
-      });
-      clearNewOrder();
-
-      if (isUserCancelledStatus(cancelledStatus)) {
+      if (isUserCancelledStatus(normalizedStatus)) {
         toast.info("Order canceled by user");
       } else {
         toast.info("Order cancelled");
       }
     };
 
-    window.addEventListener(
-      "restaurantOrderStatusUpdate",
-      onRestaurantOrderStatusUpdate,
-    );
-
+    window.addEventListener("restaurantOrderStatusUpdate", onRestaurantOrderStatusUpdate);
     return () => {
-      window.removeEventListener(
-        "restaurantOrderStatusUpdate",
-        onRestaurantOrderStatusUpdate,
-      );
+      window.removeEventListener("restaurantOrderStatusUpdate", onRestaurantOrderStatusUpdate);
     };
-  }, [popupOrder, newOrder]);
+  }, []); // Empty deps — registered once, uses refs internally
 
   // Keep refs in sync to avoid stale state inside one-time event handlers.
   useEffect(() => {
@@ -1664,7 +1803,7 @@ export default function OrdersMain() {
     const intervalId = setInterval(checkOrdersToPopup, 60000);
 
     return () => clearInterval(intervalId);
-  }, []);
+  }, [ordersRefreshToken]);
 
   // Play audio when popup opens
   useEffect(() => {
@@ -1725,25 +1864,7 @@ export default function OrdersMain() {
     }
   }, [showNewOrderPopup]);
 
-  useEffect(() => {
-    if (!showNewOrderPopup) return;
-
-    const activePopupOrder = popupOrder || newOrder;
-    const popupStatus =
-      activePopupOrder?.orderStatus || activePopupOrder?.status;
-
-    if (!isAnyCancelledStatus(popupStatus)) return;
-
-    const timer = setTimeout(() => {
-      setShowNewOrderPopup(false);
-      setPopupOrder(null);
-      clearNewOrder();
-      setCountdown(180);
-      setPrepTime(11);
-    }, 2500);
-
-    return () => clearTimeout(timer);
-  }, [showNewOrderPopup, popupOrder, newOrder]);
+  // Removed the 2.5s delay on cancellation; it is now handled instantly via socket event
 
   useEffect(() => {
     const handleMouseMove = (event) => {
@@ -2004,179 +2125,184 @@ export default function OrdersMain() {
     }
   };
 
-  // Handle PDF download
+  // Handle Thermal Printer Web Print
   const handlePrint = async () => {
-    if (!newOrder) {
+    const orderToPrint = popupOrder || newOrder;
+    if (!orderToPrint) {
       debugWarn("No order data available for PDF generation");
       return;
     }
 
     try {
-      // Create new PDF document
-      const doc = new jsPDF();
-
-      // Set font
-      doc.setFont("helvetica", "bold");
-
-      // Header
-      doc.setFontSize(20);
-      doc.text("Order Receipt", 105, 20, { align: "center" });
-
-      // Restaurant name
-      doc.setFontSize(14);
-      doc.setFont("helvetica", "normal");
-      doc.text(orderToPrint.restaurantName || "Restaurant", 105, 30, {
-        align: "center",
-      });
-
-      // Order details
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text(`Order ID: ${orderToPrint.orderId || "N/A"}`, 20, 45);
-      doc.setFont("helvetica", "normal");
-
-      const orderDate = orderToPrint.createdAt
-        ? new Date(orderToPrint.createdAt).toLocaleString("en-GB", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : new Date().toLocaleString("en-GB");
-
-      doc.text(`Date: ${orderDate}`, 20, 52);
-
-      // Customer address
-      if (orderToPrint.customerAddress) {
-        doc.setFont("helvetica", "bold");
-        doc.text("Delivery Address:", 20, 62);
-        doc.setFont("helvetica", "normal");
-        const addressText =
-          [
-            orderToPrint.customerAddress.street,
-            orderToPrint.customerAddress.city,
-            orderToPrint.customerAddress.state,
-          ]
-            .filter(Boolean)
-            .join(", ") || "Address not available";
-        const addressLines = doc.splitTextToSize(addressText, 170);
-        doc.text(addressLines, 20, 69);
+      toast.info("Preparing thermal receipt...");
+      
+      // Load settings
+      let settings = {};
+      try {
+        settings = await loadBusinessSettings() || {};
+      } catch (err) {
+        debugWarn("Could not load business settings", err);
       }
 
-      // Items table
-      let yPos = 85;
-      if (orderToPrint.items && orderToPrint.items.length > 0) {
-        doc.setFont("helvetica", "bold");
-        doc.text("Items:", 20, yPos);
-        yPos += 8;
-
-        // Prepare table data
-        const tableData = orderToPrint.items.map((item) => [
-          item.name || "Item",
-          item.quantity || 1,
-          `₹${(item.price || 0).toFixed(2)}`,
-          `₹${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`,
-        ]);
-
-        autoTable(doc, {
-          startY: yPos,
-          head: [["Item", "Qty", "Price", "Total"]],
-          body: tableData,
-          theme: "striped",
-          headStyles: {
-            fillColor: [0, 0, 0],
-            textColor: 255,
-            fontStyle: "bold",
-          },
-          styles: { fontSize: 9 },
-          columnStyles: {
-            0: { cellWidth: 80 },
-            1: { cellWidth: 30, halign: "center" },
-            2: { cellWidth: 35, halign: "right" },
-            3: { cellWidth: 35, halign: "right" },
-          },
-        });
-
-        yPos = doc.lastAutoTable.finalY + 10;
+      // Load restaurant details
+      let restaurant = {};
+      try {
+        const resData = await restaurantAPI.getCurrentRestaurant();
+        restaurant = resData?.data?.data?.restaurant || resData?.data?.restaurant || {};
+      } catch (err) {
+        debugWarn("Could not load restaurant details", err);
       }
 
-      // Total
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text(`Total: ₹${(orderToPrint.total || 0).toFixed(2)}`, 20, yPos);
+      const pricing = orderToPrint.pricing || {};
+      const itemsTotal = orderToPrint.items?.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0) || 0;
+      const subtotal = pricing.subtotal || itemsTotal;
+      const tax = pricing.tax || 0;
+      const deliveryFee = pricing.deliveryFee || 0;
+      const platformFee = pricing.platformFee || 0;
+      const total = pricing.total || orderToPrint.total || (subtotal + tax + deliveryFee + platformFee);
+      
+      const rawPay = (orderToPrint.paymentMethod || orderToPrint.payment?.method || "").toLowerCase().trim();
+      const isCod = rawPay === "cash" || rawPay === "cod";
 
-      // Payment status
-      yPos += 10;
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        `Payment Status: ${orderToPrint.status === "confirmed" ? "Paid" : "Pending"}`,
-        20,
-        yPos,
-      );
+      const itemsHtml = (orderToPrint.items || []).map(item => `
+        <div class="item-row">
+          <div class="item-qty">${item.quantity}x</div>
+          <div class="item-name">${item.name}</div>
+          <div class="item-price">Rs.${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</div>
+        </div>
+      `).join('');
 
-      // Estimated delivery time
-      if (orderToPrint.estimatedDeliveryTime) {
-        yPos += 8;
-        doc.text(
-          `Estimated Delivery: ${orderToPrint.estimatedDeliveryTime} minutes`,
-          20,
-          yPos,
-        );
-      }
+      const orderDate = orderToPrint.createdAt ? new Date(orderToPrint.createdAt).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-      // Delivery Note
-      if (orderToPrint.note) {
-        yPos += 10;
-        doc.setFont("helvetica", "bold");
-        doc.text("Note for Delivery:", 20, yPos);
-        doc.setFont("helvetica", "normal");
-        const noteLines = doc.splitTextToSize(orderToPrint.note, 170);
-        doc.text(noteLines, 20, yPos + 7);
-        yPos += (noteLines.length * 7);
-      }
+      const receiptHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            @page { margin: 0; }
+            body {
+              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+              width: 80mm;
+              margin: 0;
+              padding: 5mm;
+              padding-bottom: 10mm;
+              font-size: 12px;
+              color: #000;
+              box-sizing: border-box;
+            }
+            .center { text-align: center; }
+            .bold { font-weight: bold; }
+            .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
+            .flex-between { display: flex; justify-content: space-between; }
+            .item-row { display: flex; margin-bottom: 5px; }
+            .item-qty { width: 15%; font-weight: bold; }
+            .item-name { width: 55%; padding-right: 5px; }
+            .item-price { width: 30%; text-align: right; }
+            h1 { font-size: 16px; margin: 5px 0; }
+            h2 { font-size: 14px; margin: 5px 0; }
+            p { margin: 3px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <h1>${restaurant.restaurantName || orderToPrint.restaurantName || "Restaurant"}</h1>
+            ${restaurant.address?.street ? `<p>${restaurant.address.street}, ${restaurant.address.city || ''}</p>` : ''}
+            <p>FSSAI: ${restaurant.fssaiNumber || restaurant.fssai || "N/A"}</p>
+          </div>
+          
+          <div class="divider"></div>
+          
+          <p class="bold">Order ID: #${orderToPrint.orderId || orderToPrint._id}</p>
+          <p>Date: ${orderDate}</p>
+          <p>Payment: <span class="bold">${isCod ? 'Cash on Delivery' : 'Paid Online'}</span></p>
+          
+          <div class="divider"></div>
+          
+          <p class="bold">Customer Details:</p>
+          <p>${orderToPrint.customerName || "Customer"}</p>
+          ${orderToPrint.customerAddress ? `<p>${[orderToPrint.customerAddress.street, orderToPrint.customerAddress.city].filter(Boolean).join(', ')}</p>` : ''}
+          
+          <div class="divider"></div>
+          
+          <div class="item-row bold" style="margin-bottom: 8px;">
+            <div class="item-qty">Qty</div>
+            <div class="item-name">Item</div>
+            <div class="item-price">Total</div>
+          </div>
+          
+          ${itemsHtml}
+          
+          <div class="divider"></div>
+          
+          <div class="flex-between">
+            <span>Item Total:</span>
+            <span>Rs.${subtotal.toFixed(2)}</span>
+          </div>
+          <div class="flex-between">
+            <span>Taxes:</span>
+            <span>Rs.${tax.toFixed(2)}</span>
+          </div>
+          ${deliveryFee > 0 ? `
+          <div class="flex-between">
+            <span>Delivery Fee:</span>
+            <span>Rs.${deliveryFee.toFixed(2)}</span>
+          </div>` : ''}
+          ${platformFee > 0 ? `
+          <div class="flex-between">
+            <span>Platform Fee:</span>
+            <span>Rs.${platformFee.toFixed(2)}</span>
+          </div>` : ''}
+          
+          <div class="divider"></div>
+          
+          <div class="flex-between bold" style="font-size: 14px;">
+            <span>GRAND TOTAL:</span>
+            <span>Rs.${total.toFixed(2)}</span>
+          </div>
+          
+          <div class="divider"></div>
+          
+          ${(orderToPrint.note || orderToPrint.restaurantNote) ? `
+            <p class="bold">Notes:</p>
+            ${orderToPrint.note ? `<p>User: ${orderToPrint.note}</p>` : ''}
+            ${orderToPrint.restaurantNote ? `<p>Restaurant: ${orderToPrint.restaurantNote}</p>` : ''}
+            <div class="divider"></div>
+          ` : ''}
+          
+          <div class="center" style="margin-top: 15px;">
+            <p class="bold">Thank you for ordering!</p>
+            <p style="font-size: 10px;">Powered by ${settings.companyName || "Foodelo"}</p>
+          </div>
+        </body>
+        </html>
+      `;
 
-      // Restaurant Note
-      if (orderToPrint.restaurantNote) {
-        yPos += 10;
-        doc.setFont("helvetica", "bold");
-        doc.text("Note for Restaurant:", 20, yPos);
-        doc.setFont("helvetica", "normal");
-        const restaurantNoteLines = doc.splitTextToSize(orderToPrint.restaurantNote, 170);
-        doc.text(restaurantNoteLines, 20, yPos + 7);
-      }
-
-      // Cutlery preference
-      yPos += 15;
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        orderToPrint.sendCutlery === false
-          ? "? Don't send cutlery"
-          : "? Send cutlery requested",
-        20,
-        yPos,
-      );
-
-      // Footer
-      const pageHeight = doc.internal.pageSize.height;
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "italic");
-      doc.text(
-        `Generated on ${new Date().toLocaleString("en-GB")}`,
-        105,
-        pageHeight - 10,
-        { align: "center" },
-      );
-
-      // Download PDF
-      const fileName = `Order-${orderToPrint.orderId || "Receipt"}-${Date.now()}.pdf`;
-      doc.save(fileName);
-
-      debugLog("? PDF generated successfully:", fileName);
+      // Create a hidden iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      
+      iframe.contentWindow.document.open();
+      iframe.contentWindow.document.write(receiptHtml);
+      iframe.contentWindow.document.close();
+      
+      // Wait for content to load and then print
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          // Remove the iframe after printing dialog closes (or short delay)
+          setTimeout(() => {
+            if (document.body.contains(iframe)) {
+              document.body.removeChild(iframe);
+            }
+          }, 2000);
+        }, 200);
+      };
+      
     } catch (error) {
-      debugError("? Error generating PDF:", error);
-      alert("Failed to generate PDF. Please try again.");
+      debugError("? Error preparing thermal print:", error);
+      toast.error("Failed to prepare thermal receipt.");
     }
   };
 
@@ -2301,6 +2427,12 @@ export default function OrdersMain() {
     }
 
     switch (activeFilter) {
+      case "new":
+        return (
+          <NewOrders
+            onSelectOrder={handleSelectOrder}
+          />
+        );
       case "all":
         return (
           <AllOrders
@@ -2345,11 +2477,16 @@ export default function OrdersMain() {
             refreshToken={ordersRefreshToken}
           />
         );
-      case "table-booking":
-        return <TableBookings />;
       case "cancelled":
         return (
           <CancelledOrders
+            onSelectOrder={handleSelectOrder}
+            refreshToken={ordersRefreshToken}
+          />
+        );
+      case "dead":
+        return (
+          <DeadOrders
             onSelectOrder={handleSelectOrder}
             refreshToken={ordersRefreshToken}
           />
@@ -2360,12 +2497,7 @@ export default function OrdersMain() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* Restaurant Navbar - Sticky at top */}
-      <div className="sticky top-0 z-50 bg-white">
-        <RestaurantNavbar showNotifications={true} />
-      </div>
-
+    <div className="restaurant-page min-h-full bg-gray-100">
       {/* Profile Update Pending Banner */}
       <AnimatePresence>
         {!restaurantStatus.isLoading && 
@@ -2394,10 +2526,10 @@ export default function OrdersMain() {
       </AnimatePresence>
 
       {/* Top Filter Bar - Sticky below navbar */}
-      <div className="sticky top-[50px] z-40 pb-2 bg-gray-100">
+      <div className="sticky top-0 z-40 pb-0 bg-gray-100">
         <div
           ref={filterBarRef}
-          className="flex gap-2 overflow-x-auto scrollbar-hide bg-transparent rounded-full px-3 py-2 mt-2"
+          className="flex gap-2 overflow-x-auto scrollbar-hide bg-transparent rounded-full px-3 py-1 mt-1"
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
@@ -2437,7 +2569,7 @@ export default function OrdersMain() {
                 {isActive && (
                   <motion.div
                     layoutId="activeFilterBackground"
-                    className="absolute inset-0 bg-primary-orange rounded-full -z-10"
+                    className="absolute inset-0 bg-primary rounded-full -z-10"
                     initial={false}
                     transition={{
                       type: "spring",
@@ -2471,10 +2603,10 @@ export default function OrdersMain() {
         </div>
       </div>
 
-      {/* Content Area - Scrollable */}
+      {/* Content Area */}
       <div
         ref={contentRef}
-        className="flex-1 overflow-y-auto px-4 pb-24 content-scroll"
+        className="px-4 pb-24 content-scroll"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -2681,23 +2813,30 @@ export default function OrdersMain() {
         {showNewOrderPopup && (
           <>
             <motion.div
-              className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 pb-[110px]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}>
               <motion.div
-                className="w-[95%] max-w-md max-h-[calc(100vh-2rem)] bg-white rounded-[2rem] shadow-2xl overflow-hidden p-1 flex flex-col"
+                className="restaurant-modal-panel max-w-md max-h-[85vh] bg-white rounded-[2rem] shadow-2xl overflow-hidden p-1 flex flex-col"
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
-                <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
+                <div className="px-4 py-2.5 bg-white border-b border-gray-200 flex items-center justify-between">
                   <div className="flex-1">
-                    <h3 className="text-base font-bold text-gray-900">
-                      {(popupOrder || newOrder)?.orderId || "#Order"}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-gray-900">
+                        {(popupOrder || newOrder)?.orderId || "#Order"}
+                      </h3>
+                      {orderQueue.length > 1 && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500 text-white animate-pulse">
+                          +{orderQueue.length - 1} more
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {(popupOrder || newOrder)?.restaurantName || "Restaurant"}
                     </p>
@@ -2709,24 +2848,14 @@ export default function OrdersMain() {
                       aria-label="Print">
                       <Printer className="w-5 h-5 text-gray-700" />
                     </button>
-                    <button
-                      onClick={toggleMute}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                      aria-label={isMuted ? "Unmute" : "Mute"}>
-                      {isMuted ? (
-                        <VolumeX className="w-5 h-5 text-gray-700" />
-                      ) : (
-                        <Volume2 className="w-5 h-5 text-gray-700" />
-                      )}
-                    </button>
                   </div>
                 </div>
 
                 {/* Content */}
-                <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto min-h-0">
+                <div className="px-4 pt-3 pb-3 flex-1 overflow-y-auto min-h-0">
                   {/* Scheduled Indicator */}
                   {(popupOrder || newOrder)?.scheduledAt && (
-                    <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
+                    <div className="mb-3 bg-green-50 border border-green-200 rounded-lg p-2.5 flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                         <Calendar className="w-4 h-4 text-green-600" />
                       </div>
@@ -2751,7 +2880,7 @@ export default function OrdersMain() {
                   )}
 
                   {/* Customer info */}
-                  <div className="mb-4">
+                  <div className="mb-2">
                     <h4 className="text-sm font-semibold text-gray-900">
                       {(popupOrder || newOrder)?.items?.[0]?.name ||
                         "New Order"}
@@ -2772,7 +2901,7 @@ export default function OrdersMain() {
 
                   {/* Restaurant Note */}
                   {(popupOrder || newOrder)?.restaurantNote && (
-                    <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
                       <div className="flex items-center gap-2 mb-1">
                         <FileText className="w-4 h-4 text-blue-600" />
                         <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
@@ -2786,10 +2915,10 @@ export default function OrdersMain() {
                   )}
 
                   {/* Details Accordion */}
-                  <div className="mb-4">
+                  <div className="mb-2">
                     <button
                       onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-                      className="w-full flex items-center justify-between py-2 border-b border-gray-200">
+                      className="w-full flex items-center justify-between py-1.5 border-b border-gray-200">
                       <div className="flex items-center gap-2">
                         <svg
                           className="w-5 h-5 text-gray-700"
@@ -2859,7 +2988,7 @@ export default function OrdersMain() {
 
                   {/* Cutlery preference */}
                   <div
-                    className={`mb-4 flex items-center gap-2 rounded-lg p-3 ${(popupOrder || newOrder)?.sendCutlery === false
+                    className={`mb-2 flex items-center gap-2 rounded-lg p-2 ${(popupOrder || newOrder)?.sendCutlery === false
                         ? "bg-orange-50"
                         : "bg-gray-50"
                       }`}>
@@ -2890,7 +3019,7 @@ export default function OrdersMain() {
                   </div>
 
                   {/* Total bill */}
-                  <div className="mb-4 flex items-center justify-between py-3 border-y border-gray-200">
+                  <div className="mb-2 flex items-center justify-between py-1.5 border-y border-gray-200">
                     <div className="flex items-center gap-2">
                       <svg
                         className="w-5 h-5 text-gray-700"
@@ -2922,7 +3051,7 @@ export default function OrdersMain() {
                       raw != null ? String(raw).toLowerCase().trim() : "";
                     const isCod = m === "cash" || m === "cod";
                     return (
-                      <div className="mb-4 flex items-center justify-between py-2">
+                      <div className="mb-2 flex items-center justify-between py-1">
                         <span className="text-sm font-medium text-gray-700">
                           Payment
                         </span>
@@ -2935,8 +3064,8 @@ export default function OrdersMain() {
                   })()}
 
                   {/* Preparation time */}
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-3">
+                  <div className="mb-1">
+                    <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-700">
                         Preparation time
                       </span>
@@ -2959,7 +3088,7 @@ export default function OrdersMain() {
                   </div>
                 </div>
 
-                <div className="px-4 pb-4 pt-3 border-t border-gray-200 bg-white">
+                <div className="px-4 pb-3 pt-2.5 border-t border-gray-200 bg-white">
                   {(() => {
                     const activePopupOrder = popupOrder || newOrder;
                     const popupStatus =
@@ -2986,7 +3115,7 @@ export default function OrdersMain() {
                       <div className="space-y-3">
                         <div
                           ref={acceptSliderRef}
-                          className="relative h-14 rounded-2xl bg-gray-900 overflow-hidden select-none touch-pan-y">
+                          className="relative h-14 rounded-2xl bg-gray-900 overflow-hidden select-none touch-pan-y md:hidden">
                           <motion.div
                             className="absolute inset-y-0 left-0 bg-blue-600"
                             initial={{ width: "100%" }}
@@ -3036,9 +3165,16 @@ export default function OrdersMain() {
                         </div>
 
                         <button
+                          onClick={triggerSwipeAccept}
+                          disabled={isAcceptingOrder}
+                          className="hidden md:block w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold text-sm hover:bg-blue-700 transition-colors disabled:opacity-60">
+                          {isAcceptingOrder ? "Accepting order..." : `Accept Order (${formatTime(countdown)})`}
+                        </button>
+
+                        <button
                           onClick={handleRejectClick}
                           disabled={isAcceptingOrder}
-                          className="w-full bg-white border-2 border-red-500 text-red-600 py-3 rounded-lg font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60">
+                          className="w-full bg-white border-2 border-red-500 text-red-600 py-2.5 rounded-lg font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60">
                           Reject Order
                         </button>
                       </div>
@@ -3056,13 +3192,13 @@ export default function OrdersMain() {
         {showRejectPopup && (
           <>
             <motion.div
-              className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4 pb-[110px]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={handleRejectCancel}>
               <motion.div
-                className="w-[95%] max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+                className="restaurant-modal-panel max-w-md max-h-[85vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
@@ -3079,7 +3215,7 @@ export default function OrdersMain() {
                 </div>
 
                 {/* Content */}
-                <div className="px-4 py-4 max-h-[60vh] overflow-y-auto">
+                <div className="px-4 py-4 flex-1 overflow-y-auto min-h-0">
                   <div className="space-y-2">
                     {rejectReasons.map((reason) => (
                       <button
@@ -3087,20 +3223,20 @@ export default function OrdersMain() {
                         onClick={() => setRejectReason(reason)}
                         className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
                           rejectReason === reason
-                            ? "border-primary-orange bg-primary-orange/10"
+                            ? "border-primary bg-primary/10"
                             : "border-gray-200 bg-white hover:border-gray-300"
                         }`}>
                         <div className="flex items-center justify-between">
                           <span
                             className={`text-sm font-medium ${
                               rejectReason === reason
-                                ? "text-primary-orange"
+                                ? "text-primary"
                                 : "text-gray-900"
                             }`}>
                             {reason}
                           </span>
                           {rejectReason === reason && (
-                            <div className="w-5 h-5 rounded-full bg-primary-orange flex items-center justify-center">
+                            <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
                               <svg
                                 className="w-3 h-3 text-white"
                                 fill="none"
@@ -3133,7 +3269,7 @@ export default function OrdersMain() {
                     disabled={!rejectReason}
                     className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-colors ${
                       rejectReason
-                        ? "!bg-primary-orange !text-white hover:!bg-primary-orange/90"
+                        ? "!bg-primary !text-white hover:!bg-primary/90"
                         : "bg-gray-200 text-gray-400 cursor-not-allowed"
                     }`}>
                     Confirm Rejection
@@ -3150,13 +3286,13 @@ export default function OrdersMain() {
         {showCancelPopup && orderToCancel && (
           <>
             <motion.div
-              className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4"
+              className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4 pb-[110px]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={handleCancelPopupClose}>
               <motion.div
-                className="w-[95%] max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+                className="restaurant-modal-panel max-w-md max-h-[85vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
@@ -3173,7 +3309,7 @@ export default function OrdersMain() {
                 </div>
 
                 {/* Content */}
-                <div className="px-4 py-4">
+                <div className="px-4 py-4 flex-1 overflow-y-auto min-h-0">
                   <div className="space-y-3">
                     {rejectReasons.map((reason) => (
                       <button
@@ -3245,21 +3381,21 @@ export default function OrdersMain() {
         )}
       </AnimatePresence>
 
+
       {/* Bottom Sheet for Order Details */}
       <AnimatePresence>
         {isSheetOpen && selectedOrder && (
           <motion.div
-            className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center"
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSheetOpen(false)}>
             <motion.div
-              className="w-full max-w-md mx-auto max-h-[90vh] overflow-y-auto bg-white rounded-t-3xl p-4 pb-[calc(1.25rem+env(safe-area-inset-bottom)+6rem)] shadow-lg"
-              initial={{ y: 80 }}
-              animate={{ y: 0 }}
-              exit={{ y: 80 }}
-              transition={{ duration: 0.25 }}
+              className="restaurant-modal-panel max-w-md max-h-[85vh] overflow-y-auto bg-white rounded-2xl p-4 shadow-lg"
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}>
               {/* Drag handle */}
               <div className="flex justify-center mb-3">
@@ -3372,18 +3508,42 @@ export default function OrdersMain() {
                 </div>
               )}
 
-              <button
-                className="w-full bg-primary-orange text-white py-2.5 rounded-xl text-sm font-medium hover:bg-primary-orange/90 transition-colors"
-                onClick={() => setIsSheetOpen(false)}>
-                Close
-              </button>
+              {/* Pickup OTP */}
+              {selectedOrder.pickupOtp ? (
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-0.5">Pickup Verification OTP</p>
+                    <p className="text-[9px] text-emerald-600 font-medium leading-tight">Share this code with the delivery partner.</p>
+                  </div>
+                  <div className="bg-white px-3 py-1 rounded shadow-sm border border-emerald-200">
+                    <span className="text-lg font-black text-emerald-800 tracking-[0.2em]">{selectedOrder.pickupOtp}</span>
+                  </div>
+                </div>
+              ) : (selectedOrder.status === "READY" || selectedOrder.status === "PREPARING" || selectedOrder.status === "CONFIRMED") && selectedOrder.deliveryPartnerId && selectedOrder.type === "Home Delivery" ? (
+                <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                  <p className="text-[10px] font-bold text-gray-700 uppercase tracking-wider mb-0.5">Pickup Verification OTP</p>
+                  <p className="text-[9px] text-gray-500 font-medium leading-tight">Will be shown when the delivery partner reaches the restaurant.</p>
+                </div>
+              ) : null}
+
+              <div className="flex gap-3 mt-4">
+                  <button
+                    className="flex-1 bg-white border-2 border-primary text-primary py-2.5 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors"
+                    onClick={() => setIsSheetOpen(false)}>
+                    Close
+                  </button>
+                  <button
+                    className="flex-1 bg-primary text-white py-2.5 rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors"
+                    onClick={() => navigate(`/food/restaurant/orders/${selectedOrder.mongoId || selectedOrder.orderId}`)}>
+                    View Details & Bill
+                  </button>
+                </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Bottom Navigation - Sticky */}
-      <BottomNavOrders />
     </div>
   );
 }
@@ -3411,25 +3571,33 @@ function OrderCard({
   isMarkingReady = false,
   scheduledAt = null,
   restaurantNote = null,
+  pickupOtp = null,
+  cancellationReason = null,
+  rejectionReason = null,
 }) {
   const normalizedStatus = String(status || "").toLowerCase();
   const isReady = normalizedStatus === "ready";
   const isPreparing = normalizedStatus === "preparing";
   const brandColor = "#7e3866";
 
-  const statusLabel = String(status || "")
+  let statusLabel = String(status || "")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+  // If the restaurant hasn't accepted it yet, show it as Pending instead of Confirmed
+  if (normalizedStatus === "confirmed" || normalizedStatus === "created") {
+    statusLabel = "Pending";
+  }
+
   return (
-    <div className="w-full bg-white rounded-xl p-3 mb-3 border border-slate-100 shadow-sm relative overflow-hidden active:bg-slate-50 transition-colors">
+    <div className="restaurant-bento-card w-full p-3 mb-3 lg:mb-0 h-full relative overflow-hidden active:bg-slate-50 transition-colors">
       <div 
         className="absolute top-0 left-0 w-1 h-full" 
         style={{ backgroundColor: brandColor }}
       />
       
       <div
-        onClick={() => onSelect?.({ orderId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod, scheduledAt, restaurantNote })}
+        onClick={() => onSelect?.({ orderId, mongoId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod, scheduledAt, restaurantNote, pickupOtp, deliveryPartnerId, dispatchStatus, cancellationReason, rejectionReason })}
         className="flex gap-3 items-start cursor-pointer pl-1">
         
         {/* Photo Container - Smaller for mobile */}
@@ -3468,7 +3636,7 @@ function OrderCard({
                 {statusLabel}
               </span>
               
-              {isPreparing && onCancel && (
+              {/* {isPreparing && onCancel && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -3479,7 +3647,7 @@ function OrderCard({
                 >
                   <X className="w-3 h-3" />
                 </button>
-              )}
+              )} */}
             </div>
           </div>
 
@@ -3501,6 +3669,18 @@ function OrderCard({
               </p>
             </div>
           )}
+
+          {/* Pickup OTP Display on Card */}
+          {pickupOtp ? (
+            <div className="mb-2 px-2 py-1.5 bg-emerald-50 border border-emerald-100 rounded flex justify-between items-center" onClick={(e) => e.stopPropagation()}>
+              <span className="text-[9px] font-bold text-emerald-700 uppercase">Pickup OTP</span>
+              <span className="text-[13px] font-black text-emerald-800 tracking-[0.2em]">{pickupOtp}</span>
+            </div>
+          ) : (isReady || isPreparing || normalizedStatus === "confirmed") && type === "Home Delivery" ? (
+            <div className="mb-2 px-2 py-1 bg-gray-50 border border-gray-100 rounded flex justify-center items-center">
+              <span className="text-[8px] font-bold text-gray-500 uppercase tracking-wider text-center">OTP shown upon rider arrival</span>
+            </div>
+          ) : null}
 
           {/* Bottom Actions Row - Clean Grid/Flex */}
           <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-50 mt-auto">
@@ -3584,114 +3764,65 @@ function PreparingOrders({
   refreshToken = 0,
   onStatusChanged,
 }) {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const pollMs =
+    typeof window !== "undefined" && window.restaurantSocketConnected
+      ? 45000
+      : 20000;
+  const { orders: rawOrders, meta, page, loading, setPage, refetch } =
+    usePaginatedRestaurantOrders({
+      status: RESTAURANT_ORDER_TAB_STATUS.preparing,
+      refreshToken,
+      enablePoll: true,
+      pollMs,
+    });
   const [currentTime, setCurrentTime] = useState(new Date());
   const [markingReadyOrderIds, setMarkingReadyOrderIds] = useState({});
+  const [hiddenOrderIds, setHiddenOrderIds] = useState(() => new Set());
 
   useEffect(() => {
-    let isMounted = true;
-
-    const fetchOrders = async () => {
-      try {
-        // Fetch all orders and filter for 'preparing' status on frontend
-        const response = await restaurantAPI.getOrders();
-
-        if (!isMounted) return;
-
-        if (response.data?.success && response.data.data?.orders) {
-          // Filter orders with 'preparing' status only
-          // 'confirmed' orders should only appear in popup notification, not in preparing list
-          // After accepting, order status changes to 'preparing' and then appears here
-          const preparingOrders = response.data.data.orders.filter(
-            (order) => order.status === "preparing",
-          );
-
-          const transformedOrders = preparingOrders.map((order) => {
-            const initialETA = order.estimatedDeliveryTime || 30; // in minutes
-            const preparingTimestamp = order.tracking?.preparing?.timestamp
-              ? new Date(order.tracking.preparing.timestamp)
-              : new Date(order.createdAt); // Fallback to createdAt if preparing timestamp not available
-
-            return {
-              orderId: order.orderId || order._id,
-              mongoId: order._id,
-              status: order.status || "preparing",
-              customerName: order.userId?.name || "Customer",
-              type:
-                order.deliveryFleet === "standard"
-                  ? "Home Delivery"
-                  : "Express Delivery",
-              tableOrToken: null,
-              timePlaced: new Date(order.createdAt).toLocaleTimeString(
-                "en-US",
-                { hour: "2-digit", minute: "2-digit" },
-              ),
-              initialETA, // Store initial ETA in minutes
-              preparingTimestamp, // Store when order started preparing
-              itemsSummary:
-                order.items
-                  ?.map((item) => `${item.quantity}x ${item.name}`)
-                  .join(", ") || "No items",
-              photoUrl: order.items?.[0]?.image || null,
-              photoAlt: order.items?.[0]?.name || "Order",
-              deliveryPartnerId: order.deliveryPartnerId || null,
-              dispatchStatus: order.dispatch?.status || null,
-              paymentMethod:
-                order.paymentMethod || order.payment?.method || null,
-              scheduledAt: order.scheduledAt || null,
-              restaurantNote: order.restaurantNote || null,
-            };
-          });
-
-          if (isMounted) {
-            setOrders(transformedOrders);
-            setLoading(false);
-          }
-        } else {
-          if (isMounted) {
-            setOrders([]);
-            setLoading(false);
-          }
-        }
-      } catch (error) {
-        if (!isMounted) return;
-
-        // Don't log network errors, 404, or 401 errors
-        // 401 is handled by axios interceptor (token refresh/redirect)
-        // 404 means no orders found (normal)
-        // ERR_NETWORK means backend is down (expected in dev)
-        if (
-          error.code !== "ERR_NETWORK" &&
-          error.response?.status !== 404 &&
-          error.response?.status !== 401
-        ) {
-          debugError("Error fetching preparing orders:", error);
-        }
-
-        if (isMounted) {
-          setOrders([]);
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchOrders();
-
-    // Update countdown every second
     const countdownIntervalId = setInterval(() => {
-      if (isMounted) {
-        setCurrentTime(new Date());
-      }
+      setCurrentTime(new Date());
     }, 1000);
+    return () => clearInterval(countdownIntervalId);
+  }, []);
 
-    return () => {
-      isMounted = false;
-      if (countdownIntervalId) {
-        clearInterval(countdownIntervalId);
-      }
-    };
-  }, [refreshToken]); // Re-fetch only when parent requests it
+  const orders = rawOrders
+    .map((order) => {
+      const initialETA = order.estimatedDeliveryTime || 30;
+      const preparingTimestamp = order.tracking?.preparing?.timestamp
+        ? new Date(order.tracking.preparing.timestamp)
+        : new Date(order.createdAt);
+
+      return {
+        orderId: order.orderId || order._id,
+        mongoId: order._id,
+        status: order.status || "preparing",
+        customerName: order.userId?.name || "Customer",
+        type:
+          order.deliveryFleet === "standard"
+            ? "Home Delivery"
+            : "Express Delivery",
+        tableOrToken: null,
+        timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        initialETA,
+        preparingTimestamp,
+        itemsSummary:
+          order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
+          "No items",
+        photoUrl: order.items?.[0]?.image || null,
+        photoAlt: order.items?.[0]?.name || "Order",
+        deliveryPartnerId: order.deliveryPartnerId || null,
+        dispatchStatus: order.dispatch?.status || null,
+        paymentMethod: order.paymentMethod || order.payment?.method || null,
+        scheduledAt: order.scheduledAt || null,
+        restaurantNote: order.restaurantNote || null,
+        pickupOtp: order.pickupOtp || null,
+      };
+    })
+    .filter((order) => !hiddenOrderIds.has(order.mongoId || order.orderId));
 
   // Track which orders have been marked as ready to avoid duplicate API calls
   const markedReadyOrdersRef = useRef(new Set());
@@ -3731,7 +3862,7 @@ function PreparingOrders({
               );
               debugLog(`? Order ${order.orderId} marked as ready`);
               onStatusChanged?.();
-              // Order will be removed from preparing list on next fetch
+              refetch();
             } catch (error) {
               const status = error.response?.status;
               const msg = (
@@ -3787,13 +3918,12 @@ function PreparingOrders({
     try {
       setMarkingReadyOrderIds((prev) => ({ ...prev, [orderKey]: true }));
       await restaurantAPI.markOrderReady(orderKey);
-      setOrders((prev) =>
-        prev.filter((order) => (order.mongoId || order.orderId) !== orderKey),
-      );
+      setHiddenOrderIds((prev) => new Set(prev).add(orderKey));
       toast.success(
         `Order ${orderId} marked ready${customerName ? ` for ${customerName}` : ""}`,
       );
       onStatusChanged?.();
+      refetch();
     } catch (error) {
       const status = error.response?.status;
       const message =
@@ -3802,11 +3932,10 @@ function PreparingOrders({
         status === 400 &&
         String(message).toLowerCase().includes("current status")
       ) {
-        setOrders((prev) =>
-          prev.filter((order) => (order.mongoId || order.orderId) !== orderKey),
-        );
+        setHiddenOrderIds((prev) => new Set(prev).add(orderKey));
         toast.success(`Order ${orderId} is already ready`);
         onStatusChanged?.();
+        refetch();
       } else {
         toast.error(message);
       }
@@ -3821,7 +3950,7 @@ function PreparingOrders({
 
   if (loading) {
     return (
-      <div className="pt-4 pb-6">
+      <div className="pt-1 pb-6">
         <div className="flex items-baseline justify-between mb-3">
           <h2 className="text-base font-semibold text-black">
             Preparing orders
@@ -3834,17 +3963,17 @@ function PreparingOrders({
   }
 
   return (
-    <div className="pt-4 pb-6">
+    <div className="pt-1 pb-6">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-base font-semibold text-black">Preparing orders</h2>
-        <span className="text-xs text-gray-500">{orders.length} active</span>
+        <span className="text-xs text-gray-500">{meta.total} active</span>
       </div>
       {orders.length === 0 ? (
         <div className="text-center py-8 text-gray-500 text-sm">
           No orders in preparation
         </div>
       ) : (
-        <div>
+        <RestaurantBentoGrid variant="orders">
           {orders.map((order) => {
             // Calculate remaining ETA (countdown)
             const elapsedMs = currentTime - order.preparingTimestamp;
@@ -3896,96 +4025,64 @@ function PreparingOrders({
               />
             );
           })}
-        </div>
+        </RestaurantBentoGrid>
       )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
 
 // Ready Orders List
 function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const pollMs =
+    typeof window !== "undefined" && window.restaurantSocketConnected
+      ? 45000
+      : 20000;
+  const { orders: rawOrders, meta, page, loading, setPage } =
+    usePaginatedRestaurantOrders({
+      status: RESTAURANT_ORDER_TAB_STATUS.ready,
+      refreshToken,
+      enablePoll: true,
+      pollMs,
+    });
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchOrders = async () => {
-      try {
-        // Fetch all orders and filter for 'ready' status on frontend
-        const response = await restaurantAPI.getOrders();
-
-        if (!isMounted) return;
-
-        if (response.data?.success && response.data.data?.orders) {
-          // Filter orders with 'ready' status
-          const readyOrders = response.data.data.orders.filter(
-            (order) => order.status === "ready",
-          );
-
-          const transformedOrders = readyOrders.map((order) => ({
-            orderId: order.orderId || order._id,
-            mongoId: order._id,
-            status: order.status || "ready",
-            customerName: order.userId?.name || "Customer",
-            type:
-              order.deliveryFleet === "standard"
-                ? "Home Delivery"
-                : "Express Delivery",
-            tableOrToken: null,
-            timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            eta: null, // Don't show ETA for ready orders
-            itemsSummary:
-              order.items
-                ?.map((item) => `${item.quantity}x ${item.name}`)
-                .join(", ") || "No items",
-            photoUrl: order.items?.[0]?.image || null,
-            photoAlt: order.items?.[0]?.name || "Order",
-            paymentMethod: order.paymentMethod || order.payment?.method || null,
-            deliveryPartnerId: order.deliveryPartnerId || null,
-            dispatchStatus: order.dispatch?.status || null,
-            scheduledAt: order.scheduledAt || null,
-            restaurantNote: order.restaurantNote || null,
-          }));
-
-          if (isMounted) {
-            setOrders(transformedOrders);
-            setLoading(false);
-          }
-        } else {
-          if (isMounted) {
-            setOrders([]);
-            setLoading(false);
-          }
-        }
-      } catch (error) {
-        if (!isMounted) return;
-
-        // Don't log network errors repeatedly - they're expected if backend is down
-        if (error.code !== "ERR_NETWORK" && error.response?.status !== 404) {
-          debugError("Error fetching ready orders:", error);
-        }
-
-        if (isMounted) {
-          setOrders([]);
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchOrders();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [refreshToken]); // Re-fetch only when parent requests it
+  const orders = rawOrders.map((order) => ({
+    orderId: order.orderId || order._id,
+    mongoId: order._id,
+    status: order.status || "ready",
+    customerName: order.userId?.name || "Customer",
+    type:
+      order.deliveryFleet === "standard"
+        ? "Home Delivery"
+        : "Express Delivery",
+    tableOrToken: null,
+    timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    eta: null,
+    itemsSummary:
+      order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
+      "No items",
+    photoUrl: order.items?.[0]?.image || null,
+    photoAlt: order.items?.[0]?.name || "Order",
+    paymentMethod: order.paymentMethod || order.payment?.method || null,
+    deliveryPartnerId: order.deliveryPartnerId || null,
+    dispatchStatus: order.dispatch?.status || null,
+    scheduledAt: order.scheduledAt || null,
+    restaurantNote: order.restaurantNote || null,
+    pickupOtp: order.pickupOtp || null,
+  }));
 
   if (loading) {
     return (
-      <div className="pt-4 pb-6">
+      <div className="pt-1 pb-6">
         <div className="flex items-baseline justify-between mb-3">
           <h2 className="text-base font-semibold text-black">
             Ready for pickup
@@ -3998,17 +4095,17 @@ function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
   }
 
   return (
-    <div className="pt-4 pb-6">
+    <div className="pt-1 pb-6">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-base font-semibold text-black">Ready for pickup</h2>
-        <span className="text-xs text-gray-500">{orders.length} active</span>
+        <span className="text-xs text-gray-500">{meta.total} active</span>
       </div>
       {orders.length === 0 ? (
         <div className="text-center py-8 text-gray-500 text-sm">
           No orders ready for pickup
         </div>
       ) : (
-        <div>
+        <RestaurantBentoGrid variant="orders">
           {orders.map((order) => (
             <OrderCard
               key={order.orderId || order.mongoId}
@@ -4016,96 +4113,57 @@ function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
               onSelect={onSelectOrder}
             />
           ))}
-        </div>
+        </RestaurantBentoGrid>
       )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
 
 // Out for Delivery Orders List
 const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { orders: rawOrders, meta, page, loading, setPage } =
+    usePaginatedRestaurantOrders({
+      status: RESTAURANT_ORDER_TAB_STATUS["out-for-delivery"],
+      refreshToken,
+    });
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchOrders = async () => {
-      try {
-        // Fetch all orders and filter for 'out_for_delivery' status on frontend
-        const response = await restaurantAPI.getOrders();
-
-        if (!isMounted) return;
-
-        if (response.data?.success && response.data.data?.orders) {
-          // Filter orders with 'out_for_delivery' status
-          const outForDeliveryOrders = response.data.data.orders.filter(
-            (order) => order.status === "out_for_delivery",
-          );
-
-          const transformedOrders = outForDeliveryOrders.map((order) => ({
-            orderId: order.orderId || order._id,
-            mongoId: order._id,
-            status: order.status || "out_for_delivery",
-            customerName: order.userId?.name || "Customer",
-            type:
-              order.deliveryFleet === "standard"
-                ? "Home Delivery"
-                : "Express Delivery",
-            tableOrToken: null,
-            timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            eta: null,
-            itemsSummary:
-              order.items
-                ?.map((item) => `${item.quantity}x ${item.name}`)
-                .join(", ") || "No items",
-            photoUrl: order.items?.[0]?.image || null,
-            photoAlt: order.items?.[0]?.name || "Order",
-            paymentMethod: order.paymentMethod || order.payment?.method || null,
-            deliveryPartnerId: order.deliveryPartnerId || null,
-            dispatchStatus: order.dispatch?.status || null,
-            scheduledAt: order.scheduledAt || null,
-            restaurantNote: order.restaurantNote || null,
-          }));
-
-          if (isMounted) {
-            setOrders(transformedOrders);
-            setLoading(false);
-          }
-        } else {
-          if (isMounted) {
-            setOrders([]);
-            setLoading(false);
-          }
-        }
-      } catch (error) {
-        if (!isMounted) return;
-
-        // Don't log network errors repeatedly - they're expected if backend is down
-        if (error.code !== "ERR_NETWORK" && error.response?.status !== 404) {
-          debugError("Error fetching out for delivery orders:", error);
-        }
-
-        if (isMounted) {
-          setOrders([]);
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchOrders();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [refreshToken]); // Re-fetch only when parent requests it
+  const orders = rawOrders.map((order) => ({
+    orderId: order.orderId || order._id,
+    mongoId: order._id,
+    status: order.status || "out_for_delivery",
+    customerName: order.userId?.name || "Customer",
+    type:
+      order.deliveryFleet === "standard"
+        ? "Home Delivery"
+        : "Express Delivery",
+    tableOrToken: null,
+    timePlaced: new Date(order.createdAt).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    eta: null,
+    itemsSummary:
+      order.items?.map((item) => `${item.quantity}x ${item.name}`).join(", ") ||
+      "No items",
+    photoUrl: order.items?.[0]?.image || null,
+    photoAlt: order.items?.[0]?.name || "Order",
+    paymentMethod: order.paymentMethod || order.payment?.method || null,
+    deliveryPartnerId: order.deliveryPartnerId || null,
+    dispatchStatus: order.dispatch?.status || null,
+    scheduledAt: order.scheduledAt || null,
+    restaurantNote: order.restaurantNote || null,
+  }));
 
   if (loading) {
     return (
-      <div className="pt-4 pb-6">
+      <div className="pt-1 pb-6">
         <div className="flex items-baseline justify-between mb-3">
           <h2 className="text-base font-semibold text-black">
             Out for delivery
@@ -4118,17 +4176,17 @@ const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
   }
 
   return (
-    <div className="pt-4 pb-6">
+    <div className="pt-1 pb-6">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-base font-semibold text-black">Out for delivery</h2>
-        <span className="text-xs text-gray-500">{orders.length} active</span>
+        <span className="text-xs text-gray-500">{meta.total} active</span>
       </div>
       {orders.length === 0 ? (
         <div className="text-center py-8 text-gray-500 text-sm">
           No orders out for delivery
         </div>
       ) : (
-        <div>
+        <RestaurantBentoGrid variant="orders">
           {orders.map((order) => (
             <OrderCard
               key={order.orderId || order.mongoId}
@@ -4136,8 +4194,15 @@ const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
               onSelect={onSelectOrder}
             />
           ))}
-        </div>
+        </RestaurantBentoGrid>
       )}
+      <RestaurantOrdersPagination
+        page={page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit || RESTAURANT_ORDERS_PAGE_SIZE}
+        onPageChange={setPage}
+      />
     </div>
   );
 };

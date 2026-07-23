@@ -22,6 +22,15 @@ export default function RestaurantCommission() {
   const [deleting, setDeleting] = useState(false)
   const [isAddEditOpen, setIsAddEditOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [savingGlobal, setSavingGlobal] = useState(false)
+  const [globalSettings, setGlobalSettings] = useState({
+    globalRestaurantCommission: 0,
+    globalGstOnItem: 0,
+    globalGstOnCommission: 18,
+    globalPaymentGatewayFee: 2,
+    globalTcs: 1,
+    applyGlobalTaxes: true
+  })
   const [isRestaurantSelectOpen, setIsRestaurantSelectOpen] = useState(false)
   const [selectedCommission, setSelectedCommission] = useState(null)
   const [selectedRestaurant, setSelectedRestaurant] = useState(null)
@@ -43,18 +52,40 @@ export default function RestaurantCommission() {
     actions: true,
   })
 
+  const combinedList = useMemo(() => {
+    return approvedRestaurants.map((restaurant, index) => {
+      const commission = commissions.find(c => 
+        String(c.restaurantId) === String(restaurant._id) || 
+        (c.restaurant && String(c.restaurant._id) === String(restaurant._id))
+      );
+      
+      return {
+        _id: restaurant._id,
+        sl: index + 1,
+        restaurantName: restaurant.name,
+        restaurantId: restaurant.restaurantId,
+        hasCustomCommission: !!commission,
+        commissionData: commission || null,
+        defaultCommission: commission ? commission.defaultCommission : {
+          type: 'percentage',
+          value: globalSettings.globalRestaurantCommission
+        },
+        status: commission ? commission.status : true,
+      };
+    });
+  }, [approvedRestaurants, commissions, globalSettings.globalRestaurantCommission]);
+
   const filteredCommissions = useMemo(() => {
     if (!searchQuery.trim()) {
-      return commissions
+      return combinedList
     }
     
     const query = searchQuery.toLowerCase().trim()
-    return commissions.filter(commission =>
-      commission.restaurantName?.toLowerCase().includes(query) ||
-      commission.restaurantId?.toLowerCase().includes(query) ||
-      commission.restaurant?.name?.toLowerCase().includes(query)
+    return combinedList.filter(item =>
+      item.restaurantName?.toLowerCase().includes(query) ||
+      item.restaurantId?.toLowerCase().includes(query)
     )
-  }, [commissions, searchQuery])
+  }, [combinedList, searchQuery])
 
   const filteredRestaurants = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -81,7 +112,18 @@ export default function RestaurantCommission() {
       const response = await adminAPI.getRestaurantCommissionBootstrap()
       const data = response?.data?.data
       setCommissions(Array.isArray(data?.commissions) ? data.commissions : [])
+      setCommissions(Array.isArray(data?.commissions) ? data.commissions : [])
       setApprovedRestaurants(Array.isArray(data?.restaurants) ? data.restaurants : [])
+      if (data?.globalSettings) {
+        setGlobalSettings({
+          globalRestaurantCommission: data.globalSettings.globalRestaurantCommission || 0,
+          globalGstOnItem: data.globalSettings.globalGstOnItem || 0,
+          globalGstOnCommission: data.globalSettings.globalGstOnCommission || 0,
+          globalPaymentGatewayFee: data.globalSettings.globalPaymentGatewayFee || 0,
+          globalTcs: data.globalSettings.globalTcs || 0,
+          applyGlobalTaxes: data.globalSettings.applyGlobalTaxes !== false
+        })
+      }
     } catch (error) {
       debugError('Error fetching bootstrap:', error)
       if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
@@ -162,14 +204,38 @@ export default function RestaurantCommission() {
     }
   }
 
-  const handleToggleStatus = async (commission) => {
+  const handleToggleStatus = async (item) => {
+    if (!item.hasCustomCommission || !item.commissionData) {
+      toast.info('Cannot toggle status of global commission. Add a custom commission first.')
+      return
+    }
     try {
-      await adminAPI.toggleRestaurantCommissionStatus(commission._id)
+      await adminAPI.toggleRestaurantCommissionStatus(item.commissionData._id)
       await fetchCommissions()
       toast.success('Commission status updated successfully')
     } catch (error) {
       debugError('Error toggling status:', error)
       toast.error(error.response?.data?.message || 'Failed to update status')
+    }
+  }
+
+  const handleSaveGlobal = async () => {
+    try {
+      setSavingGlobal(true)
+      await adminAPI.updateGlobalRestaurantCommissionSettings({
+        globalRestaurantCommission: Number(globalSettings.globalRestaurantCommission),
+        globalGstOnItem: Number(globalSettings.globalGstOnItem),
+        globalGstOnCommission: Number(globalSettings.globalGstOnCommission),
+        globalPaymentGatewayFee: Number(globalSettings.globalPaymentGatewayFee),
+        globalTcs: Number(globalSettings.globalTcs),
+        applyGlobalTaxes: Boolean(globalSettings.applyGlobalTaxes)
+      })
+      toast.success('Global settings updated successfully')
+    } catch (error) {
+      debugError('Error saving global settings:', error)
+      toast.error(error.response?.data?.message || 'Failed to update global settings')
+    } finally {
+      setSavingGlobal(false)
     }
   }
 
@@ -363,6 +429,114 @@ export default function RestaurantCommission() {
             </div>
           </div>
 
+          {/* Global Configurations Section */}
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <Percent className="w-4 h-4 text-blue-600" />
+                Global Settings (Applied to all restaurants)
+              </h2>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-slate-700">Apply Taxes</span>
+                <button
+                  onClick={() => setGlobalSettings({ ...globalSettings, applyGlobalTaxes: !globalSettings.applyGlobalTaxes })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    globalSettings.applyGlobalTaxes ? "bg-blue-600" : "bg-slate-300"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      globalSettings.applyGlobalTaxes ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+            
+            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 transition-opacity ${!globalSettings.applyGlobalTaxes ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Global Default Commission (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={globalSettings.globalRestaurantCommission}
+                    onChange={(e) => setGlobalSettings({ ...globalSettings, globalRestaurantCommission: e.target.value })}
+                    className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">GST on Item (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={globalSettings.globalGstOnItem}
+                    onChange={(e) => setGlobalSettings({ ...globalSettings, globalGstOnItem: e.target.value })}
+                    className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">GST on Commission (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={globalSettings.globalGstOnCommission}
+                    onChange={(e) => setGlobalSettings({ ...globalSettings, globalGstOnCommission: e.target.value })}
+                    className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Payment Gateway Fee (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={globalSettings.globalPaymentGatewayFee}
+                    onChange={(e) => setGlobalSettings({ ...globalSettings, globalPaymentGatewayFee: e.target.value })}
+                    className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">TCS (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={globalSettings.globalTcs}
+                    onChange={(e) => setGlobalSettings({ ...globalSettings, globalTcs: e.target.value })}
+                    className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleSaveGlobal}
+                disabled={savingGlobal}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {savingGlobal && <Loader2 className="w-4 h-4 animate-spin" />}
+                Save Global Settings
+              </button>
+            </div>
+          </div>
+
           <div className="mb-4 flex items-center gap-3">
             <div className="relative flex-1 sm:flex-initial min-w-[250px]">
               <input
@@ -426,47 +600,55 @@ export default function RestaurantCommission() {
                       </td>
                     </tr>
                   ) : (
-                    filteredCommissions.map((commission) => (
-                      <tr key={commission._id} className="hover:bg-slate-50 transition-colors">
+                    filteredCommissions.map((item) => (
+                      <tr key={item._id} className="hover:bg-slate-50 transition-colors">
                         {visibleColumns.si && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-medium text-slate-700">{commission.sl || '-'}</span>
+                            <span className="text-sm font-medium text-slate-700">{item.sl || '-'}</span>
                           </td>
                         )}
                         {visibleColumns.restaurant && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="text-sm font-medium text-blue-600">
-                              {commission.restaurantName || commission.restaurant?.name || '-'}
+                              {item.restaurantName || '-'}
                             </span>
                           </td>
                         )}
                         {visibleColumns.restaurantId && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-slate-700">{commission.restaurantId || '-'}</span>
+                            <span className="text-sm text-slate-700">{item.restaurantId || '-'}</span>
                           </td>
                         )}
                         {visibleColumns.defaultCommission && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-medium text-slate-900">
-                              {commission.defaultCommission?.type === 'percentage' ? (
-                                <>{commission.defaultCommission.value}%</>
-                              ) : (
-                                <>${commission.defaultCommission.value}</>
-                              )}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-slate-900">
+                                {item.defaultCommission?.type === 'percentage' ? (
+                                  <>{item.defaultCommission.value}%</>
+                                ) : (
+                                  <>${item.defaultCommission.value}</>
+                                )}
+                              </span>
+                              <span className={`text-[10px] font-semibold mt-0.5 px-1.5 py-0.5 rounded-sm inline-block w-fit ${item.hasCustomCommission ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {item.hasCustomCommission ? 'Custom' : 'Global Default'}
+                              </span>
+                            </div>
                           </td>
                         )}
                         {visibleColumns.status && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button
-                              onClick={() => handleToggleStatus(commission)}
+                              onClick={() => handleToggleStatus(item)}
+                              disabled={!item.hasCustomCommission}
                               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                                commission.status ? "bg-blue-600" : "bg-slate-300"
+                                !item.hasCustomCommission ? "bg-slate-200 cursor-not-allowed opacity-50" : 
+                                item.status ? "bg-blue-600" : "bg-slate-300"
                               }`}
                             >
                               <span
                                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                  commission.status ? "translate-x-6" : "translate-x-1"
+                                  !item.hasCustomCommission ? "translate-x-6" :
+                                  item.status ? "translate-x-6" : "translate-x-1"
                                 }`}
                               />
                             </button>
@@ -475,20 +657,35 @@ export default function RestaurantCommission() {
                         {visibleColumns.actions && (
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => handleEdit(commission)}
-                                className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
-                                title="Edit"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(commission)}
-                                className="p-1.5 rounded text-red-600 hover:bg-red-50 transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {item.hasCustomCommission ? (
+                                <>
+                                  <button
+                                    onClick={() => handleEdit(item.commissionData)}
+                                    className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
+                                    title="Edit"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(item.commissionData)}
+                                    className="p-1.5 rounded text-red-600 hover:bg-red-50 transition-colors"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    const restaurant = approvedRestaurants.find(r => r._id === item._id);
+                                    handleSelectRestaurant(restaurant);
+                                  }}
+                                  className="px-3 py-1 rounded-md text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+                                  title="Configure custom commission"
+                                >
+                                  Configure
+                                </button>
+                              )}
                             </div>
                           </td>
                         )}

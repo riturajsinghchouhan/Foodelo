@@ -11,7 +11,7 @@ const CookingAnimation = memo(() => (
       <motion.div animate={{ opacity: [0, 0.8, 0], y: [0, -8, -12], scale: [0.8, 1.2, 1] }} transition={{ duration: 1.5, repeat: Infinity, delay: 1, ease: "easeOut" }} className="w-1.5 h-3 bg-orange-400/60 rounded-full blur-[1px]" />
     </div>
     <motion.div animate={{ rotate: [-2, 2, -2] }} transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 mt-1">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#7e3866] drop-shadow-sm">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary drop-shadow-sm">
         {/* Cooker Body */}
         <path d="M6 10h12v6a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4v-6z" />
         {/* Lid Rim */}
@@ -27,13 +27,17 @@ const CookingAnimation = memo(() => (
     </motion.div>
     {/* Flame below */}
     <motion.div animate={{ opacity: [0.4, 0.8, 0.4], scaleX: [0.8, 1.2, 0.8] }} transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut" }} className="absolute bottom-0 w-full flex justify-center z-0">
-      <div className="w-4 h-1 bg-[#7e3866] blur-[2px] rounded-full" />
+      <div className="w-4 h-1 bg-primary blur-[2px] rounded-full" />
     </motion.div>
   </div>
 ));
 
 import { useOrders } from "@food/context/OrdersContext";
 import { orderAPI } from "@food/api";
+import {
+  patchOrderFromSocketPayload,
+  socketPayloadNeedsRefetch,
+} from "@food/utils/orderSocketPatch";
 
 const getOrderKey = (order) => order?.id || order?._id || order?.orderId || null;
 
@@ -80,6 +84,7 @@ const TERMINAL_STATUSES = new Set([
   "canceled_by_restaurant",
   "cancelled_by_admin",
   "canceled_by_admin",
+  "dead",
 ]);
 
 const isActiveOrder = (order) => {
@@ -179,10 +184,36 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
   }, []);
 
   useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 30000);
-    return () => clearInterval(interval);
+    fetchOrders(); // Fetch once on mount to check if any order is active
   }, [fetchOrders]);
+
+  // Smart Polling fallback: Only poll if there is an active order, and only fetch that specific order's details
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (document.hidden) return;
+
+      const currentKey = activeOrderKeyRef.current;
+      if (!currentKey) return; // Do nothing if no active order exists
+
+      try {
+        const response = await orderAPI.getOrderDetails(currentKey);
+        const fresh = response?.data?.data?.order || response?.data?.order || response?.data?.data || null;
+        if (fresh) {
+          setActiveOrderOverride(fresh);
+        }
+      } catch (error) {
+        if (error?.response?.status === 404 || error?.response?.status === 400) {
+          setInvalidOrderIds((prev) => {
+            const next = new Set(prev);
+            next.add(currentKey);
+            return next;
+          });
+        }
+      }
+    }, 90000); // Poll every 90 seconds only for the active order
+
+    return () => clearInterval(interval);
+  }, []);
 
   const uniqueOrders = useMemo(() => {
     const isMongoObjectId = (value) => /^[a-f0-9]{24}$/i.test(String(value || ""));
@@ -238,17 +269,14 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
 
       const snap = activeOrderSnapshotRef.current;
 
-      setActiveOrderOverride((prev) => ({
-        ...(prev || snap || {}),
-        orderStatus: detail?.orderStatus || prev?.orderStatus || snap?.orderStatus,
-        deliveryState: detail?.deliveryState
-          ? { ...(prev?.deliveryState || snap?.deliveryState || {}), ...detail.deliveryState }
-          : prev?.deliveryState || snap?.deliveryState,
-        status: detail?.status || prev?.status || snap?.status,
-      }));
+      setActiveOrderOverride((prev) =>
+        patchOrderFromSocketPayload(prev || snap || {}, detail),
+      );
 
+      const needsRefetch = socketPayloadNeedsRefetch(detail, detail?.orderStatus);
       const now = Date.now();
-      if (now - lastRefreshRef.current < 1500) return;
+      if (!needsRefetch) return;
+      if (now - lastRefreshRef.current < 30000) return;
       lastRefreshRef.current = now;
 
       try {
@@ -391,11 +419,11 @@ function OrderTrackingCardInner({ hasBottomNav = true }) {
               <p className="text-gray-900 font-bold text-base md:text-lg truncate tracking-tight">{restaurantName}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <p className="text-gray-500 font-medium text-xs md:text-sm truncate">{statusText}</p>
-                <ChevronRight className="w-3.5 h-3.5 text-[#7e3866] shrink-0 group-hover:translate-x-1 transition-transform" />
+                <ChevronRight className="w-3.5 h-3.5 text-primary shrink-0 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-[#7e3866] to-[#D94E0A] shadow-lg shadow-[#7e3866]/20 rounded-xl px-4 py-2 shrink-0 flex flex-col items-center justify-center border border-orange-200">
+            <div className="bg-gradient-to-br from-primary to-[#D94E0A] shadow-lg shadow-primary/20 rounded-xl px-4 py-2 shrink-0 flex flex-col items-center justify-center border border-orange-200">
               <p className="text-orange-50 text-[10px] font-bold uppercase tracking-wider opacity-95 leading-tight mb-[2px]">
                 arriving in
               </p>

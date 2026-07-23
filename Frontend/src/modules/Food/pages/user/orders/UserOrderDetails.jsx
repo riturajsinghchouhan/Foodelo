@@ -19,7 +19,7 @@ import { useCart } from "@food/context/CartContext"
 import { toast } from "sonner"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
-import { getCompanyNameAsync } from "@food/utils/businessSettings"
+import { getCompanyNameAsync, loadBusinessSettings } from "@food/utils/businessSettings"
 import { downloadFile } from "@/shared/utils/downloadUtils"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -45,6 +45,8 @@ export default function UserOrderDetails() {
         let orderData = null
         if (response?.data?.success && response.data.data?.order) {
           orderData = response.data.data.order
+        } else if (response?.data?.success && response.data?.data && (response.data.data._id || response.data.data.orderId || response.data.data.id)) {
+          orderData = response.data.data
         } else if (response?.data?.order && typeof response.data.order === 'object') {
           orderData = response.data.order
         } else {
@@ -110,7 +112,7 @@ export default function UserOrderDetails() {
           <p className="text-gray-700 dark:text-gray-300 text-sm font-medium">Order not found</p>
           <button
             onClick={() => navigate("/user/orders")}
-            className="px-4 py-2 rounded-lg bg-[#7e3866] text-white text-sm font-semibold hover:bg-[#55254b] transition-all active:scale-95 shadow-md"
+            className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-secondary transition-all active:scale-95 shadow-md"
           >
             Back to Orders
           </button>
@@ -123,7 +125,12 @@ export default function UserOrderDetails() {
   // Use fetched restaurant data if available, otherwise use order.restaurantId or order.restaurant
   const restaurantObj = restaurant || order.restaurantId || order.restaurant || {}
   const restaurantName =
-    order.restaurantName || restaurantObj.name || "Restaurant"
+    order.restaurantId?.restaurantName ||
+    order.restaurantId?.name ||
+    order.restaurantName ||
+    restaurantObj.restaurantName ||
+    restaurantObj.name ||
+    "Restaurant"
 
   // Build restaurant address (try restaurant fields first, then fall back)
   const restaurantLocation = (() => {
@@ -184,9 +191,19 @@ export default function UserOrderDetails() {
     })
     : ""
 
+  const deliveryAddressObj = order.deliveryAddress || order.address || {}
   const addressText =
-    order.address?.formattedAddress ||
-    [order.address?.street, order.address?.city, order.address?.state, order.address?.zipCode]
+    deliveryAddressObj.formattedAddress ||
+    deliveryAddressObj.address ||
+    [
+      deliveryAddressObj.addressLine1,
+      deliveryAddressObj.addressLine2,
+      deliveryAddressObj.street,
+      deliveryAddressObj.area,
+      deliveryAddressObj.city,
+      deliveryAddressObj.state,
+      deliveryAddressObj.zipCode || deliveryAddressObj.pincode || deliveryAddressObj.postalCode
+    ]
       .filter(Boolean)
       .join(", ")
 
@@ -213,109 +230,220 @@ export default function UserOrderDetails() {
 
   const handleDownloadSummary = async () => {
     try {
-      const companyName = await getCompanyNameAsync()
-      // Create new PDF document
+      toast.info("Generating invoice...");
       const doc = new jsPDF()
+      
+      // Load settings
+      let settings = {};
+      try {
+        settings = await loadBusinessSettings() || {};
+      } catch (err) {
+        debugWarn("Could not load business settings", err);
+      }
 
-      // Title
-      doc.setFontSize(16)
-      doc.setFont('helvetica', 'bold')
-      doc.text(`${companyName} Order: Summary and Receipt`, 105, 20, { align: 'center' })
+      const companyName = settings.companyName || "Foodelo"
 
-      // Order details section
-      let yPos = 35
-      doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
+      const primaryColor = [220, 38, 38]; // Red #DC2626
+      const secondaryColor = [71, 85, 105]; // Slate 600
 
-      // Order ID
-      doc.setFont('helvetica', 'bold')
-      doc.text('Order ID:', 20, yPos)
-      doc.setFont('helvetica', 'normal')
-      doc.text(orderIdDisplay, 60, yPos)
-      yPos += 7
+      // Add Border
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      doc.setDrawColor(226, 232, 240); // Slate 200 border
+      doc.setLineWidth(1);
+      doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
 
-      // Order Time
-      doc.setFont('helvetica', 'bold')
-      doc.text('Order Time:', 20, yPos)
-      doc.setFont('helvetica', 'normal')
-      const orderTimeLines = doc.splitTextToSize(paymentDate || 'N/A', 130)
-      doc.text(orderTimeLines, 60, yPos)
-      yPos += orderTimeLines.length * 7
+      // Header: INVOICE
+      doc.setFontSize(22);
+      doc.setTextColor(...primaryColor);
+      doc.setFont("helvetica", "bold");
+      doc.text("INVOICE", 105, 25, { align: "center" });
 
-      // Customer Name
-      doc.setFont('helvetica', 'bold')
-      doc.text('Customer Name:', 20, yPos)
-      doc.setFont('helvetica', 'normal')
-      doc.text(userName || 'Customer', 60, yPos)
-      yPos += 7
+      // Load logo if available
+      if (settings.logo?.url) {
+        try {
+          const img = new Image();
+          img.crossOrigin = "Anonymous";
+          img.src = settings.logo.url;
+          await new Promise((resolve) => {
+            img.onload = () => {
+              try {
+                // Safely convert image to PNG via canvas (handles WebP automatically)
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0);
+                const dataUrl = canvas.toDataURL("image/png");
+                doc.addImage(dataUrl, "PNG", 14, 15, 30, 30, undefined, 'FAST');
+              } catch (e) {
+                console.warn("Failed to add image to PDF", e);
+              }
+              resolve();
+            };
+            img.onerror = resolve; // Continue without logo if it fails
+          });
+        } catch (e) {
+          debugWarn("Logo load failed", e);
+        }
+      }
 
-      // Delivery Address
-      doc.setFont('helvetica', 'bold')
-      doc.text('Delivery Address:', 20, yPos)
-      doc.setFont('helvetica', 'normal')
-      const addressLines = doc.splitTextToSize(addressText || 'N/A', 130)
-      doc.text(addressLines, 60, yPos)
-      yPos += addressLines.length * 7
+      doc.setTextColor(15, 23, 42); // Slate 900
+      
+      // Platform Info (Left)
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(companyName, 14, 55);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...secondaryColor);
+      if (settings.address) {
+        const addrLines = doc.splitTextToSize(settings.address, 85);
+        doc.text(addrLines, 14, 60);
+      }
+      doc.text(`FSSAI: ${settings.fssai || "N/A"}`, 14, 75);
+      doc.text(`GSTIN: ${settings.gstin || "N/A"}`, 14, 80);
 
-      // Restaurant Name
-      doc.setFont('helvetica', 'bold')
-      doc.text('Restaurant Name:', 20, yPos)
-      doc.setFont('helvetica', 'normal')
-      doc.text(restaurantName, 60, yPos)
-      yPos += 7
+      // Restaurant Info (Right)
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(restaurantName, 110, 55);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...secondaryColor);
+      
+      const resAddrLines = doc.splitTextToSize(restaurantLocation || "Address not available", 85);
+      doc.text(resAddrLines, 110, 60);
+      doc.text(`FSSAI: ${restaurantObj.fssaiNumber || restaurantObj.fssai || order.restaurantFssai || "N/A"}`, 110, 75);
+      doc.text(`GSTIN: ${restaurantObj.gstNumber || restaurantObj.gstin || order.restaurantGstin || "N/A"}`, 110, 80);
 
-      // Restaurant Address
-      doc.setFont('helvetica', 'bold')
-      doc.text('Restaurant Address:', 20, yPos)
-      doc.setFont('helvetica', 'normal')
-      const restaurantAddressLines = doc.splitTextToSize(restaurantLocation || 'N/A', 130)
-      doc.text(restaurantAddressLines, 60, yPos)
-      yPos += restaurantAddressLines.length * 7 + 5
+      // Divider line
+      doc.setDrawColor(226, 232, 240); // Slate 200
+      doc.setLineWidth(0.5);
+      doc.line(14, 85, 196, 85);
+
+      // Order Info
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Order ID: ${orderIdDisplay || "N/A"}`, 14, 95);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...secondaryColor);
+      doc.text(`Date & Time: ${paymentDate || "N/A"}`, 14, 100);
+      doc.text(`Payment: ${paymentMethod}`, 14, 105);
+
+      // Customer Info
+      doc.setTextColor(15, 23, 42);
+      doc.setFont("helvetica", "bold");
+      doc.text("Billed To:", 110, 95);
+      doc.setFont("helvetica", "normal");
+      doc.text(userName || "Customer", 110, 100);
+      doc.setTextColor(...secondaryColor);
+
+      const custAddrLines = doc.splitTextToSize(addressText || "Address not available", 85);
+      doc.text(custAddrLines, 110, 105);
 
       // Items table
-      const tableData = items.map(item => [
-        item.variantName ? `${item.name || 'Item'} (${item.variantName})` : (item.name || 'Item'),
-        String(item.quantity || item.qty || 1),
-        `?${Number(item.price || 0).toFixed(2)}`,
-        `?${Number((item.price || 0) * (item.quantity || item.qty || 1)).toFixed(2)}`
-      ])
+      let yPos = 120;
+      if (items && items.length > 0) {
+        const tableData = items.map((item, index) => [
+          index + 1,
+          item.variantName ? `${item.name || 'Item'} (${item.variantName})` : (item.name || 'Item'),
+          String(item.quantity || item.qty || 1),
+          `Rs. ${Number(item.price || 0).toFixed(2)}`,
+          `Rs. ${Number((item.price || 0) * (item.quantity || item.qty || 1)).toFixed(2)}`
+        ]);
 
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Item', 'Quantity', 'Unit Price', 'Total Price']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: { fillColor: [0, 0, 0], textColor: 255, fontStyle: 'bold', fontSize: 10 },
-        styles: { fontSize: 9 },
-        columnStyles: {
-          0: { cellWidth: 80 },
-          1: { cellWidth: 30, halign: 'center' },
-          2: { cellWidth: 35, halign: 'right' },
-          3: { cellWidth: 35, halign: 'right', fontStyle: 'bold' }
-        }
-      })
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: 14, right: 14 },
+          head: [["S.No", "Item Description", "Qty", "Unit Price", "Total Price"]],
+          body: tableData,
+          theme: "striped",
+          headStyles: {
+            fillColor: primaryColor,
+            textColor: 255,
+            fontStyle: "bold",
+          },
+          styles: { fontSize: 9, cellPadding: 4 },
+          columnStyles: {
+            0: { cellWidth: 15, halign: "center" },
+            2: { cellWidth: 15, halign: "center" },
+            3: { cellWidth: 35, halign: "right" },
+            4: { cellWidth: 35, halign: "right" },
+          },
+        });
 
-      // Get final Y position after table (autoTable adds lastAutoTable property)
-      const finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY : yPos + (tableData.length * 8) + 20
+        yPos = (doc.lastAutoTable?.finalY || doc.autoTable?.previous?.finalY || yPos + (items.length * 10)) + 10;
+      }
 
-      // Total
-      doc.setFontSize(12)
-      doc.setFont('helvetica', 'bold')
-      doc.text('Total:', 145, finalY + 10, { align: 'right' })
-      doc.text(`?${Number(pricing.total || 0).toFixed(2)}`, 195, finalY + 10, { align: 'right' })
+      // Totals block right aligned
+      const totalWidth = 196;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...secondaryColor);
+      
+      const subtotal = Number(pricing.subtotal || pricing.total || 0);
+      const tax = Number(pricing.tax || 0);
+      const deliveryFee = Number(pricing.deliveryFee || 0);
+      const platformFee = Number(pricing.platformFee || 0);
+      const subscriptionFee = Number(pricing.subscriptionFee || 0);
+      const discount = (Number(pricing.discount) || 0) + (Number(pricing.originalItemTotal) || 0) - (Number(pricing.subtotal) || 0);
+      const total = Number(pricing.total || 0);
 
-      // Use robust download utility
-      const pdfBlob = doc.output('blob');
-      downloadFile({
+      doc.text("Item Total:", 140, yPos);
+      doc.text(`Rs. ${subtotal.toFixed(2)}`, totalWidth, yPos, { align: "right" });
+      yPos += 6;
+      
+      if (tax > 0) {
+        doc.text("GST (gov. taxes):", 140, yPos);
+        doc.text(`Rs. ${tax.toFixed(2)}`, totalWidth, yPos, { align: "right" });
+        yPos += 6;
+      }
+      
+      doc.text("Delivery Fee:", 140, yPos);
+      doc.text(deliveryFee > 0 ? `Rs. ${deliveryFee.toFixed(2)}` : "Free", totalWidth, yPos, { align: "right" });
+      yPos += 6;
+      
+      if (platformFee > 0) {
+        doc.text("Platform Fee:", 140, yPos);
+        doc.text(`Rs. ${platformFee.toFixed(2)}`, totalWidth, yPos, { align: "right" });
+        yPos += 6;
+      }
+
+
+
+      if (discount > 0) {
+        doc.text("Discount:", 140, yPos);
+        doc.text(`- Rs. ${discount.toFixed(2)}`, totalWidth, yPos, { align: "right" });
+        yPos += 6;
+      }
+      
+      yPos += 2;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(15, 23, 42); // Slate 900
+      doc.text("Grand Total:", 140, yPos);
+      doc.text(`Rs. ${total.toFixed(2)}`, totalWidth, yPos, { align: "right" });
+
+      // Footer
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(148, 163, 184); // Slate 400
+      doc.text("This is a computer generated invoice and does not require a physical signature.", 105, pageHeight - 15, { align: "center" });
+
+      // Flutter WebView-safe download (avoids blob URL revoke race)
+      const pdfBlob = doc.output("blob")
+      await downloadFile({
         data: pdfBlob,
-        filename: `Order_Summary_${orderIdDisplay}_${Date.now()}.pdf`,
-        type: 'application/pdf'
-      });
-
-      toast.success("Summary downloaded successfully!")
+        filename: `Invoice_${orderIdDisplay}_${Date.now()}.pdf`,
+        type: "application/pdf",
+        successMessage: "Invoice downloaded successfully!",
+      })
     } catch (error) {
-      debugError("Error generating PDF:", error)
-      toast.error("Failed to download summary")
+      console.error("Error generating PDF:", error)
+      toast.error("Failed to download invoice: " + (error?.message || error))
     }
   }
 
@@ -429,7 +557,7 @@ export default function UserOrderDetails() {
             <button
               type="button"
               onClick={handleCallRestaurant}
-              className="w-8 h-8 rounded-full border border-[#7e3866]/20 flex items-center justify-center text-[#7e3866] hover:bg-[#7e3866]/5"
+              className="w-8 h-8 rounded-full border border-primary/20 flex items-center justify-center text-primary hover:bg-primary/5"
             >
               <Phone className="w-4 h-4" />
             </button>
@@ -510,7 +638,7 @@ export default function UserOrderDetails() {
             <button
               type="button"
               onClick={handleDownloadSummary}
-              className="w-7 h-7 rounded-full bg-[#7e3866]/10 flex items-center justify-center text-[#7e3866] hover:bg-[#7e3866]/20 transition-colors"
+              className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:bg-primary/20 transition-colors"
             >
               <Download className="w-4 h-4" />
             </button>
@@ -539,11 +667,11 @@ export default function UserOrderDetails() {
             <div className="flex justify-between">
               <span className="text-gray-400 dark:text-gray-500 font-medium">Delivery fee</span>
               {pricing.deliveryFee === 0 && (
-                <span className="text-[#7e3866] text-[10px] font-bold border border-[#7e3866] px-1 rounded ml-1">
+                <span className="text-primary text-[10px] font-bold border border-primary px-1 rounded ml-1">
                   FREE
                 </span>
               )}
-              <span className="text-[#7e3866] dark:text-[#a04882] font-medium uppercase">
+              <span className="text-primary dark:text-[#a04882] font-medium uppercase">
                 {pricing.deliveryFee ? `₹${Number(pricing.deliveryFee).toFixed(2)}` : "Free"}
               </span>
             </div>
@@ -553,12 +681,7 @@ export default function UserOrderDetails() {
                 ₹{Number(pricing.platformFee || 0).toFixed(2)}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Subscription / other fees</span>
-              <span className="text-gray-800 dark:text-gray-200">
-                ₹{Number(pricing.subscriptionFee || 0).toFixed(2)}
-              </span>
-            </div>
+
 
             <div className="border-t border-gray-100 dark:border-gray-800 my-2 pt-2 flex justify-between items-center">
               <span className="font-bold text-gray-800 dark:text-gray-100">Paid</span>
@@ -570,7 +693,7 @@ export default function UserOrderDetails() {
 
           {/* Savings Banner */}
           {savings > 0 && (
-            <div className="relative bg-[#7e3866]/5 p-3 pb-4 mt-2">
+            <div className="relative bg-primary/5 p-3 pb-4 mt-2">
               <div className="absolute -top-1.5 left-0 w-full overflow-hidden leading-none">
                 <svg
                   className="relative block w-[calc(100%+1.3px)] h-[8px]"
@@ -586,7 +709,7 @@ export default function UserOrderDetails() {
                 </svg>
               </div>
 
-              <div className="flex items-center justify-center gap-2 pt-1 text-[#7e3866] font-bold text-sm">
+              <div className="flex items-center justify-center gap-2 pt-1 text-primary font-bold text-sm">
                 <span></span>
                 <span>
                   You saved ₹{Number(savings).toFixed(2)} on this order!
@@ -661,7 +784,7 @@ export default function UserOrderDetails() {
         <button
           type="button"
           onClick={() => handleReorder(order)}
-          className="flex-1 bg-[#7e3866] text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#55254b] transition-all active:scale-95 shadow-md"
+          className="flex-1 bg-primary text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-secondary transition-all active:scale-95 shadow-md"
         >
           <RotateCcw className="w-4 h-4" />
           Reorder
@@ -669,7 +792,7 @@ export default function UserOrderDetails() {
         <button
           type="button"
           onClick={handleDownloadSummary}
-          className="flex-1 bg-white dark:bg-[#1a1a1a] border border-[#7e3866] text-[#7e3866] py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#7e3866]/5 transition-colors"
+          className="flex-1 bg-white dark:bg-[#1a1a1a] border border-primary text-primary py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-primary/5 transition-colors"
         >
           <Download className="w-4 h-4" />
           Invoice
@@ -703,7 +826,7 @@ export default function UserOrderDetails() {
               debugLog("Navigating to complaint page with orderId:", orderIdString)
               navigate(`/user/complaints/submit/${encodeURIComponent(orderIdString)}`)
             }}
-            className="w-full bg-[#7e3866]/5 border border-[#7e3866]/20 text-[#7e3866] py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-[#7e3866]/10 transition-colors"
+            className="w-full bg-primary/5 border border-primary/20 text-primary py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-primary/10 transition-colors"
           >
             <FileText className="w-4 h-4" />
             Restaurant Complaint

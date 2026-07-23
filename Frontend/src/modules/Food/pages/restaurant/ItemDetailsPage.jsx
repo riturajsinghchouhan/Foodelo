@@ -24,6 +24,7 @@ import { toast } from "sonner"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { getFoodVariants } from "@food/utils/foodVariants"
+import { getImageUrl } from "@food/utils/getImageUrl"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -101,8 +102,8 @@ export default function ItemDetailsPage() {
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [loadingItem, setLoadingItem] = useState(false)
+  const [restaurantProfile, setRestaurantProfile] = useState(null)
   const [keyboardInset, setKeyboardInset] = useState(0)
-  const [isPureVeg, setIsPureVeg] = useState(false)
 
   const maxNameLength = 70
   const maxDescriptionLength = 1000
@@ -111,31 +112,6 @@ export default function ItemDetailsPage() {
   const nameLength = itemName.length
   const currentApprovalStatus = String(itemData?.approvalStatus || "").toLowerCase()
   const currentRejectionReason = String(itemData?.rejectionReason || "").trim()
-
-  useEffect(() => {
-    const checkVegStatus = async () => {
-      try {
-        const response = await restaurantAPI.getCurrentRestaurant()
-        const data = response?.data?.data?.restaurant || response?.data?.restaurant
-        if (data?.pureVegRestaurant) {
-          setIsPureVeg(true)
-          setFoodType("Veg")
-        }
-      } catch (err) {
-        try {
-          const storedUser = localStorage.getItem("restaurant_user")
-          if (storedUser) {
-            const user = JSON.parse(storedUser)
-            if (user?.restaurant?.pureVegRestaurant || user?.pureVegRestaurant) {
-              setIsPureVeg(true)
-              setFoodType("Veg")
-            }
-          }
-        } catch (e) {}
-      }
-    }
-    checkVegStatus()
-  }, [])
 
   const populateFormFromItem = (item = {}) => {
     setItemData(item)
@@ -302,6 +278,28 @@ export default function ItemDetailsPage() {
 
     fetchCategories()
   }, [category, defaultCategory, defaultCategoryId, isNewItem, selectedCategoryId])
+
+  // Fetch restaurant profile
+  useEffect(() => {
+    const fetchRestaurantProfile = async () => {
+      try {
+        const response = await restaurantAPI.getCurrentRestaurant()
+        const profile =
+          response?.data?.data?.restaurant ||
+          response?.data?.restaurant ||
+          response?.data?.data ||
+          null
+        setRestaurantProfile(profile)
+        
+        if (profile?.pureVegRestaurant === true) {
+           setFoodType("Veg")
+        }
+      } catch (error) {
+        debugWarn("Failed to load restaurant profile:", error)
+      }
+    }
+    fetchRestaurantProfile()
+  }, [])
 
   // Keep focused form fields visible above mobile keyboard
   useEffect(() => {
@@ -775,7 +773,7 @@ export default function ItemDetailsPage() {
   }
 
   return (
-    <div className="h-screen bg-white flex flex-col overflow-hidden">
+    <div className="restaurant-page min-h-full bg-white">
       <style>{`
         [data-slot="switch"][data-state="checked"] {
           background-color: #16a34a !important;
@@ -799,7 +797,7 @@ export default function ItemDetailsPage() {
 
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: `${96 + keyboardInset}px` }}>
+      <div style={{ paddingBottom: `${96 + keyboardInset}px` }}>
         {!isNewItem && currentApprovalStatus === "rejected" && currentRejectionReason ? (
           <div className="px-4 pt-4">
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
@@ -836,7 +834,7 @@ export default function ItemDetailsPage() {
                   >
                     {images[currentImageIndex] ? (
                       <img
-                        src={images[currentImageIndex]}
+                        src={getImageUrl(images[currentImageIndex])}
                         alt={`${itemName} - Image ${currentImageIndex + 1}`}
                         className="w-full h-full object-cover"
                       />
@@ -1014,7 +1012,7 @@ export default function ItemDetailsPage() {
                 {foodType === "Veg" && <Check className="w-4 h-4" />}
                 <span>Veg</span>
               </button>
-              {!isPureVeg && (
+              {restaurantProfile?.pureVegRestaurant !== true && (
                 <button
                   onClick={() => setFoodType("Non-Veg")}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${foodType === "Non-Veg"
@@ -1215,7 +1213,7 @@ export default function ItemDetailsPage() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[85vh] flex flex-col"
+              className="restaurant-modal-sheet bg-white rounded-t-2xl shadow-2xl z-50 max-h-[85vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
@@ -1308,7 +1306,7 @@ export default function ItemDetailsPage() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[60vh] flex flex-col"
+              className="restaurant-modal-sheet bg-white rounded-t-2xl shadow-2xl z-50 max-h-[60vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">

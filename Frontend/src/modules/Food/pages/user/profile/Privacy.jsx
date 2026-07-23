@@ -37,7 +37,7 @@ export default function Privacy() {
 
   const handleBack = () => {
     if (window.history.length > 2) {
-      goBack()
+      navigate(-1)
     } else {
       navigate('/food/user')
     }
@@ -88,7 +88,7 @@ export default function Privacy() {
                 prose-headings:font-black prose-headings:text-gray-900 dark:prose-headings:text-white
                 prose-p:text-gray-600 dark:prose-p:text-gray-400 prose-p:leading-relaxed
                 prose-strong:text-gray-900 dark:prose-strong:text-white
-                prose-a:text-[#CB202D] dark:prose-a:text-[#7e3866]
+                prose-a:text-[#CB202D] dark:prose-a:text-primary
                 prose-li:text-gray-600 dark:prose-li:text-gray-400"
               dangerouslySetInnerHTML={{ __html: privacyData.content }}
             />

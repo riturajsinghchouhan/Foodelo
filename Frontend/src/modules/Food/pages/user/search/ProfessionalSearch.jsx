@@ -8,9 +8,8 @@ import {
 import { Card, CardContent } from "@food/components/ui/card"
 import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
-import { useLocation as useGeoLocation } from "@food/hooks/useLocation"
-import { useZone } from "@food/hooks/useZone"
-import { searchAPI } from "@/services/api"
+import { useAppLocation } from "@food/hooks/useAppLocation"
+import { searchAPI, adminAPI } from "@/services/api"
 import { motion, AnimatePresence } from "framer-motion"
 import { createPortal } from "react-dom"
 import OptimizedImage from "@food/components/OptimizedImage"
@@ -50,8 +49,7 @@ export default function ProfessionalSearch() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialQuery = searchParams.get("q") || ""
   const navigate = useNavigate()
-  const { location: userCoords } = useGeoLocation()
-  const { zoneId } = useZone(userCoords)
+  const { location: userCoords, zoneId } = useAppLocation()
   
   const [query, setQuery] = useState(initialQuery)
   const debouncedQuery = useDebounce(query, 500)
@@ -62,30 +60,25 @@ export default function ProfessionalSearch() {
     setQuery(transcript)
     addToHistory(transcript)
   })
+
+  // Auto-start voice search if voice=true in URL
+  useEffect(() => {
+    if (searchParams.get("voice") === "true") {
+      // Start listening on next tick to ensure component is fully mounted
+      setTimeout(() => {
+        startListening()
+      }, 100)
+      
+      // Clean up URL parameter
+      const newParams = new URLSearchParams(searchParams)
+      newParams.delete("voice")
+      setSearchParams(newParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams, startListening])
   const [categories, setCategories] = useState([])
   const [selectedCategoryId, setSelectedCategoryId] = useState(searchParams.get("cat") || null)
   const [history, setHistory] = useState([])
   const [selectedDish, setSelectedDish] = useState(null)
-  
-  // Pagination state
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  
-  // Intersection Observer for Infinite Scroll
-  const observer = useRef()
-  const lastElementRef = useCallback((node) => {
-    if (loading || loadingMore) return
-    if (observer.current) observer.current.disconnect()
-    
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore) {
-        setPage(prev => prev + 1)
-      }
-    })
-    
-    if (node) observer.current.observe(node)
-  }, [loading, loadingMore, hasMore])
 
   // Load search history
   useEffect(() => {
@@ -101,7 +94,7 @@ export default function ProfessionalSearch() {
       return;
     }
     try {
-      const res = await searchAPI.getAdminCategories({ zoneId })
+      const res = await adminAPI.getPublicCategories({ zoneId })
       if (res.data?.success) {
         sessionCategoriesCache.set(cacheKey, res.data.data.categories);
         setCategories(res.data.data.categories)
@@ -117,95 +110,50 @@ export default function ProfessionalSearch() {
     localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(newHistory))
   }
 
-  const performSearch = useCallback(async (searchTerm, catId, currentPage = 1) => {
+  const performSearch = useCallback(async (searchTerm, catId) => {
     if (!searchTerm && !catId) {
       setResults({ restaurants: [], dishes: [] })
-      setHasMore(false)
       return
     }
-    
-    // Cache key now includes page
-    const cacheKey = `${searchTerm}-${catId}-${zoneId}-${currentPage}`;
-    if (sessionSearchCache.has(cacheKey) && currentPage === 1) {
+    const cacheKey = `${searchTerm}-${catId}-${zoneId}`;
+    if (sessionSearchCache.has(cacheKey)) {
       setResults(sessionSearchCache.get(cacheKey));
-      setHasMore(true); // Assuming cache might have more pages
       return; // instant load
     }
     
-    if (currentPage === 1) {
-      setLoading(true)
-    } else {
-      setLoadingMore(true)
-    }
-    
+    setLoading(true)
     try {
-      const limit = 20;
       const res = await searchAPI.unifiedSearch({
         q: searchTerm,
         categoryId: catId,
         lat: userCoords?.latitude,
         lng: userCoords?.longitude,
-        zoneId,
-        page: currentPage,
-        limit
+        zoneId
       })
       
       if (res.data?.success) {
+        // Grouping results into Restaurants and potential Dishes
         const all = res.data.data.restaurants || []
-        
-        // Stop fetching if less than limit is returned
-        if (all.length < limit) {
-          setHasMore(false);
-        } else {
-          setHasMore(true);
-        }
-
-        const newParsedResults = {
-          restaurants: all.filter(r => r.matchType === 'restaurant' || !r.matchType || (!searchTerm && catId && r.matchType === 'food')),
+        const parsedResults = {
+          restaurants: all.filter(r => r.matchType === 'restaurant' || !r.matchType),
           dishes: all.filter(r => r.matchType === 'food')
         };
-
-        if (currentPage === 1) {
-          sessionSearchCache.set(cacheKey, newParsedResults);
-          setResults(newParsedResults);
-        } else {
-          setResults(prev => {
-            // Deduplicate to avoid rendering same items twice
-            const existingRestIds = new Set(prev.restaurants.map(r => r._id));
-            const existingDishIds = new Set(prev.dishes.map(d => d._id + (d.matchedDishId || '')));
-            
-            return {
-              restaurants: [...prev.restaurants, ...newParsedResults.restaurants.filter(r => !existingRestIds.has(r._id))],
-              dishes: [...prev.dishes, ...newParsedResults.dishes.filter(d => !existingDishIds.has(d._id + (d.matchedDishId || '')))]
-            }
-          });
-        }
+        sessionSearchCache.set(cacheKey, parsedResults);
+        setResults(parsedResults);
       }
     } catch (err) {
       console.error("Search failed", err)
     } finally {
       setLoading(false)
-      setLoadingMore(false)
     }
   }, [userCoords, zoneId])
 
-  // Reset page and perform search when query or category changes
   useEffect(() => {
-    setPage(1)
-    setHasMore(true)
-    performSearch(debouncedQuery, selectedCategoryId, 1)
-    
+    performSearch(debouncedQuery, selectedCategoryId)
     if (debouncedQuery) {
         setSearchParams({ q: debouncedQuery, ...(selectedCategoryId ? { cat: selectedCategoryId } : {}) }, { replace: true })
     }
   }, [debouncedQuery, selectedCategoryId, performSearch, setSearchParams])
-
-  // Perform search when page changes (infinite scroll trigger)
-  useEffect(() => {
-    if (page > 1) {
-      performSearch(debouncedQuery, selectedCategoryId, page)
-    }
-  }, [page, performSearch, debouncedQuery, selectedCategoryId])
 
   // Auto-scroll to selected category on load or when category changes
   useEffect(() => {
@@ -279,13 +227,13 @@ export default function ProfessionalSearch() {
           </button>
           
           <div className="flex-1 relative group">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e23744] transition-transform group-focus-within:scale-110" strokeWidth={2.5} />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary transition-transform group-focus-within:scale-110" strokeWidth={2.5} />
             <Input 
               autoFocus
               placeholder="Search dishes or restaurants" 
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="pl-11 pr-12 h-11 sm:h-12 bg-white dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700 shadow-sm focus:border-[#e23744] dark:focus:border-[#e23744] focus:ring-4 focus:ring-[#e23744]/5 rounded-2xl text-sm sm:text-base transition-all font-medium placeholder:text-gray-400"
+              className="pl-10 pr-12 h-10 sm:h-12 bg-gray-50 dark:bg-zinc-800/50 border-gray-100 dark:border-zinc-700 focus:border-primary dark:focus:border-primary focus:ring-4 focus:ring-primary/5 rounded-2xl text-sm sm:text-base transition-all"
             />
             
             <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -300,7 +248,7 @@ export default function ProfessionalSearch() {
               <div className="w-[1px] h-4 bg-gray-200 dark:bg-zinc-700 mx-0.5" />
               <button 
                 onClick={handleVoiceSearch}
-                className={`p-1.5 rounded-xl transition-all active:scale-95 ${isListening ? 'bg-red-50 text-red-500 animate-pulse' : 'text-[#e23744]'}`}
+                className={`p-1.5 rounded-xl transition-all active:scale-95 ${isListening ? 'bg-red-50 text-red-500 animate-pulse' : 'text-primary'}`}
               >
                 <Mic className="w-5 h-5" />
               </button>
@@ -348,8 +296,8 @@ export default function ProfessionalSearch() {
                   onClick={(e) => handleCategoryClick(cat._id, e)}
                   className="flex flex-col items-center group transition-all active:scale-95 snap-start shrink-0 w-16 sm:w-20"
                 >
-                  <div className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full mb-2 transition-all duration-300 shrink-0 ${selectedCategoryId === cat._id ? 'border-[2px] border-[#e23744] shadow-md shadow-[#e23744]/20 bg-white p-[2px]' : 'border border-transparent bg-white p-[2px]'}`}>
-                    <div className="w-full h-full rounded-full overflow-hidden bg-white dark:bg-zinc-950 shadow-sm border border-gray-100">
+                  <div className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full mb-2 transition-all duration-300 shrink-0 ${selectedCategoryId === cat._id ? 'border-[3px] border-primary shadow-md shadow-primary/20 bg-white p-[2px]' : 'border border-gray-200/80 shadow-sm bg-gray-50 dark:bg-zinc-900 group-hover:border-primary/40 p-[2px]'}`}>
+                    <div className="w-full h-full rounded-full overflow-hidden bg-white dark:bg-zinc-950">
                        <OptimizedImage 
                          src={getMediaUrl(cat.image)} 
                          alt={cat.name} 
@@ -357,7 +305,7 @@ export default function ProfessionalSearch() {
                        />
                     </div>
                   </div>
-                  <span className={`text-[10px] sm:text-[11px] font-bold text-center px-0.5 w-full line-clamp-2 leading-tight transition-colors ${selectedCategoryId === cat._id ? 'text-[#e23744]' : 'text-gray-600 dark:text-zinc-400 group-hover:text-[#e23744]'}`} style={{ wordBreak: 'break-word' }}>
+                  <span className={`text-[10px] sm:text-[11px] font-bold text-center px-0.5 w-full line-clamp-2 leading-tight transition-colors ${selectedCategoryId === cat._id ? 'text-primary' : 'text-gray-600 dark:text-zinc-400 group-hover:text-primary'}`} style={{ wordBreak: 'break-word' }}>
                     {cat.name}
                   </span>
                 </button>
@@ -389,41 +337,46 @@ export default function ProfessionalSearch() {
               <motion.section initial="hidden" animate="show" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.08 } } }}>
                 <div className="flex items-center justify-between mb-5 px-1">
                    <h2 className="text-sm font-black text-gray-400 uppercase tracking-widest">Matched Dishes</h2>
-                   <span className="text-[10px] font-bold text-gray-500 bg-gray-100 dark:bg-zinc-900 px-2.5 py-1 rounded-full">{results.dishes.length} results</span>
+                   <span className="text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">{results.dishes.length} results</span>
                 </div>
                 <div className="grid grid-cols-1 gap-4">
                   {results.dishes.map((r) => (
-                    <motion.button variants={{ hidden: { opacity: 0, y: 15 }, show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } }} onClick={() => setSelectedDish(r)} key={r._id} className="flex w-full items-stretch text-left p-3 md:p-4 bg-white dark:bg-[#1a1a1a] rounded-[24px] shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow group active:scale-[0.99]">
-                       <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-gray-100 dark:bg-zinc-800 flex-shrink-0 relative">
+                    <motion.button variants={{ hidden: { opacity: 0, y: 15 }, show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } }} onClick={() => setSelectedDish(r)} key={r._id} className="flex w-full text-left gap-4 p-3 bg-white dark:bg-zinc-900 rounded-[24px] shadow-sm border border-gray-100 dark:border-zinc-800 hover:shadow-xl hover:shadow-gray-200/50 dark:hover:shadow-none transition-all group overflow-hidden active:scale-[0.98]">
+                       <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gray-100 dark:bg-zinc-800 flex-shrink-0 relative">
                            {/* Shimmer Placeholder behind image */}
                            <div className="absolute inset-0 bg-gray-200 dark:bg-zinc-700 animate-pulse" />
                            <OptimizedImage 
                             src={getMediaUrl(r.matchedDishImage || r.profileImage || r.image || (Array.isArray(r.images) && r.images[0]))} 
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            className="w-full h-full object-cover group-hover:scale-115 transition-transform duration-500"
                             fallback="/placeholder-dish.jpg"
                           />
+                          {r.pureVegRestaurant && (
+                            <div className="absolute top-1.5 left-1.5 w-4 h-4 border border-green-600 p-[1.5px] bg-white rounded-sm shadow-sm">
+                               <div className="w-full h-full bg-green-600 rounded-full" />
+                            </div>
+                          )}
                        </div>
-                       <div className="flex-1 min-w-0 pl-4 py-1 flex flex-col justify-between">
+                       <div className="flex-1 min-w-0 py-1 flex flex-col justify-between">
                           <div>
-                            <span className="text-[10px] md:text-xs font-bold text-[#e23744] uppercase tracking-wider bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-sm mb-1.5 inline-block">
+                            <div className="text-[#a05485] text-[9px] font-black uppercase tracking-wider mb-1 px-2 py-0.5 bg-primary/5 rounded-full w-fit">
                                {r.restaurantName}
-                            </span>
-                            <h3 className="text-base sm:text-lg font-black text-gray-900 dark:text-white line-clamp-1">{r.matchedDish || query || r.restaurantName}</h3>
+                            </div>
+                            <h3 className="text-base font-black text-gray-900 dark:text-white line-clamp-1 group-hover:text-primary transition-colors">{r.matchedDish || query}</h3>
                           </div>
-                          <div className="flex items-center justify-between mt-auto pt-2">
-                             <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-gray-500 dark:text-gray-400 font-medium">
+                          <div className="flex items-center justify-between">
+                             <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-zinc-400 mt-2 font-medium">
                                 <div className="flex items-center gap-1">
-                                   <Star className="w-3.5 h-3.5 text-[#e23744] fill-[#e23744]" />
-                                   <span className="font-bold text-gray-700 dark:text-gray-300">{r.rating || "4.3"}</span>
+                                   <Star className="w-3 h-3 text-primary fill-primary" />
+                                   <span className="font-black text-gray-900 dark:text-white">{r.rating || "New"}</span>
                                 </div>
-                                <span className="text-gray-300 dark:text-gray-600">•</span>
+                                <span className="text-gray-200">•</span>
                                 <div className="flex items-center gap-1">
-                                   <Clock className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                   <span>{r.estimatedDeliveryTime || "25 min"}</span>
+                                   <Clock className="w-3 h-3" />
+                                   <span>{r.estimatedDeliveryTime || "30-40 mins"}</span>
                                 </div>
                              </div>
-                             {(r.matchedDishPrice || r.price || true) && (
-                                <div className="text-base md:text-lg font-black text-gray-900 dark:text-white">₹{Number(r.matchedDishPrice || r.price || 160).toFixed(2)}</div>
+                             {(r.matchedDishPrice || r.price) && (
+                                <span className="text-sm font-black text-gray-900 dark:text-white bg-gray-50 dark:bg-zinc-800 px-2 py-1 rounded-lg">₹{Number(r.matchedDishPrice || r.price).toFixed(2)}</span>
                              )}
                           </div>
                        </div>
@@ -438,13 +391,11 @@ export default function ProfessionalSearch() {
               <motion.section initial="hidden" animate="show" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } }}>
                 <div className="flex items-center justify-between mb-5 px-1">
                    <h2 className="text-sm font-black text-gray-400 uppercase tracking-widest">Restaurants</h2>
-                   <span className="text-[10px] font-bold text-gray-500 bg-gray-100 dark:bg-zinc-900 px-2.5 py-1 rounded-full">{results.restaurants.length} stores</span>
+                   <span className="text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">{results.restaurants.length} stores</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-6">
-                  {results.restaurants.map((r, index) => {
-                    const isLast = index === results.restaurants.length - 1;
-                    return (
-                    <motion.div ref={isLast ? lastElementRef : null} variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 200, damping: 20 } } }} key={r._id + index}>
+                  {results.restaurants.map((r) => (
+                    <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 200, damping: 20 } } }} key={r._id}>
                     <Link to={`/user/restaurants/${r.slug || r.originalRestaurantId || r._id}`} className="block group active:scale-[0.98] transition-all">
                       <div className="relative rounded-[32px] overflow-hidden aspect-[16/10] sm:aspect-[16/9] mb-4 bg-gray-200 dark:bg-zinc-800 shadow-xl shadow-gray-200/20">
                          {/* Shimmer Placeholder behind image */}
@@ -488,20 +439,14 @@ export default function ProfessionalSearch() {
                                }
                             </div>
                          </div>
-                         <div className="text-[10px] font-black text-white bg-[#a05485] px-4 py-1.5 rounded-full uppercase tracking-widest shadow-sm">
+                         <div className="text-[10px] font-black text-white bg-gradient-to-r from-primary to-[#a05485] px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-primary/20">
                             View Menu
                          </div>
                       </div>
                     </Link>
                     </motion.div>
-                  )})}
+                  ))}
                 </div>
-                
-                {loadingMore && (
-                  <div className="flex justify-center py-6 mt-4">
-                    <Loader2 className="w-6 h-6 text-primary animate-spin" />
-                  </div>
-                )}
               </motion.section>
             )}
 
@@ -523,6 +468,7 @@ export default function ProfessionalSearch() {
         )}
       </div>
       {typeof window !== "undefined" && createPortal(
+        <>
         <AnimatePresence>
           {selectedDish && (
             <>
@@ -602,9 +548,107 @@ export default function ProfessionalSearch() {
               </motion.div>
             </>
           )}
-        </AnimatePresence>,
-        document.body
-      )}
-    </div>
-  )
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isListening && (
+            <motion.div 
+              className="fixed inset-0 z-[10000] bg-[#050505] flex flex-col items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              {/* Back Button */}
+              <button 
+                onClick={stopListening}
+                className="absolute top-6 left-6 p-3 rounded-full bg-white/5 text-white/50 hover:bg-white/10 hover:text-white transition-colors"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+
+              {/* Central Animation Area */}
+              <div className="relative flex items-center justify-center w-full max-w-[280px] aspect-square mb-12 mt-10">
+                
+                {/* Thin dashed outer circle */}
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 rounded-full border border-red-600/30 border-dashed"
+                />
+                
+                {/* Solid inner circle */}
+                <motion.div 
+                  animate={{ scale: [1, 1.05, 1] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute inset-8 rounded-full border-[1px] border-red-600/80"
+                />
+
+                {/* Soundwaves - Left (Butterfly Wing) */}
+                <div className="absolute left-[-40px] flex items-center justify-end gap-1.5 h-24 w-20 opacity-90">
+                  {[6, 12, 20, 32, 48, 36, 24, 14, 8].map((h, i) => (
+                    <motion.div 
+                      key={`l-${i}`}
+                      animate={{ height: [h, h*1.5, h] }}
+                      transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.1 }}
+                      className="w-1.5 bg-red-600 rounded-full shadow-[0_0_8px_rgba(220,38,38,0.6)]"
+                    />
+                  ))}
+                </div>
+
+                {/* Soundwaves - Right (Butterfly Wing) */}
+                <div className="absolute right-[-40px] flex items-center justify-start gap-1.5 h-24 w-20 opacity-90">
+                  {[6, 12, 20, 32, 48, 36, 24, 14, 8].map((h, i) => (
+                    <motion.div 
+                      key={`r-${i}`}
+                      animate={{ height: [h, h*1.5, h] }}
+                      transition={{ duration: 1.2, repeat: Infinity, delay: (8-i) * 0.1 }}
+                      className="w-1.5 bg-red-600 rounded-full shadow-[0_0_8px_rgba(220,38,38,0.6)]"
+                    />
+                  ))}
+                </div>
+
+                {/* Center Button */}
+                <div className="relative z-10 w-36 h-36 rounded-full bg-gradient-to-b from-[#2a2a2a] to-[#0a0a0a] border-[4px] border-[#111] shadow-[0_0_0_2px_rgba(220,38,38,0.8),0_0_60px_rgba(220,38,38,0.3)] flex items-center justify-center">
+                  <motion.div
+                    animate={{ scale: [1, 1.15, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    <Mic className="w-14 h-14 text-red-500 fill-red-500" strokeWidth={1} />
+                  </motion.div>
+                </div>
+              </div>
+
+              {/* Text */}
+              <div className="text-center space-y-4 px-6 mt-4">
+                <motion.h2 
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="text-[22px] font-bold text-red-500 tracking-wide"
+                >
+                  Listening...
+                </motion.h2>
+                <p className="text-gray-400 text-[15px] font-medium leading-relaxed max-w-[200px] mx-auto">
+                  How can we help<br/>you with your order?
+                </p>
+              </div>
+
+              {/* Loading Dots */}
+              <div className="flex gap-3 mt-10">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1, 0.8] }}
+                    transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }}
+                    className={`rounded-full ${i === 1 ? 'bg-red-500 w-2.5 h-2.5' : 'bg-[#441111] w-2 h-2 mt-[1px]'}`}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </>,
+      document.body
+    )}
+  </div>
+)
 }

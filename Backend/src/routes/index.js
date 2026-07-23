@@ -18,12 +18,22 @@ import { requireRoles } from '../core/roles/role.middleware.js';
 import { getQueuesController } from '../controllers/admin.controller.js';
 import webhookRoutes from '../core/payments/routes/webhook.routes.js';
 import searchRoutes from '../modules/food/search/routes/search.routes.js';
+import appConfigRoutes from '../core/appConfig/appConfig.routes.js';
+import promocodeRoutes from './promocodeRoutes.js';
+import { requireZone } from '../middlewares/zone.middleware.js';
+import envSettingRoutes from './admin/envSettingRoutes.js';
 
 const router = express.Router();
+
+// Apply Global Zone Interceptor (Reads X-Zone-Id from Frontend Axios)
+router.use(requireZone);
 
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });
 });
+
+// App Config Route
+router.use('/v1/app-config', appConfigRoutes);
 
 // Food-prefixed auth routes
 router.use('/v1/food/auth', authRoutes);
@@ -34,6 +44,7 @@ router.use('/v1/food/delivery', deliveryRoutes);
 router.use('/v1/food/restaurant', restaurantRoutes);
 router.use('/v1/food', landingRoutes);
 router.use('/v1/food/search', searchRoutes);
+router.use('/v1/food/promocodes', promocodeRoutes);
 router.get('/v1/food/dining/categories/public', getPublicDiningCategories);
 router.get('/v1/food/dining/restaurants/public', getPublicDiningRestaurants);
 router.get('/v1/food/dining/restaurants/:restaurantId/occupied-seats/public', getPublicRestaurantOccupiedSeats);
@@ -42,15 +53,16 @@ router.get('/v1/food/dining/restaurants/:restaurantId/occupied-seats/public', ge
 router.post('/v1/food/dining/bookings', authMiddleware, requireRoles('USER'), createBooking);
 router.get('/v1/food/dining/bookings/my', authMiddleware, requireRoles('USER'), getMyBookings);
 router.post('/v1/food/dining/bookings/:bookingId/review', authMiddleware, requireRoles('USER'), createReview);
-router.get('/v1/food/dining/bookings/restaurant/:restaurantId', authMiddleware, requireRoles('RESTAURANT', 'ADMIN'), getRestaurantBookings);
-router.patch('/v1/food/dining/bookings/:bookingId/status', authMiddleware, requireRoles('RESTAURANT', 'ADMIN'), updateBookingStatus);
+router.get('/v1/food/dining/bookings/restaurant/:restaurantId', authMiddleware, requireRoles('RESTAURANT', 'ADMIN', 'SUPER_ADMIN', 'SUB_ADMIN'), getRestaurantBookings);
+router.patch('/v1/food/dining/bookings/:bookingId/status', authMiddleware, requireRoles('RESTAURANT', 'ADMIN', 'SUPER_ADMIN', 'SUB_ADMIN'), updateBookingStatus);
 
 router.use('/v1/uploads', uploadRoutes);
 
 // Mark business-settings/public as truly public
 router.get('/v1/food/admin/business-settings/public', businessSettingsController.getBusinessSettings);
 
-router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), restaurantAdminRoutes);
+router.use('/v1/food/admin/env', envSettingRoutes);
+router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN', 'SUPER_ADMIN', 'SUB_ADMIN'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
 router.use('/v1/food/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
 router.use('/v1/food/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);
@@ -59,6 +71,6 @@ router.use('/v1/payments/webhook', webhookRoutes);
 router.use('/v1/fcm-tokens', fcmRoutes);
 router.use('/fcm-tokens', fcmRoutes);
 
-router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesController);
+router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN', 'SUPER_ADMIN', 'SUB_ADMIN'), getQueuesController);
 
 export default router;

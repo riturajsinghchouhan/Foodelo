@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+﻿import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { ArrowLeft, Star, Clock, Bookmark, BadgePercent, Utensils } from "lucide-react"
 import { Button } from "@food/components/ui/button"
@@ -10,7 +10,8 @@ import { API_BASE_URL } from "@food/api/config"
 import OptimizedImage from "@food/components/OptimizedImage"
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
-import { useLocation } from "@food/hooks/useLocation"
+import { useAppLocation } from "@food/hooks/useAppLocation"
+
 
 // Import banner
 import gourmetBanner from "@food/assets/gourmet_new_banner.png"
@@ -26,7 +27,7 @@ export default function Gourmet() {
   const [gourmetRestaurants, setGourmetRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const { location } = useLocation()
+  const { zoneId } = useAppLocation()
   const showGourmetSkeleton = useDelayedLoading(loading)
 
   const backendOrigin = (API_BASE_URL || "").replace(/\/api\/v1\/?$/, "")
@@ -46,7 +47,9 @@ export default function Gourmet() {
       try {
         setLoading(true)
         setError(null)
-        const response = await api.get('/food/hero-banners/gourmet/public')
+        const response = await api.get('/food/hero-banners/gourmet/public', {
+          params: zoneId ? { zoneId } : {}
+        })
         const data = response?.data?.data
         const list = data?.restaurants ?? (Array.isArray(data) ? data : [])
         setGourmetRestaurants(list)
@@ -62,7 +65,7 @@ export default function Gourmet() {
     }
 
     fetchGourmetRestaurants()
-  }, [])
+  }, [zoneId])
 
   const toggleFavorite = (id) => {
     setFavorites(prev => {
@@ -101,7 +104,7 @@ export default function Gourmet() {
         {/* Banner Text Overlay */}
         <div className="absolute bottom-8 left-6 md:left-10 z-10 space-y-2">
           <div className="flex items-center gap-2">
-            <span className="w-8 h-[2px] bg-[#7e3866]" />
+            <span className="w-8 h-[2px] bg-primary" />
             <span className="text-[10px] font-black tracking-[0.3em] text-white/80 uppercase">Experience Excellence</span>
           </div>
           <h1 className="text-3xl md:text-5xl font-black text-white drop-shadow-2xl">Gourmet Dining</h1>
@@ -161,7 +164,7 @@ export default function Gourmet() {
                         Math.sin(dLng / 2) *
                         Math.sin(dLng / 2);
                     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                    return R * c; // Distance in kilometers
+                    return (R * c) * 1.35; // Distance in kilometers with routing multiplier
                   };
 
                   let distanceStr = '1.2 km'
@@ -195,7 +198,7 @@ export default function Gourmet() {
 
                   return (
                     <Link key={restaurantId} to={`/user/restaurants/${restaurantSlug}`}>
-                      <Card className="overflow-hidden cursor-pointer border-0 group bg-white dark:bg-[#1a1a1a] shadow-xl shadow-gray-200/20 dark:shadow-none hover:shadow-2xl hover:shadow-[#7e3866]/5 transition-all duration-500 py-0 rounded-[32px] mb-4 group active:scale-[0.98]">
+                      <Card className="overflow-hidden cursor-pointer border-0 group bg-white dark:bg-[#1a1a1a] shadow-xl shadow-gray-200/20 dark:shadow-none hover:shadow-2xl hover:shadow-primary/5 transition-all duration-500 py-0 rounded-[32px] mb-4 group active:scale-[0.98]">
                         {/* Image Section */}
                         <div className="relative h-48 sm:h-56 md:h-60 w-full overflow-hidden rounded-t-[32px]">
                           {restaurantImage ? (
@@ -231,7 +234,7 @@ export default function Gourmet() {
                           {/* Rating Badge Overlay */}
                           <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-2xl shadow-2xl">
                              <span className="text-sm font-black text-gray-900">{restaurant.rating?.toFixed(1) || '4.0'}</span>
-                             <Star className="h-3.5 w-3.5 fill-[#7e3866] text-[#7e3866]" />
+                             <Star className="h-3.5 w-3.5 fill-primary text-primary" />
                           </div>
                         </div>
 
@@ -239,7 +242,7 @@ export default function Gourmet() {
                         <CardContent className="p-5">
                           {/* Restaurant Name */}
                           <div className="flex items-center justify-between gap-2 mb-3">
-                            <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 truncate group-hover:text-[#7e3866] transition-colors">
+                            <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 truncate group-hover:text-primary transition-colors">
                               {restaurant.restaurantName || restaurant.name}
                             </h3>
                           </div>
@@ -247,10 +250,10 @@ export default function Gourmet() {
                           {/* Delivery Time & Distance */}
                           <div className="flex items-center gap-4 text-[12px] text-gray-500 dark:text-gray-400 mb-4 font-bold uppercase tracking-tight">
                             <div className="flex items-center gap-1.5">
-                              <Clock className="h-4 w-4 text-[#7e3866]" strokeWidth={2.5} />
+                              <Clock className="h-4 w-4 text-primary" strokeWidth={2.5} />
                               <span>{restaurant.estimatedDeliveryTime || '25-30 mins'}</span>
                             </div>
-                            <span className="text-gray-200">•</span>
+                            <span className="text-gray-200">â€¢</span>
                             <div className="flex items-center gap-1.5">
                               <span className="text-[#a05485] font-black">{distanceStr} away</span>
                             </div>
@@ -258,9 +261,9 @@ export default function Gourmet() {
 
                           {/* Offer Badge */}
                           {restaurant.offer ? (
-                            <div className="flex items-center gap-2.5 px-3 py-2 bg-[#7e3866]/5 dark:bg-[#7e3866]/10 rounded-2xl w-fit">
-                              <BadgePercent className="h-4 w-4 text-[#7e3866]" strokeWidth={3} />
-                              <span className="text-[10px] font-black text-[#7e3866] uppercase tracking-wider">{restaurant.offer}</span>
+                            <div className="flex items-center gap-2.5 px-3 py-2 bg-primary/5 dark:bg-primary/10 rounded-2xl w-fit">
+                              <BadgePercent className="h-4 w-4 text-primary" strokeWidth={3} />
+                              <span className="text-[10px] font-black text-primary uppercase tracking-wider">{restaurant.offer}</span>
                             </div>
                           ) : (
                             <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-zinc-900 px-3 py-2 rounded-2xl w-fit">

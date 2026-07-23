@@ -26,7 +26,7 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return (R * c) * 1.35; // Apply routing multiplier for road distance approximation
 }
 
 export function generateFourDigitDeliveryOtp() {
@@ -36,15 +36,21 @@ export function generateFourDigitDeliveryOtp() {
 export function sanitizeOrderForExternal(orderDoc) {
   const o = orderDoc?.toObject ? orderDoc.toObject() : { ...(orderDoc || {}) };
   delete o.deliveryOtp;
+  delete o.pickupOtp;
   const dv = o.deliveryVerification;
-  if (dv && dv.dropOtp != null) {
-    const d = dv.dropOtp;
+  if (dv) {
+    const d = dv.dropOtp || {};
+    const p = dv.pickupOtp || {};
     o.deliveryVerification = {
       ...dv,
       dropOtp: {
         required: Boolean(d.required),
         verified: Boolean(d.verified),
       },
+      pickupOtp: {
+        required: Boolean(p.required !== false),
+        verified: Boolean(p.verified),
+      }
     };
   }
   o.orderMongoId = (o._id || orderDoc?._id || "").toString();
@@ -179,10 +185,14 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
     .map((v) => String(v || '').trim())
     .filter(Boolean);
 
+  const orderMongoId =
+    orderDoc?._id?.toString?.() || order?._id?.toString?.() || order?._id;
+  const displayOrderId = order?.order_id || orderMongoId;
+
   return {
-    orderMongoId:
-      orderDoc?._id?.toString?.() || order?._id?.toString?.() || order?._id,
-    orderId: order?.order_id || order?._id?.toString?.(),
+    _id: orderMongoId,
+    orderMongoId,
+    orderId: displayOrderId,
     status: orderDoc?.orderStatus || order?.orderStatus,
     items: order?.items || [],
     pricing: order?.pricing,
@@ -220,6 +230,7 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
     userPhone: order?.customerPhone || order?.deliveryAddress?.phone || order?.userId?.phone || "",
     note: order?.note || "",
     riderEarning: order?.riderEarning || 0,
+    deliveryBonusAmount: order?.deliveryBonusAmount || 0,
     earnings: order?.riderEarning || order?.pricing?.deliveryFee || 0,
     deliveryFee: order?.pricing?.deliveryFee || 0,
     deliveryFleet: order?.deliveryFleet,
@@ -283,6 +294,7 @@ export const STATUS_PRIORITY = {
   cancelled_by_user: 100,
   cancelled_by_restaurant: 100,
   cancelled_by_admin: 100,
+  dead: 100,
 };
 
 /**

@@ -149,7 +149,13 @@ export async function listOrdersRestaurantController(req, res, next) {
     try {
         const restaurantId = req.user?.userId;
         const result = await orderService.listOrdersRestaurant(restaurantId, req.query);
-        return sendResponse(res, 200, 'Orders retrieved', result);
+        const responseData = {
+            orders: result.orders || result.data,
+            meta: result.meta,
+            pagination: result.meta,
+            total: result.meta?.total,
+        };
+        return sendResponse(res, 200, 'Orders retrieved', responseData);
     } catch (err) {
         next(err);
     }
@@ -225,9 +231,20 @@ export async function confirmPickupDeliveryController(req, res, next) {
     try {
         const deliveryPartnerId = req.user?.userId;
         const orderId = req.params.orderId;
-        const { billImageUrl } = req.body;
-        const order = await orderService.confirmPickupDelivery(orderId, deliveryPartnerId, billImageUrl);
+        const { billImageUrl, otp } = req.body;
+        const order = await orderService.confirmPickupDelivery(orderId, deliveryPartnerId, billImageUrl, otp);
         return sendResponse(res, 200, 'Pickup confirmed', { order });
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function requestPickupOtpController(req, res, next) {
+    try {
+        const deliveryPartnerId = req.user?.userId;
+        const orderId = req.params.orderId;
+        await orderService.requestPickupOtp(orderId, deliveryPartnerId);
+        return sendResponse(res, 200, 'OTP sent to restaurant');
     } catch (err) {
         next(err);
     }
@@ -326,7 +343,13 @@ export async function getPaymentStatusController(req, res, next) {
 export async function listOrdersAdminController(req, res, next) {
     try {
         const result = await orderService.listOrdersAdmin(req.query);
-        return sendResponse(res, 200, 'Orders retrieved', result);
+        // Extract orders to the root of the data object so frontend gets it correctly
+        const responseData = {
+            orders: result.orders || result.data,
+            pagination: result.pagination,
+            total: result.total
+        };
+        return sendResponse(res, 200, 'Orders retrieved', responseData);
     } catch (err) {
         next(err);
     }
@@ -354,6 +377,18 @@ export async function assignDeliveryPartnerController(req, res, next) {
     }
 }
 
+export async function updateOrderStatusAdminController(req, res, next) {
+    try {
+        const adminId = req.user?.userId;
+        const orderId = req.params.orderId;
+        const { orderStatus, note } = req.body;
+        const order = await orderService.updateOrderStatusAdmin(orderId, adminId, orderStatus, note);
+        return sendResponse(res, 200, 'Order status updated successfully', { order });
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function deleteOrderAdminController(req, res, next) {
     try {
         const adminId = req.user?.userId;
@@ -370,6 +405,16 @@ export async function resendDeliveryNotificationRestaurantController(req, res, n
         const restaurantId = req.user?.userId;
         const orderId = req.params.orderId;
         const result = await orderService.resendDeliveryNotificationRestaurant(orderId, restaurantId);
+        return sendResponse(res, 200, 'Notification resent successfully', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function resendDeliveryNotificationAdminController(req, res, next) {
+    try {
+        const orderId = req.params.orderId;
+        const result = await orderService.resendDeliveryNotificationAdmin(orderId);
         return sendResponse(res, 200, 'Notification resent successfully', result);
     } catch (err) {
         next(err);

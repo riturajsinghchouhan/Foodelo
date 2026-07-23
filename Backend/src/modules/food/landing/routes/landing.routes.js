@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import { upload } from '../../../../middleware/upload.js';
 import {
     listHeroBannersController,
@@ -54,6 +54,8 @@ import {
 } from '../controllers/top10GourmetAdmin.controller.js';
 import { getPublicPageController } from '../../admin/controllers/pageContent.controller.js';
 import { getPublicReferralSettingsController } from '../controllers/publicReferralSettings.controller.js';
+import { getPublicActiveAds } from '../../admin/controllers/appIntroAd.controller.js';
+import { reverseGeocodePublicController, computeDistancePublicController } from '../controllers/locationPublic.controller.js';
 
 const router = express.Router();
 
@@ -86,16 +88,16 @@ router.delete('/hero-banners/under-250/:id', deleteUnder250BannerController);
 router.patch('/hero-banners/under-250/:id/order', updateUnder250BannerOrderController);
 router.patch('/hero-banners/under-250/:id/status', toggleUnder250BannerStatusController);
 
-// Admin dining banners
-router.get('/hero-banners/dining', listDiningBannersController);
+// Admin ads banners
+router.get('/hero-banners/ads', listDiningBannersController);
 router.post(
-    '/hero-banners/dining/multiple',
+    '/hero-banners/ads/multiple',
     upload.array('files'),
     uploadDiningBannersController
 );
-router.delete('/hero-banners/dining/:id', deleteDiningBannerController);
-router.patch('/hero-banners/dining/:id/order', updateDiningBannerOrderController);
-router.patch('/hero-banners/dining/:id/status', toggleDiningBannerStatusController);
+router.delete('/hero-banners/ads/:id', deleteDiningBannerController);
+router.patch('/hero-banners/ads/:id/order', updateDiningBannerOrderController);
+router.patch('/hero-banners/ads/:id/status', toggleDiningBannerStatusController);
 
 // Admin Explore More (icons)
 router.get('/hero-banners/landing/explore-more', listExploreMoreController);
@@ -123,14 +125,18 @@ router.patch('/hero-banners/gourmet/:id/status', toggleGourmetStatusAdmin);
 // Public landing endpoints (Food user app)
 router.get('/hero-banners/public', getPublicHeroBannersController);
 router.get('/hero-banners/under-250/public', getPublicUnder250BannersController);
-router.get('/hero-banners/dining/public', getPublicDiningBannersController);
+router.get('/hero-banners/ads/public', getPublicDiningBannersController);
 router.get('/explore-icons/public', getPublicExploreIconsController);
 router.get('/hero-banners/gourmet/public', getPublicGourmetController);
 router.get('/landing/settings/public', getPublicLandingSettingsController);
+router.get('/location/reverse-geocode', reverseGeocodePublicController);
+router.post('/location/distance', computeDistancePublicController);
 router.get('/zones/detect', detectZonePublicController);
 router.get('/zones/nearby', listZonesNearbyPublicController);
 router.get('/zones/public', listZonesPublicController);
 router.get('/public/env', getPublicEnvController);
+router.get('/app-intro-ads/public', getPublicActiveAds);
+
 // Admin landing settings (old paths used by admin UI)
 router.get('/hero-banners/landing/settings', getAdminLandingSettingsController);
 router.patch('/hero-banners/landing/settings', updateAdminLandingSettingsController);

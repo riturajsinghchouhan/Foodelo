@@ -5,8 +5,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { restaurantAPI, diningAPI, orderAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { toast } from "sonner"
-import { useLocation } from "@food/hooks/useLocation"
-import { useZone } from "@food/hooks/useZone"
+import { useAppLocation } from "@food/hooks/useAppLocation"
 import {
   ArrowLeft,
   Search,
@@ -36,6 +35,7 @@ import {
   MessageCircle,
   Send,
   Mail,
+  Tag,
 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { Badge } from "@food/components/ui/badge"
@@ -59,6 +59,7 @@ import {
 } from "@food/utils/foodVariants"
 import fssaiLogo from "@food/assets/fssai.png"
 import { RestaurantDetailSkeleton } from "@food/components/ui/loading-skeletons"
+import MenuScanAnimation from "@food/components/user/MenuScanAnimation"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -71,20 +72,37 @@ const RESTAURANT_DETAILS_FILTERS_STORAGE_KEY = "food-restaurant-details-filters"
 
 const DishImage = ({ src, alt, className = "" }) => {
   const [failed, setFailed] = useState(false)
-  if (src && !failed) {
+  const [loaded, setLoaded] = useState(false)
+
+  if (!src || failed) {
     return (
+      <div className={`w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 ${className}`}>
+        <span className="text-xs text-gray-400">No image</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`relative w-full h-full ${className}`}>
+      {/* Placeholder / Skeleton */}
+      {!loaded && (
+        <div className="absolute inset-0 bg-gray-200 dark:bg-gray-700 animate-pulse flex items-center justify-center">
+          <Utensils className="h-6 w-6 text-gray-400 dark:text-gray-500 opacity-50" />
+        </div>
+      )}
+      
+      {/* Actual Image */}
       <img
         src={src}
         alt={alt}
         loading="lazy"
-        className={className}
-        onError={() => setFailed(true)}
+        className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          setFailed(true)
+          setLoaded(true)
+        }}
       />
-    )
-  }
-  return (
-    <div className="w-full h-full flex items-center justify-center">
-      <span className="text-xs text-gray-400">No image</span>
     </div>
   )
 }
@@ -99,8 +117,7 @@ function RestaurantDetailsContent() {
   const BACKEND_ORIGIN = useMemo(() => API_BASE_URL.replace(/\/api\/?$/, ""), [])
   const { addToCart, updateQuantity, removeFromCart, getCartItem, cart } = useCart()
   const { vegMode, vegModeOption, addDishFavorite, removeDishFavorite, isDishFavorite, getDishFavorites, getFavorites, addFavorite, removeFavorite, isFavorite } = useProfile()
-  const { location: userLocation } = useLocation() // Get user's current location
-  const { zoneId, zone, loading: loadingZone, isOutOfService } = useZone(userLocation) // Get user's zone for zone-based filtering
+  const { location: userLocation, zoneId, zone, loading: loadingZone, isOutOfService } = useAppLocation()
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [highlightIndex, setHighlightIndex] = useState(0)
   const [quantities, setQuantities] = useState({})
@@ -128,8 +145,9 @@ function RestaurantDetailsContent() {
   const [loadingMenuItems, setLoadingMenuItems] = useState(true)
   const [menuUnavailable, setMenuUnavailable] = useState(false)
   const [selectedMenuCategory, setSelectedMenuCategory] = useState("all")
-  const [visibleItemCount, setVisibleItemCount] = useState(50)
+  const [visibleItemCount, setVisibleItemCount] = useState(20)
   const dishCardRefs = useRef({})
+  const [showScanAnimation, setShowScanAnimation] = useState(true)
 
   const getLineItemIdForDish = (item, variant = null) =>
     buildCartLineId(item?.id || item?._id || "", variant?.id || variant?._id || "")
@@ -146,45 +164,12 @@ function RestaurantDetailsContent() {
     return quantities[lineItemId] || 0
   }
 
-  // Initialize filters from localStorage if available
-  const [filters, setFilters] = useState(() => {
-    if (typeof window === "undefined" || !slug) {
-      return {
-        sortBy: null,
-        vegNonVeg: null,
-        highlyReordered: false,
-        spicy: false,
-      }
-    }
-    try {
-      const raw = window.localStorage.getItem(RESTAURANT_DETAILS_FILTERS_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        const savedFilters = parsed?.[slug]
-        if (savedFilters && typeof savedFilters === "object") {
-          return {
-            sortBy:
-              savedFilters.sortBy === "low-to-high" || savedFilters.sortBy === "high-to-low"
-                ? savedFilters.sortBy
-                : null,
-            vegNonVeg:
-              savedFilters.vegNonVeg === "veg" || savedFilters.vegNonVeg === "non-veg"
-                ? savedFilters.vegNonVeg
-                : null,
-            highlyReordered: savedFilters.highlyReordered === true,
-            spicy: savedFilters.spicy === true,
-          }
-        }
-      }
-    } catch (error) {
-      debugWarn("Failed to initialize restaurant filters from localStorage:", error)
-    }
-    return {
-      sortBy: null,
-      vegNonVeg: null,
-      highlyReordered: false,
-      spicy: false,
-    }
+  // Initialize default filters
+  const [filters, setFilters] = useState({
+    sortBy: null,
+    vegNonVeg: null,
+    highlyReordered: false,
+    spicy: false,
   })
 
   // Restaurant data state
@@ -194,8 +179,27 @@ function RestaurantDetailsContent() {
   const fetchedRestaurantRef = useRef(false) // Track if restaurant has been fetched for current slug
   const fetchedSlugRef = useRef(null)
   const fetchedZoneIdRef = useRef(null)
+  
+  // Public offers state for dynamic pricing
+  const [publicOffers, setPublicOffers] = useState([])
+  const publicOffersFetchedRef = useRef(false)
 
   useEffect(() => {
+    if (!publicOffersFetchedRef.current) {
+      publicOffersFetchedRef.current = true
+      restaurantAPI.getPublicOffers().then(res => {
+        const list = res?.data?.data?.allOffers || res?.data?.allOffers || [];
+        setPublicOffers(list);
+      }).catch(err => {
+        debugWarn("Failed to fetch public offers:", err)
+      });
+    }
+  }, [])
+
+  useEffect(() => {
+    // Scroll to top when the component mounts (e.g. from search navigation)
+    window.scrollTo(0, 0)
+
     const intervalId = setInterval(() => {
       setAvailabilityTick(Date.now())
     }, 60000)
@@ -227,10 +231,16 @@ function RestaurantDetailsContent() {
         let response = null
         let apiRestaurant = null
 
+        // Create request config with location if available
+        const requestConfig = { noCache: true }
+        if (Number.isFinite(userLocation?.latitude) && Number.isFinite(userLocation?.longitude)) {
+          requestConfig.params = { lat: userLocation.latitude, lng: userLocation.longitude }
+        }
+
         // Try dining API first (if available). If it doesn't return a valid restaurant,
         // always fall back to restaurant API (important when diningAPI is stubbed).
         try {
-          response = await diningAPI.getRestaurantBySlug(slug)
+          response = await diningAPI.getRestaurantBySlug(slug, requestConfig)
           if (response?.data?.success && response?.data?.data) {
             apiRestaurant = response.data.data
             debugLog('? Found restaurant in dining API:', apiRestaurant)
@@ -251,7 +261,7 @@ function RestaurantDetailsContent() {
           try {
             // First, try to get restaurant directly by slug/ID (no zoneId needed)
             try {
-              response = await restaurantAPI.getRestaurantById(slug)
+              response = await restaurantAPI.getRestaurantById(slug, requestConfig)
               if (response?.data?.success && response?.data?.data) {
                 apiRestaurant = response.data.data
                 debugLog('? Found restaurant in restaurant API by slug/ID:', apiRestaurant)
@@ -271,18 +281,20 @@ function RestaurantDetailsContent() {
                     const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
 
                     // Try to find by slug match or name match
-                    const normalizeSlug = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-                    const targetNormalized = normalizeSlug(slug)
-                    
+                    const restaurantName = slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
                     const matchingRestaurant = restaurants.find(r =>
                       r.slug === slug ||
-                      normalizeSlug(r.slug) === targetNormalized ||
-                      normalizeSlug(r.name) === targetNormalized
+                      r.name?.toLowerCase().replace(/\s+/g, '-') === slug.toLowerCase() ||
+                      r.name?.toLowerCase() === restaurantName.toLowerCase()
                     )
 
                     if (matchingRestaurant) {
                       // Get full restaurant details by ID
-                      const fullResponse = await restaurantAPI.getRestaurantById(matchingRestaurant._id || matchingRestaurant.restaurantId)
+                      const requestConfigFallback = { noCache: true }
+                      if (Number.isFinite(userLocation?.latitude) && Number.isFinite(userLocation?.longitude)) {
+                        requestConfigFallback.params = { lat: userLocation.latitude, lng: userLocation.longitude }
+                      }
+                      const fullResponse = await restaurantAPI.getRestaurantById(matchingRestaurant._id || matchingRestaurant.restaurantId, requestConfigFallback)
                       if (fullResponse.data && fullResponse.data.success && fullResponse.data.data) {
                         apiRestaurant = fullResponse.data.data
                         debugLog('? Found restaurant in restaurant API by name search:', apiRestaurant)
@@ -411,7 +423,7 @@ function RestaurantDetailsContent() {
           const formattedAddress = formatRestaurantAddress(locationObj)
           debugLog('? Final Formatted Address:', formattedAddress)
 
-          // Calculate distance from user to restaurant
+          // Calculate distance from user to restaurant (with routing multiplier)
           const calculateDistance = (lat1, lng1, lat2, lng2) => {
             const R = 6371 // Earth's radius in kilometers
             const dLat = (lat2 - lat1) * Math.PI / 180
@@ -421,7 +433,7 @@ function RestaurantDetailsContent() {
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
               Math.sin(dLng / 2) * Math.sin(dLng / 2)
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-            return R * c // Distance in kilometers
+            return (R * c) * 1.35 // Distance in kilometers with multiplier
           }
 
           // Get restaurant coordinates
@@ -439,7 +451,11 @@ function RestaurantDetailsContent() {
 
           // Calculate distance if both coordinates are available
           let calculatedDistance = null
-          if (userLat && userLng && restaurantLat && restaurantLng &&
+          if (apiRestaurant?.distanceText) {
+            calculatedDistance = apiRestaurant.distanceText
+          } else if (actualRestaurant?.distanceText) {
+            calculatedDistance = actualRestaurant.distanceText
+          } else if (userLat && userLng && restaurantLat && restaurantLng &&
             !isNaN(userLat) && !isNaN(userLng) && !isNaN(restaurantLat) && !isNaN(restaurantLng)) {
             const distanceInKm = calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
             // Format distance: show 1 decimal place if >= 1km, otherwise show in meters
@@ -537,7 +553,7 @@ function RestaurantDetailsContent() {
               || null,
             priceRange: actualRestaurant?.priceRange || apiRestaurant?.priceRange || onboardingStep4?.priceRange || "$$",
             offers: Array.isArray(actualRestaurant?.offers) ? actualRestaurant.offers : (Array.isArray(apiRestaurant?.offers) ? apiRestaurant.offers : []), // Will be populated from menu/offers API later
-            offerText: actualRestaurant?.offer || apiRestaurant?.offer || onboardingStep4?.offer || "FLAT 50% OFF",
+            offerText: actualRestaurant?.offer || apiRestaurant?.offer || onboardingStep4?.offer || "",
             offerCount: actualRestaurant?.offerCount || apiRestaurant?.offerCount || 0,
             restaurantOffers: {
               goldOffer: {
@@ -578,6 +594,12 @@ function RestaurantDetailsContent() {
             // Availability fields for grayscale styling
             isActive: actualRestaurant?.isActive !== false, // Default to true if not specified
             isAcceptingOrders: actualRestaurant?.isAcceptingOrders !== false, // Default to true if not specified
+            discount: actualRestaurant?.discount || apiRestaurant?.discount || 0,
+            itemDiscounts: Array.isArray(actualRestaurant?.itemDiscounts) ? actualRestaurant.itemDiscounts : (Array.isArray(apiRestaurant?.itemDiscounts) ? apiRestaurant.itemDiscounts : []),
+            discountRules: Array.isArray(actualRestaurant?.discountRules) ? actualRestaurant.discountRules : (Array.isArray(apiRestaurant?.discountRules) ? apiRestaurant.discountRules : []),
+            // Preserve backend-computed road distance so it stays consistent with the Home page listing
+            distanceText: apiRestaurant?.distanceText || actualRestaurant?.distanceText || null,
+            distanceInfo: apiRestaurant?.distanceInfo || actualRestaurant?.distanceInfo || null,
           }
 
           debugLog('? Transformed restaurant:', transformedRestaurant)
@@ -592,18 +614,19 @@ function RestaurantDetailsContent() {
           fetchedSlugRef.current = slug
           fetchedZoneIdRef.current = zoneId
 
-          // Load outlet timings from public endpoint (source of truth for daily opening slots)
-          try {
-            const outletRestaurantId = transformedRestaurant.mongoId || actualRestaurant?._id || apiRestaurant?._id
-            if (outletRestaurantId) {
-              const outletResponse = await restaurantAPI.getOutletTimingsByRestaurantId(outletRestaurantId, { noCache: true })
-              const outletTimingsData = outletResponse?.data?.data?.outletTimings || outletResponse?.data?.outletTimings
-              if (outletTimingsData) {
-                setRestaurant((prev) => ({ ...prev, outletTimings: outletTimingsData }))
-              }
-            }
-          } catch (outletError) {
-            debugWarn("Outlet timings fetch failed, falling back to delivery timings:", outletError?.message)
+          // Load outlet timings asynchronously without blocking the main render flow
+          const outletRestaurantId = transformedRestaurant.mongoId || actualRestaurant?._id || apiRestaurant?._id;
+          if (outletRestaurantId) {
+            restaurantAPI.getOutletTimingsByRestaurantId(outletRestaurantId)
+              .then(outletResponse => {
+                const outletTimingsData = outletResponse?.data?.data?.outletTimings || outletResponse?.data?.outletTimings;
+                if (outletTimingsData) {
+                  setRestaurant((prev) => ({ ...prev, outletTimings: outletTimingsData }));
+                }
+              })
+              .catch(outletError => {
+                debugWarn("Outlet timings fetch failed, falling back to delivery timings:", outletError?.message);
+              });
           }
 
           // Fetch menu and inventory for this restaurant
@@ -622,11 +645,8 @@ function RestaurantDetailsContent() {
                 const restaurants = searchResponse?.data?.data?.restaurants || searchResponse?.data?.data || []
 
                 // Try to find by exact name match
-                const normalizeName = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-                const targetNormalizedName = normalizeName(transformedRestaurant.name)
-                
                 const matchingRestaurant = restaurants.find(r =>
-                  normalizeName(r.name) === targetNormalizedName
+                  r.name?.toLowerCase().trim() === transformedRestaurant.name?.toLowerCase().trim()
                 )
 
                 if (matchingRestaurant) {
@@ -687,60 +707,47 @@ function RestaurantDetailsContent() {
                   ].map(normalize).filter(Boolean)
                 )
 
-                const FETCH_LIMIT = 100
-                const firstResponse = await orderAPI.getOrders({ limit: FETCH_LIMIT, page: 1 })
-                let allOrders = []
-                let totalPages = 1
-
-                if (firstResponse?.data?.success && firstResponse?.data?.data?.orders) {
-                  allOrders = firstResponse.data.data.orders || []
-                  totalPages = firstResponse.data.data?.pagination?.pages || 1
-                } else if (firstResponse?.data?.orders) {
-                  allOrders = firstResponse.data.orders || []
-                  totalPages = firstResponse.data?.pagination?.pages || 1
-                } else if (Array.isArray(firstResponse?.data?.data)) {
-                  allOrders = firstResponse.data.data || []
-                }
-
-                if (totalPages > 1) {
-                  const pagePromises = []
-                  for (let p = 2; p <= totalPages; p += 1) {
-                    pagePromises.push(orderAPI.getOrders({ limit: FETCH_LIMIT, page: p }))
+                const FETCH_LIMIT = 15;
+                orderAPI.getOrders({ limit: FETCH_LIMIT, page: 1 }).then((firstResponse) => {
+                  let allOrders = [];
+                  if (firstResponse?.data?.success && firstResponse?.data?.data?.orders) {
+                    allOrders = firstResponse.data.data.orders || [];
+                  } else if (firstResponse?.data?.orders) {
+                    allOrders = firstResponse.data.orders || [];
+                  } else if (Array.isArray(firstResponse?.data?.data)) {
+                    allOrders = firstResponse.data.data || [];
                   }
 
-                  const pageResponses = await Promise.all(pagePromises)
-                  const remainingOrders = pageResponses.flatMap((resp) => {
-                    if (resp?.data?.success && resp?.data?.data?.orders) return resp.data.data.orders || []
-                    if (resp?.data?.orders) return resp.data.orders || []
-                    if (Array.isArray(resp?.data?.data)) return resp.data.data || []
-                    return []
-                  })
-                  allOrders = [...allOrders, ...remainingOrders]
-                }
+                  hasPreviousOrderForRestaurant = allOrders.some((order) => {
+                    const orderRestaurantField = order?.restaurantId;
+                    const candidateIds = [
+                      order?.restaurantId,
+                      orderRestaurantField?._id,
+                      orderRestaurantField?.id,
+                      orderRestaurantField?.restaurantId,
+                      order?.restaurant,
+                      order?.restaurant_id,
+                    ].map(normalize).filter(Boolean);
 
-                hasPreviousOrderForRestaurant = allOrders.some((order) => {
-                  const orderRestaurantField = order?.restaurantId
-                  const candidateIds = [
-                    order?.restaurantId,
-                    orderRestaurantField?._id,
-                    orderRestaurantField?.id,
-                    orderRestaurantField?.restaurantId,
-                    order?.restaurant,
-                    order?.restaurant_id,
-                  ].map(normalize).filter(Boolean)
+                    if (candidateIds.some((id) => targetRestaurantIds.has(id))) {
+                      return true;
+                    }
 
-                  if (candidateIds.some((id) => targetRestaurantIds.has(id))) {
-                    return true
-                  }
+                    const candidateNames = [
+                      order?.restaurantName,
+                      orderRestaurantField?.name,
+                      order?.restaurant?.name,
+                    ].map(normalize).filter(Boolean);
 
-                  const candidateNames = [
-                    order?.restaurantName,
-                    orderRestaurantField?.name,
-                    order?.restaurant?.name,
-                  ].map(normalize).filter(Boolean)
-
-                  return !!targetRestaurantName && candidateNames.includes(targetRestaurantName)
-                })
+                    return !!targetRestaurantName && candidateNames.includes(targetRestaurantName);
+                  });
+                  
+                  // Need to update state if component uses this variable to re-render recommendation section
+                  // Since the state update might be missing here, the UI won't reflect it if fetched late,
+                  // but we at least avoid blocking the main menu load!
+                }).catch(err => {
+                  debugWarn("Could not fetch previous orders:", err);
+                });
               } catch (orderCheckError) {
                 debugWarn("Could not verify previous orders for recommendation section:", orderCheckError)
               }
@@ -753,7 +760,7 @@ function RestaurantDetailsContent() {
               for (const lookupId of normalizedLookupIds) {
                 try {
                   debugLog('? Fetching menu for restaurant lookup ID:', lookupId)
-                  const response = await restaurantAPI.getMenuByRestaurantId(lookupId, { noCache: true })
+                  const response = await restaurantAPI.getMenuByRestaurantId(lookupId)
                   if (response?.data?.success) {
                     menuResponse = response
                     resolvedMenuLookupId = lookupId
@@ -928,10 +935,16 @@ function RestaurantDetailsContent() {
 
                 setMenuUnavailable(!menuHasItems)
 
-                // Set first 3 sections (Recommended, Starters, Main Course) as expanded by default
-                const defaultExpandedSections = new Set(
-                  Array.from({ length: Math.min(3, finalMenuSections.length) }, (_, idx) => idx)
-                )
+                // Set all sections and subsections as expanded by default
+                const defaultExpandedSections = new Set()
+                finalMenuSections.forEach((section, originalIndex) => {
+                  defaultExpandedSections.add(originalIndex)
+                  if (section.subsections && Array.isArray(section.subsections)) {
+                    section.subsections.forEach((_, subIndex) => {
+                      defaultExpandedSections.add(`${originalIndex}-${subIndex}`)
+                    })
+                  }
+                })
                 setExpandedSections(defaultExpandedSections)
 
                 debugLog('Fetched menu sections with recommended items:', finalMenuSections)
@@ -1108,7 +1121,7 @@ function RestaurantDetailsContent() {
     if (userLat && userLng && restaurantLat && restaurantLng &&
       !isNaN(userLat) && !isNaN(userLng) && !isNaN(restaurantLat) && !isNaN(restaurantLng)) {
 
-      // Calculate distance
+      // Calculate distance (with routing multiplier)
       const calculateDistance = (lat1, lng1, lat2, lng2) => {
         const R = 6371 // Earth's radius in kilometers
         const dLat = (lat2 - lat1) * Math.PI / 180
@@ -1118,18 +1131,25 @@ function RestaurantDetailsContent() {
           Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
           Math.sin(dLng / 2) * Math.sin(dLng / 2)
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        return R * c // Distance in kilometers
+        return (R * c) * 1.35 // Distance in kilometers with multiplier
       }
 
-      const distanceInKm = calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
       let calculatedDistance = null
+      let distanceInKm = null
 
-      // Format distance: show 1 decimal place if >= 1km, otherwise show in meters
-      if (distanceInKm >= 1) {
-        calculatedDistance = `${distanceInKm.toFixed(1)} km`
+      if (restaurant?.distanceText) {
+        // Prefer backend-computed road distance (Google Distance Matrix) — same source as Home page
+        calculatedDistance = restaurant.distanceText
+        distanceInKm = restaurant.distanceInfo?.distanceValue ? (restaurant.distanceInfo.distanceValue / 1000) : null
       } else {
-        const distanceInMeters = Math.round(distanceInKm * 1000)
-        calculatedDistance = `${distanceInMeters} m`
+        distanceInKm = calculateDistance(userLat, userLng, restaurantLat, restaurantLng)
+        // Format distance: show 1 decimal place if >= 1km, otherwise show in meters
+        if (distanceInKm >= 1) {
+          calculatedDistance = `${distanceInKm.toFixed(1)} km`
+        } else {
+          const distanceInMeters = Math.round(distanceInKm * 1000)
+          calculatedDistance = `${distanceInMeters} m`
+        }
       }
 
       // Only update if distance actually changed
@@ -1234,21 +1254,28 @@ function RestaurantDetailsContent() {
       restaurant_restaurantId: restaurant.restaurantId
     });
 
+    // Calculate the final discounted price for the cart
+    const basePrice = resolvedVariant?.price ?? item.price;
+    const priceNum = typeof basePrice === 'number' ? basePrice : parseFloat(String(basePrice).replace(/[^0-9.]/g, '')) || 0;
+    // Evaluate Item-Specific and Smart Rules Discounts
+    const { discountValue, isFlatDiscount } = calculateBestDiscount(item, priceNum);
+    const finalPrice = discountValue > 0 ? Math.round(isFlatDiscount ? Math.max(0, priceNum - discountValue) : priceNum * (1 - discountValue / 100)) : priceNum;
+
     // Prepare cart item with all required properties
     const cartItem = {
       id: lineItemId,
       lineItemId,
       itemId: item.id,
       name: item.name,
-      price: resolvedVariant?.price ?? item.price,
+      price: finalPrice, // Use discounted price
+      originalPrice: priceNum, // Store original base price
       variantId: resolvedVariant?.id || "",
       variantName: resolvedVariant?.name || "",
-      variantPrice: resolvedVariant?.price ?? item.price,
+      variantPrice: finalPrice, // Use discounted price for variant
       image: item.image,
       restaurant: restaurant.name, // Use restaurant.name directly (already validated)
       restaurantId: validRestaurantId, // Use validated restaurantId
       description: item.description,
-      originalPrice: item.originalPrice,
       isVeg: item.isVeg === true, // Use strict check
       foodType: item.foodType, // Include foodType for robustness
       preparationTime: item.preparationTime, // Add preparationTime property
@@ -1436,19 +1463,7 @@ function RestaurantDetailsContent() {
 
   const activeFilterCount = getActiveFilterCount()
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !slug) return
 
-    try {
-      const raw = window.localStorage.getItem(RESTAURANT_DETAILS_FILTERS_STORAGE_KEY)
-      const parsed = raw ? JSON.parse(raw) : {}
-      const nextState = parsed && typeof parsed === "object" ? parsed : {}
-      nextState[slug] = filters
-      window.localStorage.setItem(RESTAURANT_DETAILS_FILTERS_STORAGE_KEY, JSON.stringify(nextState))
-    } catch (error) {
-      debugWarn("Failed to persist restaurant filters:", error)
-    }
-  }, [filters, slug])
 
   useEffect(() => {
     if (selectedMenuCategory === "all") return
@@ -1692,21 +1707,78 @@ function RestaurantDetailsContent() {
     setShowItemDetail(true)
   }
 
+  // Helper function to calculate the best discount considering minOrderValue
+  const calculateBestDiscount = (item, priceNum) => {
+    let bestDiscountAmount = 0;
+    let bestDiscountValue = 0;
+    let bestIsFlatDiscount = false;
+
+    // 1. Check item specific discount
+    const itemDiscount = (restaurant?.itemDiscounts || []).find(d => String(d.itemId) === String(item.id || item._id));
+    if (itemDiscount) {
+      const discountValue = itemDiscount.discountValue || 0;
+      const isFlatDiscount = String(itemDiscount.discountType || '').toUpperCase() === 'FLAT';
+      const discountAmount = isFlatDiscount ? discountValue : (priceNum * discountValue) / 100;
+      if (discountAmount > bestDiscountAmount) {
+        bestDiscountAmount = discountAmount;
+        bestDiscountValue = discountValue;
+        bestIsFlatDiscount = isFlatDiscount;
+      }
+    }
+
+    // 2. Check restaurant discount rules
+    const matchingRule = (restaurant?.discountRules || []).find(rule => {
+      const val = Number(rule.conditionValue);
+      if (rule.conditionType === 'PRICE_ABOVE' && priceNum > val) return true;
+      if (rule.conditionType === 'PRICE_BELOW' && priceNum < val) return true;
+      return false;
+    });
+    if (matchingRule) {
+      const discountValue = matchingRule.discountValue || 0;
+      // Default to percentage for rules
+      const discountAmount = (priceNum * discountValue) / 100;
+      if (discountAmount > bestDiscountAmount) {
+        bestDiscountAmount = discountAmount;
+        bestDiscountValue = discountValue;
+        bestIsFlatDiscount = false;
+      }
+    }
+
+    // 3. Check global restaurant discount
+    const globalDiscount = Number(restaurant?.discount || 0);
+    if (globalDiscount > 0) {
+      const discountAmount = (priceNum * globalDiscount) / 100;
+      if (discountAmount > bestDiscountAmount) {
+        bestDiscountAmount = discountAmount;
+        bestDiscountValue = globalDiscount;
+        bestIsFlatDiscount = false;
+      }
+    }
+
+    return {
+      discountValue: bestDiscountValue,
+      isFlatDiscount: bestIsFlatDiscount,
+      discountAmount: bestDiscountAmount
+    };
+  };
+
   // Helper function to calculate final price after discount
   const getFinalPrice = (item) => {
-    // If discount exists, calculate from originalPrice, otherwise use price directly
-    if (item.originalPrice && item.discountAmount && item.discountAmount > 0) {
-      // Calculate discounted price from originalPrice
-      let discountedPrice = item.originalPrice;
-      if (item.discountType === 'Percent') {
-        discountedPrice = item.originalPrice - (item.originalPrice * item.discountAmount / 100);
-      } else if (item.discountType === 'Fixed') {
-        discountedPrice = item.originalPrice - item.discountAmount;
-      }
-      return Math.max(0, discountedPrice);
+    let priceNum = item.price || 0;
+    
+    // Attempt to parse price if it's a string like "Starting from ₹199"
+    if (typeof priceNum === 'string') {
+      const parsed = parseFloat(priceNum.replace(/[^0-9.]/g, ''));
+      if (!isNaN(parsed)) priceNum = parsed;
     }
-    // Otherwise, use price as the final price
-    return Math.max(0, item.price || 0);
+
+    const { discountAmount } = calculateBestDiscount(item, priceNum);
+
+    if (discountAmount > 0) {
+      return Math.max(0, priceNum - discountAmount);
+    }
+    
+    return Math.max(0, priceNum);
   };
 
   // Filter menu items based on active filters
@@ -1947,7 +2019,7 @@ function RestaurantDetailsContent() {
 
   // Reset pagination when filters change
   useEffect(() => {
-    setVisibleItemCount(50) // Start with 50 items
+    setVisibleItemCount(20) // Start with 20 items
   }, [filteredSections]) // Re-run when sections/filters change
 
   // Implement infinite scrolling on window scroll
@@ -1960,7 +2032,7 @@ function RestaurantDetailsContent() {
           if (window.innerHeight + window.scrollY >= document.documentElement.offsetHeight - 800) {
             setVisibleItemCount((prevCount) => {
               if (prevCount >= totalFilteredItems) return prevCount
-              return prevCount + 50
+              return prevCount + 20
             })
           }
           ticking = false;
@@ -1971,24 +2043,27 @@ function RestaurantDetailsContent() {
 
     window.addEventListener("scroll", handleScroll, { passive: true })
     
-    // Check initially in case screen is very large and 50 items don't trigger scroll
+    // Check initially in case screen is very large and 20 items don't trigger scroll
     handleScroll()
 
     return () => window.removeEventListener("scroll", handleScroll)
   }, [totalFilteredItems])
 
+
+
   useEffect(() => {
     if (!hasActiveMenuFilters) return
 
-    const nextExpanded = new Set()
-    filteredSections.forEach(({ section, originalIndex }) => {
-      nextExpanded.add(originalIndex)
-      toRenderableArray(section?.subsections).forEach((_, subIndex) => {
-        nextExpanded.add(`${originalIndex}-${subIndex}`)
+    setExpandedSections(prev => {
+      const nextExpanded = new Set(prev)
+      filteredSections.forEach(({ section, originalIndex }) => {
+        nextExpanded.add(originalIndex)
+        toRenderableArray(section?.subsections).forEach((_, subIndex) => {
+          nextExpanded.add(`${originalIndex}-${subIndex}`)
+        })
       })
+      return nextExpanded
     })
-
-    setExpandedSections(nextExpanded)
   }, [filteredSections, hasActiveMenuFilters])
 
   useEffect(() => {
@@ -2050,26 +2125,18 @@ function RestaurantDetailsContent() {
   }, [restaurant, targetDishId])
 
   // Highlight offers/texts for the blue offer line
-  const highlightOffers = [
-    "Upto 50% OFF",
-    restaurant?.offerText || "",
-    ...(Array.isArray(restaurant?.offers) ? restaurant.offers.map((offer) => offer?.title || "") : []),
-  ]
-  const rotatingOffers = highlightOffers
-    .map((offer) => String(offer || "").trim())
-    .filter(Boolean)
-  const offersForDisplay = rotatingOffers.length > 0 ? rotatingOffers : ["Offers available"]
-  const activeOfferText = offersForDisplay[highlightIndex % offersForDisplay.length]
-  const offerIndicatorCount = Math.min(offersForDisplay.length, 5)
+  const offersList = Array.isArray(restaurant?.offers) ? restaurant.offers : []
+  const currentOfferIndex = offersList.length > 0 ? (highlightIndex % offersList.length) : 0
+  const activeOffer = offersList.length > 0 ? offersList[currentOfferIndex] : null
+
+  const offerIndicatorCount = Math.min(offersList.length > 0 ? offersList.length : 1, 5)
   const activeOfferIndicator = offerIndicatorCount > 0 ? highlightIndex % offerIndicatorCount : 0
-  const primaryOffer = Array.isArray(restaurant?.offers) && restaurant.offers.length > 0
-    ? restaurant.offers[0]
-    : null
-  const offerHeadline = primaryOffer?.title || restaurant?.offerText || activeOfferText
+
+  const offerHeadline = activeOffer?.title || restaurant?.offerText || "No offers currently available"
   const offerSubline =
-    primaryOffer?.description ||
-    primaryOffer?.subtitle ||
-    (primaryOffer?.code ? `Use ${primaryOffer.code}` : "Tap to view all offers")
+    activeOffer?.description ||
+    activeOffer?.subtitle ||
+    (activeOffer?.code ? `Use code ${activeOffer.code}` : "Tap to view all offers")
 
   // Auto-rotate images every 3 seconds
   useEffect(() => {
@@ -2084,20 +2151,23 @@ function RestaurantDetailsContent() {
     return () => clearInterval(interval)
   }, [restaurant?.offers?.length || 0])
 
-  // Auto-rotate highlight offer text every 2 seconds
+  // Auto-rotate highlight offer text every 3 seconds
   useEffect(() => {
+    const offersCount = Array.isArray(restaurant?.offers) ? restaurant.offers.length : 0;
+    if (offersCount <= 1) return; // No need to rotate if 0 or 1 offer
+
     const interval = setInterval(() => {
-      setHighlightIndex((prev) => (prev + 1) % highlightOffers.length)
-    }, 2000)
+      setHighlightIndex((prev) => (prev + 1) % offersCount)
+    }, 3000)
 
     return () => clearInterval(interval)
-  }, [highlightOffers.length])
+  }, [restaurant?.offers])
 
   // Render a single dish card with layout and performance optimizations
   const renderDishCard = (item, isRecommendedSection) => {
     const quantity = getDishQuantity(item)
     const isVeg = item.foodType === "Veg"
-    const isHighlighted = highlightedDishId === item.id
+    const isHighlighted = highlightedDishId === (item.id || item._id)
 
     const cardContent = (
       <>
@@ -2123,14 +2193,59 @@ function RestaurantDetailsContent() {
           {isRecommendedItem(item) && (
             <div className="flex items-center gap-2 mt-1">
               <div className="h-1.5 w-16 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div className="h-full bg-[#7e3866] w-3/4"></div>
+                <div className="h-full bg-primary w-3/4"></div>
               </div>
               <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Highly reordered</span>
             </div>
           )}
 
           <div className="flex items-center gap-3 mt-1">
-            <p className="font-semibold text-gray-900 dark:text-white">{getFoodPriceLabel(item)}</p>
+            {(() => {
+              const priceStr = getFoodPriceLabel(item);
+              const isStartingFrom = priceStr.includes('Starting from');
+              const priceNum = parseFloat(priceStr.replace(/[^0-9.]/g, ''));
+              if (isNaN(priceNum)) return <p className="font-semibold text-gray-900 dark:text-white">{priceStr}</p>;
+              
+              const { discountValue, isFlatDiscount, discountAmount } = calculateBestDiscount(item, priceNum);
+              
+              if (discountAmount > 0) {
+                
+                const discountedPrice = Math.max(0, Math.round(priceNum - discountAmount));
+                
+                // Calculate effective percentage for badge
+                const effectivePercentage = Math.round(((priceNum - discountedPrice) / priceNum) * 100);
+                const discountLabel = isFlatDiscount ? `₹${discountValue} OFF` : `${effectivePercentage}% OFF`;
+                
+                return (
+                  <div className="flex flex-col gap-0.5 mt-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-900 dark:text-white text-[15px]">
+                        {isStartingFrom ? <span className="text-[11px] font-medium text-gray-500 mr-1">Starting from</span> : ''}
+                        ₹{discountedPrice}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-[1px]">
+                      <span className="text-[11px] text-gray-500 line-through">₹{priceNum}</span>
+                      <span className="text-[9px] font-bold text-green-600 bg-green-50 border border-green-200 px-1 py-[1px] rounded uppercase flex items-center">
+                        <Tag size={8} className="mr-[2px]" />
+                        {discountLabel}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+              
+              if (isStartingFrom) {
+                return (
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-[11px] text-gray-500 font-medium">Starting from</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">₹{priceNum}</span>
+                  </div>
+                );
+              }
+              
+              return <p className="font-semibold text-gray-900 dark:text-white">{priceStr}</p>;
+            })()}
             {/* Preparation Time - Show if available */}
             {item.preparationTime && String(item.preparationTime).trim() && (
               <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
@@ -2154,14 +2269,14 @@ function RestaurantDetailsContent() {
                 e.stopPropagation()
                 handleBookmarkClick(item)
               }}
-              className={`p-1.5 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${isDishFavorite(item.id, restaurant?.restaurantId || restaurant?._id || restaurant?.id)
+              className={`p-1.5 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${isDishFavorite(item.id || item._id, restaurant?.restaurantId || restaurant?._id || restaurant?.id)
                 ? "border-red-500 text-red-500 bg-red-50 dark:bg-red-900/20"
                 : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400"
                 }`}
             >
               <Bookmark
                 size={18}
-                className={isDishFavorite(item.id, restaurant?.restaurantId || restaurant?._id || restaurant?.id) ? "fill-red-500 text-red-500" : ""}
+                className={isDishFavorite(item.id || item._id, restaurant?.restaurantId || restaurant?._id || restaurant?.id) ? "fill-red-500 text-red-500" : ""}
               />
             </button>
             <button
@@ -2193,8 +2308,10 @@ function RestaurantDetailsContent() {
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
-              className={`absolute -bottom-2.5 left-1/2 -translate-x-1/2 font-bold px-3 py-1.5 rounded-xl shadow-md flex items-center gap-2 bg-[#7e3866] text-white min-w-[84px] justify-between z-10 ${
-                shouldShowGrayscale ? 'bg-gray-300 text-gray-400 cursor-not-allowed opacity-50' : 'hover:bg-[#55254b]'
+              className={`absolute -bottom-3 sm:-bottom-4 left-1/2 -translate-x-1/2 rounded-full h-8 sm:h-9 md:h-10 px-3 sm:px-4 flex items-center justify-between gap-3 min-w-[90px] md:min-w-[100px] z-10 transition-all duration-300 ${
+                shouldShowGrayscale 
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-50 shadow-none border border-gray-300' 
+                  : 'shadow-[0_4px_14px_0_rgba(0,183,97,0.39)] bg-[#00B761] hover:bg-[#00A055] text-white'
               }`}
             >
               <button
@@ -2205,11 +2322,11 @@ function RestaurantDetailsContent() {
                   }
                 }}
                 disabled={shouldShowGrayscale}
-                className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-white hover:text-white/80'}
+                className={shouldShowGrayscale ? 'text-gray-500 cursor-not-allowed' : 'text-white hover:text-white/80 active:scale-90 transition-transform'}
               >
-                <Minus size={14} className="stroke-[3px]" />
+                <Minus size={16} className="stroke-[3px]" />
               </button>
-              <span className="text-xs font-bold text-white">{quantity}</span>
+              <span className="text-[13px] sm:text-[15px] font-black">{quantity}</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -2218,9 +2335,9 @@ function RestaurantDetailsContent() {
                   }
                 }}
                 disabled={shouldShowGrayscale}
-                className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-white hover:text-white/80'}
+                className={shouldShowGrayscale ? 'text-gray-500 cursor-not-allowed' : 'text-white hover:text-white/80 active:scale-90 transition-transform'}
               >
-                <Plus size={14} className="stroke-[3px]" />
+                <Plus size={16} className="stroke-[3px]" />
               </button>
             </motion.div>
           ) : (
@@ -2233,12 +2350,12 @@ function RestaurantDetailsContent() {
                 }
               }}
               disabled={shouldShowGrayscale}
-              className={`absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-[#7e3866] text-white font-bold px-5 py-1.5 rounded-xl shadow-md hover:bg-[#55254b] transition-all whitespace-nowrap min-w-[84px] text-center text-xs tracking-wider border border-white/10 z-10 ${shouldShowGrayscale
-                ? 'bg-gray-300 text-gray-400 cursor-not-allowed opacity-50'
-                : ''
+              className={`absolute -bottom-3 sm:-bottom-4 left-1/2 -translate-x-1/2 rounded-full h-8 sm:h-9 md:h-10 px-5 sm:px-7 text-[12px] sm:text-[14px] md:text-[16px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap min-w-[90px] md:min-w-[100px] z-10 ${shouldShowGrayscale
+                ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 cursor-not-allowed opacity-50 shadow-none border border-gray-300'
+                : 'bg-[#E23744] hover:bg-[#D12B37] text-white shadow-[0_6px_16px_0_rgba(226,55,68,0.35)] hover:shadow-[0_8px_20px_rgba(226,55,68,0.45)] border border-[#E23744]/20'
                 }`}
             >
-              ADD +
+              ADD <span className="text-[16px] sm:text-[18px] md:text-[20px] font-medium leading-none mt-[-2px]">+</span>
             </motion.button>
           )}
         </div>
@@ -2248,12 +2365,13 @@ function RestaurantDetailsContent() {
     if (isHighlighted) {
       return (
         <motion.div
-          key={item.id}
+          key={item.id || item._id}
           ref={(node) => {
+            const itemId = item.id || item._id;
             if (node) {
-              dishCardRefs.current[item.id] = node
+              dishCardRefs.current[itemId] = node
             } else {
-              delete dishCardRefs.current[item.id]
+              delete dishCardRefs.current[itemId]
             }
           }}
           initial={{ scale: 0.98, opacity: 0.95 }}
@@ -2267,7 +2385,7 @@ function RestaurantDetailsContent() {
             ]
           }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          className="flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-500 rounded-2xl bg-gradient-to-r from-[#7e38660a] to-[#7e386615] dark:from-[#7e386618] dark:to-[#7e386622] ring-2 ring-[#7e3866] z-10 mx-1 my-2"
+          className="flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer transition-all duration-500 rounded-2xl bg-gradient-to-r from-[#7e38660a] to-[#7e386615] dark:from-[#7e386618] dark:to-[#7e386622] ring-2 ring-primary z-10 mx-1 my-2"
           onClick={() => handleItemClick(item)}
         >
           {cardContent}
@@ -2277,12 +2395,13 @@ function RestaurantDetailsContent() {
 
     return (
       <div
-        key={item.id}
+        key={item.id || item._id}
         ref={(node) => {
+          const itemId = item.id || item._id;
           if (node) {
-            dishCardRefs.current[item.id] = node
+            dishCardRefs.current[itemId] = node
           } else {
-            delete dishCardRefs.current[item.id]
+            delete dishCardRefs.current[itemId]
           }
         }}
         className="flex gap-4 p-4 border-b border-gray-100 dark:border-gray-800 last:border-none relative cursor-pointer rounded-2xl hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors duration-200"
@@ -2305,7 +2424,17 @@ function RestaurantDetailsContent() {
     : "New"
 
   if (loadingRestaurant && !restaurant) {
-    return <RestaurantDetailSkeleton />
+    return (
+      <>
+        {showScanAnimation && (
+          <MenuScanAnimation
+            duration={2200}
+            onComplete={() => setShowScanAnimation(false)}
+          />
+        )}
+        <RestaurantDetailSkeleton />
+      </>
+    )
   }
 
   if (restaurantError && !restaurant) {
@@ -2313,7 +2442,7 @@ function RestaurantDetailsContent() {
       <AnimatedPage>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
           <div className="flex flex-col items-center gap-4 text-center">
-            <AlertCircle className={`h-12 w-12 ${restaurantError.includes('Backend server is not connected') ? 'text-[#7e3866]' : 'text-red-500'}`} />
+            <AlertCircle className={`h-12 w-12 ${restaurantError.includes('Backend server is not connected') ? 'text-primary' : 'text-red-500'}`} />
             <div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
                 {restaurantError.includes('Backend server is not connected') ? 'Connection Error' : restaurantError === 'Restaurant not found' ? 'Restaurant not found' : 'Error'}
@@ -2356,6 +2485,14 @@ function RestaurantDetailsContent() {
       className={`min-h-screen bg-white dark:bg-[#0a0a0a] flex flex-col transition-all duration-300 ${shouldShowGrayscale ? 'grayscale opacity-75' : ''
         }`}
     >
+      {/* ── Menu Scan Intro Animation ── */}
+      {showScanAnimation && (
+        <MenuScanAnimation
+          duration={2200}
+          onComplete={() => setShowScanAnimation(false)}
+        />
+      )}
+
       {/* Header - Back, Search, Menu (like reference image) */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-3 md:pt-4 lg:pt-5 pb-2 md:pb-3 bg-white dark:bg-[#0a0a0a]">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -2389,7 +2526,7 @@ function RestaurantDetailsContent() {
                     placeholder="Search for dishes..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full h-9 md:h-10 pl-10 pr-10 rounded-full border border-[#7e3866] dark:border-[#7e3866]/80 shadow-sm bg-white dark:bg-[#1a1a1a] text-xs md:text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-[#7e3866] focus:border-transparent"
+                    className="w-full h-9 md:h-10 pl-10 pr-10 rounded-full border border-primary dark:border-primary/80 shadow-sm bg-white dark:bg-[#1a1a1a] text-xs md:text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                     autoFocus
                     onBlur={() => {
                       if (!searchQuery) {
@@ -2429,7 +2566,7 @@ function RestaurantDetailsContent() {
           {/* Restaurant Summary */}
           <div className="relative">
             <div className="relative rounded-3xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-[0_16px_40px_rgba(15,23,42,0.08)] p-4 sm:p-5 space-y-4 overflow-hidden">
-              <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#7e3866] via-[#8a4b77] to-[#b36b8f]" />
+              <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-primary via-[#8a4b77] to-[#b36b8f]" />
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -2455,17 +2592,14 @@ function RestaurantDetailsContent() {
             </div>
 
             <div className="flex items-center justify-between gap-3">
-              <button
-                type="button"
+              <div
                 className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300 min-w-0"
-                onClick={() => setShowLocationSheet(true)}
               >
                 <MapPin className="h-4 w-4" />
                 <span className="truncate">
                   {restaurant?.distance || "1.2 km"} | {restaurant?.location || "Location"}
                 </span>
-                <ChevronDown className="h-4 w-4 text-gray-500" />
-              </button>
+              </div>
               <span
                 className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold text-white ${
                   isRestaurantOffline ? "bg-rose-600" : "bg-emerald-600"
@@ -2488,54 +2622,76 @@ function RestaurantDetailsContent() {
             </div>
           )}
 
-          {/* Offers */}
-          <button
-            type="button"
-            onClick={() => setShowOffersSheet(true)}
-            className="w-full rounded-2xl border border-gray-900/20 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] px-4 py-3 text-left shadow-[0_12px_30px_rgba(15,23,42,0.18)] transition-all hover:shadow-[0_16px_36px_rgba(15,23,42,0.24)]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
-                <Percent className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="relative h-5 overflow-hidden">
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={highlightIndex}
-                      initial={{ y: 16, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      exit={{ y: -16, opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="text-sm font-semibold text-gray-900 dark:text-white"
-                    >
-                      {offerHeadline}
-                    </motion.span>
-                  </AnimatePresence>
+          {/* Offers & Discounts */}
+          <div className="flex flex-col gap-3">
+            {/* Global Discount standalone card */}
+            {restaurant?.discount > 0 && (
+              <div className="w-full rounded-2xl border border-green-200 dark:border-green-900/30 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 px-4 py-3 flex items-center justify-between shadow-[0_4px_12px_rgba(16,185,129,0.05)]">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 shadow-sm">
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.864 2.227l8.909 8.91a2.182 2.182 0 010 3.085l-7.364 7.364a2.182 2.182 0 01-3.085 0l-8.91-8.91A2.182 2.182 0 012 11.137V4.41A2.182 2.182 0 014.182 2.23h6.727a2.182 2.182 0 011.955-.003z"/></svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-green-800 dark:text-green-400 uppercase tracking-wide">
+                      FLAT {restaurant.discount}% OFF
+                    </p>
+                    <p className="text-xs text-green-600 dark:text-green-500 font-medium mt-0.5">
+                      Applied automatically on all items
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{offerSubline}</p>
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                  <Star className="h-3 w-3 fill-emerald-700 dark:fill-emerald-400 text-emerald-700 dark:text-emerald-400" />
-                  {ratingLabel}
-                </span>
-                <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                  {reviewsLabel}
-                </span>
+            )}
+
+            {/* Coupons Card */}
+            <button
+              type="button"
+              onClick={() => setShowOffersSheet(true)}
+              className="w-full rounded-2xl border border-gray-900/20 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] px-4 py-3 text-left shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition-all hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
+                  <Percent className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1 flex flex-col justify-center">
+                  <div className="relative h-5 overflow-hidden">
+                    <AnimatePresence mode="wait">
+                      <motion.span
+                        key={highlightIndex}
+                        initial={{ y: 16, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: -16, opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="text-sm font-semibold text-gray-900 dark:text-white"
+                      >
+                        {offerHeadline}
+                      </motion.span>
+                    </AnimatePresence>
+                  </div>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate">{offerSubline}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    <Star className="h-3 w-3 fill-emerald-700 dark:fill-emerald-400 text-emerald-700 dark:text-emerald-400" />
+                    {ratingLabel}
+                  </span>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                    {reviewsLabel}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="mt-3 flex items-center gap-1.5">
-              {Array.from({ length: offerIndicatorCount }).map((_, index) => (
-                <span
-                  key={`offer-dot-${index}`}
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    index === activeOfferIndicator ? "bg-orange-500" : "bg-gray-200 dark:bg-gray-700"
-                  }`}
-                />
-              ))}
-            </div>
-          </button>
+              <div className="mt-2.5 flex items-center gap-1.5 pl-[56px]">
+                {Array.from({ length: offerIndicatorCount }).map((_, index) => (
+                  <span
+                    key={`offer-dot-${index}`}
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      index === activeOfferIndicator ? "bg-orange-500" : "bg-gray-200 dark:bg-gray-700"
+                    }`}
+                  />
+                ))}
+              </div>
+            </button>
+          </div>
 
           {/* Filter/Category Buttons */}
           <div className="border-y border-gray-200 py-3 -mx-4 px-4">
@@ -2610,7 +2766,7 @@ function RestaurantDetailsContent() {
                       onClick={() => setSelectedMenuCategory("all")}
                       className={`flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors ${
                         selectedMenuCategory === "all"
-                          ? "border-[#7e3866] bg-[#7e386615] text-[#7e3866]"
+                          ? "border-primary bg-[#7e386615] text-primary"
                           : "border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-300"
                       }`}
                     >
@@ -2623,7 +2779,7 @@ function RestaurantDetailsContent() {
                         onClick={() => setSelectedMenuCategory(category.id)}
                         className={`flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors ${
                           selectedMenuCategory === category.id
-                            ? "border-[#7e3866] bg-[#7e386615] text-[#7e3866]"
+                            ? "border-primary bg-[#7e386615] text-primary"
                             : "border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-300"
                         }`}
                       >
@@ -2876,12 +3032,22 @@ function RestaurantDetailsContent() {
           <motion.div
             drag
             dragMomentum={false}
+            dragConstraints={
+              typeof window !== "undefined" 
+                ? { 
+                    top: -(window.innerHeight - 150),
+                    left: -(window.innerWidth - 150),
+                    right: 20,
+                    bottom: 50,
+                  }
+                : undefined
+            }
             whileDrag={{ scale: 1.1, zIndex: 100 }}
             whileHover={{ scale: 1.05 }}
             className="fixed bottom-24 right-6 z-[60] pointer-events-auto sm:bottom-8 cursor-grab active:cursor-grabbing"
           >
             <Button
-              className="bg-[#7e3866] hover:bg-[#55254b] text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(126,56,102,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold transform transition-all duration-300 active:scale-95 group"
+              className="bg-primary hover:bg-secondary text-white flex items-center gap-2 shadow-[0_12px_40px_rgba(126,56,102,0.4)] border border-white/20 px-6 py-3.5 h-auto rounded-full font-bold transform transition-all duration-300 active:scale-95 group"
               size="lg"
               onClick={() => setShowMenuSheet(true)}
             >
@@ -2926,6 +3092,15 @@ function RestaurantDetailsContent() {
                           className="w-full flex items-center justify-between py-3 px-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors text-left"
                           onClick={() => {
                             setShowMenuSheet(false)
+                            // Expand the section so items are visible
+                            setExpandedSections(prev => {
+                              const newSet = new Set(prev)
+                              newSet.add(category.sectionIndex)
+                              return newSet
+                            })
+                            // Bypass virtual scrolling to ensure the target section is rendered in the DOM
+                            setVisibleItemCount(totalFilteredItems)
+                            
                             // Scroll to category section
                             setTimeout(() => {
                               const sectionId = `menu-section-${category.sectionIndex}`
@@ -2936,7 +3111,7 @@ function RestaurantDetailsContent() {
                                   block: 'start'
                                 })
                               }
-                            }, 300) // Small delay to allow sheet to close
+                            }, 400) // Delay to allow sheet to close and React to render all items
                           }}
                         >
                           <div className="flex items-center gap-3 min-w-0">
@@ -2971,7 +3146,7 @@ function RestaurantDetailsContent() {
                   {/* Close Button */}
                   <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
                     <Button
-                      className="w-full bg-[#7e3866] hover:bg-[#55254b] text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg text-sm"
+                      className="w-full bg-primary hover:bg-secondary text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg text-sm"
                       onClick={() => setShowMenuSheet(false)}
                     >
                       <X className="h-4 w-4" />
@@ -3003,7 +3178,7 @@ function RestaurantDetailsContent() {
 
                 {/* Bottom Sheet */}
                 <motion.div
-                  className="fixed left-0 right-0 bottom-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-auto md:top-1/2 md:-translate-y-1/2 z-[10000] bg-white dark:bg-[#1a1a1a] rounded-t-3xl md:rounded-3xl shadow-2xl h-[80vh] md:h-auto md:max-h-[90vh] md:max-w-lg w-full md:w-auto flex flex-col"
+                  className="fixed left-0 right-0 bottom-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-auto md:top-1/2 md:-translate-y-1/2 z-[10000] bg-white dark:bg-[#1a1a1a] rounded-t-3xl md:rounded-3xl shadow-2xl max-h-[80vh] md:max-h-[90vh] md:max-w-lg w-full md:w-auto flex flex-col"
                   initial={{ y: "100%" }}
                   animate={{ y: 0 }}
                   exit={{ y: "100%" }}
@@ -3099,45 +3274,7 @@ function RestaurantDetailsContent() {
                       </div>
                     )}
 
-                    {/* Top picks */}
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Top picks:</h3>
-                      <button
-                        onClick={() =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            highlyReordered: !prev.highlyReordered,
-                          }))
-                        }
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all w-full ${filters.highlyReordered
-                          ? "border-[#7e3866] dark:border-[#7e3866] bg-[#F9F9FB] dark:bg-[#7e3866]/20 text-[#7e3866] dark:text-[#7e3866]"
-                          : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                          }`}
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                        <span className="font-medium">Highly reordered</span>
-                      </button>
-                    </div>
 
-                    {/* Dietary preference */}
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Dietary preference:</h3>
-                      <button
-                        onClick={() =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            spicy: !prev.spicy,
-                          }))
-                        }
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all w-full ${filters.spicy
-                          ? "border-red-500 dark:border-red-400 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                          : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                          }`}
-                      >
-                        <Flame className="h-4 w-4" />
-                        <span className="font-medium">Spicy</span>
-                      </button>
-                    </div>
                   </div>
 
                   {/* Bottom Action Bar */}
@@ -3156,7 +3293,7 @@ function RestaurantDetailsContent() {
                       Clear All
                     </button>
                     <Button
-                      className="bg-[#7e3866] hover:bg-[#55254b] text-white px-6 py-2.5 rounded-lg font-bold"
+                      className="bg-primary hover:bg-secondary text-white px-6 py-2.5 rounded-lg font-bold"
                       onClick={() => setShowFilterSheet(false)}
                     >
                       Apply {activeFilterCount > 0 && `(${activeFilterCount})`}
@@ -3215,9 +3352,9 @@ function RestaurantDetailsContent() {
                             className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2a2a2a]"
                           >
                             {outlet?.isNearest && (
-                              <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-[#F9F9FB] dark:bg-[#7e3866]/20 rounded-md">
-                                <Zap className="h-3.5 w-3.5 text-[#7e3866] dark:text-[#7e3866] fill-[#7e3866] dark:fill-[#7e3866]" />
-                                <span className="text-xs font-semibold text-[#7e3866] dark:text-[#7e3866]">
+                              <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-[#F9F9FB] dark:bg-primary/20 rounded-md">
+                                <Zap className="h-3.5 w-3.5 text-primary dark:text-primary fill-primary dark:fill-primary" />
+                                <span className="text-xs font-semibold text-primary dark:text-primary">
                                   Nearest available outlet
                                 </span>
                               </div>
@@ -3340,7 +3477,7 @@ function RestaurantDetailsContent() {
                           <span className="text-base font-medium text-gray-900 dark:text-white">Bookmarks</span>
                           {selectedItem && (
                             <Checkbox
-                              checked={isDishFavorite(selectedItem.id, restaurant?.restaurantId || restaurant?._id || restaurant?.id)}
+                              checked={isDishFavorite(selectedItem.id || selectedItem._id, restaurant?.restaurantId || restaurant?._id || restaurant?.id)}
                               onCheckedChange={(checked) => {
                                 if (!checked && selectedItem) {
                                   const restaurantId = restaurant?.restaurantId || restaurant?._id || restaurant?.id
@@ -3383,7 +3520,7 @@ function RestaurantDetailsContent() {
                   {/* Done Button */}
                   <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4">
                     <Button
-                      className="w-full bg-[#7e3866] hover:bg-[#55254b] text-white py-3 rounded-lg font-bold"
+                      className="w-full bg-primary hover:bg-secondary text-white py-3 rounded-lg font-bold"
                       onClick={() => {
                         setShowManageCollections(false)
                       }}
@@ -3457,13 +3594,13 @@ function RestaurantDetailsContent() {
                           e.stopPropagation()
                           handleBookmarkClick(selectedItem)
                         }}
-                        className={`h-10 w-10 rounded-full border flex items-center justify-center transition-all duration-300 ${isDishFavorite(selectedItem.id, restaurant?.restaurantId || restaurant?._id || restaurant?.id)
+                        className={`h-10 w-10 rounded-full border flex items-center justify-center transition-all duration-300 ${isDishFavorite(selectedItem.id || selectedItem._id, restaurant?.restaurantId || restaurant?._id || restaurant?.id)
                           ? "border-red-500 dark:border-red-400 bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400"
                           : "border-white dark:border-gray-800 bg-white/90 dark:bg-[#1a1a1a]/90 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-[#2a2a2a]"
                           }`}
                       >
                         <Bookmark
-                          className={`h-5 w-5 transition-all duration-300 ${isDishFavorite(selectedItem.id, restaurant?.restaurantId || restaurant?._id || restaurant?.id) ? "fill-red-500 dark:fill-red-400" : ""
+                          className={`h-5 w-5 transition-all duration-300 ${isDishFavorite(selectedItem.id || selectedItem._id, restaurant?.restaurantId || restaurant?._id || restaurant?.id) ? "fill-red-500 dark:fill-red-400" : ""
                             }`}
                         />
                       </button>
@@ -3609,16 +3746,40 @@ function RestaurantDetailsContent() {
                       >
                         <span>Add item</span>
                         <div className="flex items-center gap-1">
-                          {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
-                            <span className="text-sm line-through text-red-200">
-                              {RUPEE_SYMBOL}{Math.round(selectedItem.originalPrice)}
-                            </span>
-                          )}
-                          <span className="text-base font-bold">
-                            {hasFoodVariants(selectedItem)
-                              ? `${getVariantForDish(selectedItem, selectedVariantId)?.name || "Default"} · ${RUPEE_SYMBOL}${Math.round(getVariantForDish(selectedItem, selectedVariantId)?.price || selectedItem.price)}`
-                              : `${RUPEE_SYMBOL}${Math.round(selectedItem.price)}`}
-                          </span>
+                          {(() => {
+                            const variant = getVariantForDish(selectedItem, selectedVariantId);
+                            const basePrice = hasFoodVariants(selectedItem) ? (variant?.price || selectedItem.price) : selectedItem.price;
+                            
+                            if (restaurant?.discount > 0) {
+                              const discountedPrice = basePrice * (1 - restaurant.discount / 100);
+                              return (
+                                <>
+                                  <span className="text-sm line-through text-red-200">
+                                    {RUPEE_SYMBOL}{Math.round(basePrice)}
+                                  </span>
+                                  <span className="text-base font-bold">
+                                    {hasFoodVariants(selectedItem) ? `${variant?.name || "Default"} · ` : ""}{RUPEE_SYMBOL}{Math.round(discountedPrice)}
+                                  </span>
+                                </>
+                              );
+                            } else if (selectedItem.originalPrice && selectedItem.originalPrice > basePrice) {
+                              return (
+                                <>
+                                  <span className="text-sm line-through text-red-200">
+                                    {RUPEE_SYMBOL}{Math.round(selectedItem.originalPrice)}
+                                  </span>
+                                  <span className="text-base font-bold">
+                                    {hasFoodVariants(selectedItem) ? `${variant?.name || "Default"} · ` : ""}{RUPEE_SYMBOL}{Math.round(basePrice)}
+                                  </span>
+                                </>
+                              );
+                            }
+                            return (
+                              <span className="text-base font-bold">
+                                {hasFoodVariants(selectedItem) ? `${variant?.name || "Default"} · ` : ""}{RUPEE_SYMBOL}{Math.round(basePrice)}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </Button>
                     </div>
@@ -3784,35 +3945,7 @@ function RestaurantDetailsContent() {
 
                   {/* Scrollable Content */}
                   <div className="flex-1 overflow-y-auto px-4 py-4">
-                    {/* Gold Exclusive Offer Section */}
-                    {restaurant?.restaurantOffers?.goldOffer && (
-                      <div className="mb-6">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                          {restaurant.restaurantOffers.goldOffer?.title || "Gold exclusive offer"}
-                        </h3>
-                        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 flex items-start justify-between gap-4 border border-gray-100 dark:border-gray-700 shadow-md">
-                          <div className="flex items-start gap-3 flex-1">
-                            <Lock className="h-5 w-5 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                                {restaurant.restaurantOffers.goldOffer?.description || "Free delivery above ₹99"}
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {restaurant.restaurantOffers.goldOffer?.unlockText || "join Gold to unlock"}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            className="bg-red-500 hover:bg-red-600 text-white text-sm px-4 py-2 rounded-lg whitespace-nowrap"
-                            onClick={() => {
-                              // Handle add gold
-                            }}
-                          >
-                            {restaurant.restaurantOffers.goldOffer?.buttonText || "Add Gold - ₹1"}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
+
 
                     {/* Restaurant Coupons Section */}
                     {restaurant?.restaurantOffers?.coupons && Array.isArray(restaurant.restaurantOffers.coupons) && restaurant.restaurantOffers.coupons.length > 0 && (
@@ -3889,7 +4022,7 @@ function RestaurantDetailsContent() {
                   {/* Close Button */}
                   <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
                     <Button
-                      className="w-full bg-[#7e3866] hover:bg-[#55254b] text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg text-sm"
+                      className="w-full bg-primary hover:bg-secondary text-white border-0 flex items-center justify-center gap-2 py-6 rounded-xl font-bold transition-all shadow-lg text-sm"
                       onClick={() => setShowOffersSheet(false)}
                     >
                       <X className="h-4 w-4" />

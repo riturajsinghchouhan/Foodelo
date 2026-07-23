@@ -11,8 +11,13 @@ import { responseTimeLogger } from './middleware/responseTimeLogger.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { healthCheck } from './config/health.js';
 import { config } from './config/env.js';
+import compression from 'compression';
+import path from 'path';
 
 const app = express();
+
+// Add compression middleware to compress JSON payloads (Gzip)
+app.use(compression());
 
 // Trust first proxy (essential for express-rate-limit if behind a proxy)
 app.set('trust proxy', 1);
@@ -35,15 +40,52 @@ app.get('/ready', (_req, res) => {
 
 // Security & parsing middlewares
 app.use(helmet({
-    contentSecurityPolicy: { directives: { defaultSrc: ["'self'"] } },
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "'unsafe-eval'",
+                'https://maps.googleapis.com',
+                'https://maps.gstatic.com',
+                'https://checkout.razorpay.com',
+                'blob:'
+            ],
+            scriptSrcElem: [
+                "'self'",
+                "'unsafe-inline'",
+                'https://maps.googleapis.com',
+                'https://maps.gstatic.com',
+                'https://checkout.razorpay.com',
+                'blob:'
+            ],
+            connectSrc: [
+                "'self'",
+                'https://maps.googleapis.com',
+                'https://maps.gstatic.com',
+                'https://api.razorpay.com',
+                'https://checkout.razorpay.com',
+                'wss:',
+                'ws:'
+            ],
+            frameSrc: [
+                "'self'",
+                'https://api.razorpay.com',
+                'https://checkout.razorpay.com'
+            ]
+        }
+    },
     hsts: config.nodeEnv === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
     xssFilter: true,
     noSniff: true,
-    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json({
+    limit: '15mb',
     verify: (req, res, buf) => {
         // ✅ Store rawBody for signature verification (Razorpay Webhooks)
         if (req.originalUrl && req.originalUrl.includes('/webhook/razorpay')) {
@@ -51,7 +93,7 @@ app.use(express.json({
         }
     }
 }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Protect against NoSQL injection and XSS
 app.use((req, _res, next) => {
@@ -62,14 +104,22 @@ app.use((req, _res, next) => {
 });
 app.use(xssClean());
 
-// Global rate limiting for API routes
-app.use('/api', apiRateLimiter);
+// Global rate limiting for API routes has been removed to allow public routes to be free.
+// Rate limiting for private routes is now handled inside authMiddleware.
 
 // Optional: log API response time (method, path, status, duration) - no sensitive data
 app.use('/api', responseTimeLogger);
 
 // API Routes
 app.use('/api', routes);
+
+// Static Uploads Serving
+const uploadDir = (process.env.UPLOAD_PATH && path.isAbsolute(process.env.UPLOAD_PATH)) 
+    ? process.env.UPLOAD_PATH 
+    : path.join(process.cwd(), 'src', 'uploads');
+
+app.use('/uploads', express.static(uploadDir));
+app.use('/api/v1/uploads', express.static(uploadDir));
 
 // Error Handling
 app.use(errorHandler);

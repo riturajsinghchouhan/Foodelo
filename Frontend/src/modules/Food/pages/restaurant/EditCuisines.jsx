@@ -172,7 +172,7 @@ export default function EditCuisines() {
   const recommendedSet = new Set(DEFAULT_SELECTED)
 
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden pb-20">
+    <div className="min-h-full bg-white overflow-x-hidden pb-20">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50 flex items-center gap-3">
         <button
@@ -180,7 +180,7 @@ export default function EditCuisines() {
           className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
           aria-label="Go back"
         >
-          <ArrowLeft className="w-6 h-6 text-[#7e3866]" />
+          <ArrowLeft className="w-6 h-6 text-primary" />
         </button>
         <div className="flex flex-col">
           <h1 className="text-lg font-bold text-gray-900">Edit restaurant cuisines</h1>
@@ -228,8 +228,8 @@ export default function EditCuisines() {
                 >
                   <span className="text-sm text-gray-900">{name}</span>
                   <span
-                    className={`w-5 h-5 border border-[#7e3866] rounded-sm flex items-center justify-center ${
-                      isSelected ? "bg-[#7e3866]" : "bg-white"
+                    className={`w-5 h-5 border border-primary rounded-sm flex items-center justify-center ${
+                      isSelected ? "bg-primary" : "bg-white"
                     }`}
                   >
                     {isSelected && <Check className="w-3 h-3 text-white" />}
@@ -276,7 +276,7 @@ export default function EditCuisines() {
       )}
 
       {/* Update button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4">
+      <div className="restaurant-modal-sheet bg-white border-t border-gray-200 px-4 py-4">
         <button
           type="button"
           onClick={handleUpdate}
@@ -284,7 +284,7 @@ export default function EditCuisines() {
           className={`w-full h-12 rounded-xl text-base font-bold shadow-lg transition-all active:scale-[0.98] ${
             selected.length === 0
               ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-              : "bg-[#7e3866] text-white shadow-[#7e3866]/20"
+              : "bg-primary text-white shadow-primary/20"
           }`}
         >
           Update Cuisines

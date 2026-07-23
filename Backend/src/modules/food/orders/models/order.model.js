@@ -43,6 +43,10 @@ const pricingSchema = new mongoose.Schema(
         deliveryFee: { type: Number, default: 0, min: 0 },
         platformFee: { type: Number, default: 0, min: 0 },
         restaurantCommission: { type: Number, default: 0, min: 0 },
+        gstOnItem: { type: Number, default: 0, min: 0 },
+        gstOnCommission: { type: Number, default: 0, min: 0 },
+        paymentGatewayFee: { type: Number, default: 0, min: 0 },
+        tcs: { type: Number, default: 0, min: 0 },
         discount: { type: Number, default: 0, min: 0 },
         total: { type: Number, required: true, min: 0 },
         currency: { type: String, default: 'INR' }
@@ -123,6 +127,8 @@ const dispatchSchema = new mongoose.Schema(
             allowOverLimit: { type: Boolean, default: false },
             requiredCashForOrder: { type: Number, default: 0 }
         }],
+        /** Current radius-expansion attempt (1 = first tier, increments every ~20s) */
+        dispatchAttempt: { type: Number, default: 1, min: 1 },
         dispatchingAt: { type: Date }
     },
     { _id: false }
@@ -185,6 +191,11 @@ const deliveryVerificationSchema = new mongoose.Schema(
         dropOtp: {
             required: { type: Boolean, default: false },
             verified: { type: Boolean, default: false }
+        },
+        pickupOtp: {
+            required: { type: Boolean, default: true },
+            verified: { type: Boolean, default: false },
+            requestedAt: { type: Date, default: null }
         }
     },
     { _id: false }
@@ -261,7 +272,8 @@ const orderSchema = new mongoose.Schema(
                 'delivered',
                 'cancelled_by_user',
                 'cancelled_by_restaurant',
-                'cancelled_by_admin'
+                'cancelled_by_admin',
+                'dead'
             ],
             default: 'created'
         },
@@ -287,7 +299,10 @@ const orderSchema = new mongoose.Schema(
         deliveryFleet: { type: String, default: 'standard', trim: true },
         scheduledAt: { type: Date, default: null },
         riderEarning: { type: Number, default: 0, min: 0 },
+        deliveryBonusAmount: { type: Number, default: 0, min: 0 },
         platformProfit: { type: Number, default: 0, min: 0 },
+        /** Plain 4-digit OTP for pickup at restaurant. */
+        pickupOtp: { type: String, default: '', select: false },
         /** Plain 4-digit OTP for handover; cleared after successful verify (never expose to partner in API responses). */
         deliveryOtp: { type: String, default: '', select: false },
         deliveryVerification: {
@@ -298,6 +313,13 @@ const orderSchema = new mongoose.Schema(
         lastRiderLocation: {
             type: { type: String, enum: ['Point'] },
             coordinates: { type: [Number] }
+        },
+        /** Petpooja integration sync state */
+        petpoojaIntegration: {
+            syncStatus: { type: String, enum: ['pending', 'synced', 'failed', 'not_applicable'], default: 'not_applicable' },
+            petpoojaOrderId: { type: String, default: '' },
+            lastSyncAttempt: { type: Date },
+            failureReason: { type: String }
         }
     },
     {
@@ -336,6 +358,7 @@ const settingsSchema = new mongoose.Schema(
     {
         key: { type: String, required: true, unique: true, trim: true },
         dispatchMode: { type: String, enum: ['auto'], default: 'auto' },
+        petpoojaGlobalSync: { type: Boolean, default: true },
         updatedBy: {
             role: { type: String },
             adminId: { type: mongoose.Schema.Types.ObjectId },

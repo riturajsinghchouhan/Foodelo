@@ -3,19 +3,16 @@ import app from './src/app.js';
 import { config } from './src/config/env.js';
 import { validateConfig } from './src/config/validateEnv.js';
 import { connectDB, disconnectDB } from './src/config/db.js';
-import { connectRedis, closeRedis } from './src/config/redis.js';
-import { initSocket } from './src/config/socket.js';
+import { connectRedis, closeRedis, getRedisClient } from './src/config/redis.js';
 import { initializeQueues, closeBullMQConnection } from './src/queues/index.js';
-import { expireExpiredOffers } from './src/modules/food/admin/services/admin.service.js';
-import { syncExpiredFssaiNotifications } from './src/modules/food/restaurant/services/fssaiExpiry.service.js';
 
 import { logger } from './src/utils/logger.js';
 import { initializeFirebaseRealtime } from './src/config/firebase.js';
+import { loadEnvFromDb } from './src/config/envLoader.js';
+import { initRedisEmitter } from './src/config/socket.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10000;
 let server = null;
-let expireOffersInterval = null;
-let fssaiExpiryInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -28,8 +25,6 @@ const gracefulShutdown = async (signal) => {
             await disconnectDB();
             await closeRedis();
             await closeBullMQConnection();
-            if (expireOffersInterval) clearInterval(expireOffersInterval);
-            if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -46,28 +41,32 @@ const gracefulShutdown = async (signal) => {
 const startServer = async () => {
     try {
         validateConfig();
-        initializeFirebaseRealtime();
-
+        logger.info(
+            `[Bootstrap] Starting API server with socketMode=external redisEnabled=${config.redisEnabled} bullmqEnabled=${config.bullmqEnabled} host=${config.host} port=${config.port} socketPort=${config.socketPort}`
+        );
         // 1. Connect to Database (MongoDB)
         await connectDB();
+
+        // 1.5 Load Environment Variables from Database overrides
+        await loadEnvFromDb();
+        initializeFirebaseRealtime();
 
         // 2. Create HTTP server from Express app
         const httpServer = http.createServer(app);
 
-        // 3. Initialize Socket.IO with the HTTP server (Redis adapter when Redis enabled)
-        await initSocket(httpServer);
+        logger.info('[Bootstrap] Local Socket.IO init skipped in API server; expecting socket-server.js or Redis emitter for broadcasts');
+
 
         if (config.redisEnabled) {
+            logger.info('[Bootstrap] Redis is enabled for API server; connecting Redis client for socket emitter/queues');
             await connectRedis();
+            initRedisEmitter(getRedisClient());
+            logger.info('[Bootstrap] Redis emitter setup attempted from API server');
+        } else {
+            logger.warn('[Bootstrap] Redis is disabled in API server; getIO() will warn unless socket events stay inside socket-server.js');
         }
         
-        // 5a. Watchdog: Recover stuck orders from previous run
-        try {
-            const { recoverStuckOrders } = await import('./src/modules/food/orders/services/order.service.js');
-            await recoverStuckOrders();
-        } catch (err) {
-            logger.error(`Watchdog startup error: ${err.message}`);
-        }
+        // Watchdog recovered stuck orders is moved to scheduler-server.js
 
         // 5. Conditionally initialize BullMQ queues.
         // BullMQ requires Redis; skip queue bootstrap when Redis is disabled.
@@ -87,25 +86,7 @@ const startServer = async () => {
             console.log(`🌐 [URL] http://localhost:${config.port}`);
         });
 
-        const runExpire = async () => {
-            try {
-                await expireExpiredOffers();
-            } catch (err) {
-                logger.error(`Expire offers error: ${err.message}`);
-            }
-        };
-        runExpire();
-        expireOffersInterval = setInterval(runExpire, 5 * 60 * 1000);
-
-        const runFssaiExpirySync = async () => {
-            try {
-                await syncExpiredFssaiNotifications();
-            } catch (err) {
-                logger.error(`FSSAI expiry sync error: ${err.message}`);
-            }
-        };
-        runFssaiExpirySync();
-        fssaiExpiryInterval = setInterval(runFssaiExpirySync, 60 * 60 * 1000);
+        // Schedulers (expire offers, fssai sync) are moved to scheduler-server.js
 
         process.on('SIGINT', () => gracefulShutdown('SIGINT'));
         process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -143,4 +124,5 @@ const startServer = async () => {
 };
 
 startServer();
+
 

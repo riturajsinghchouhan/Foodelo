@@ -7,7 +7,56 @@ import { exportJoinRequestsToExcel, exportJoinRequestsToPDF } from "@food/compon
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
+const DocumentPreview = ({ url, label }) => {
+  const [error, setError] = useState(false);
 
+  if (!url) {
+    return (
+      <div className="block mt-2 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 opacity-60">
+        <div className="w-full h-28 flex flex-col items-center justify-center gap-2">
+          <FileText className="w-8 h-8 text-slate-300" />
+          <span className="text-xs font-medium text-slate-400">Not Uploaded</span>
+        </div>
+        <div className="px-2 py-2 bg-slate-100 text-xs font-bold text-center text-slate-500 border-t border-slate-200 truncate">
+          {label}
+        </div>
+      </div>
+    );
+  }
+
+  const isPdf = typeof url === 'string' && url.toLowerCase().includes('.pdf');
+  
+  return (
+    <a 
+      href={url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className="block mt-2 rounded-lg overflow-hidden border border-slate-200 hover:border-blue-500 transition-colors group relative bg-white cursor-pointer"
+    >
+      {isPdf || error ? (
+        <div className="w-full h-28 bg-slate-50 flex flex-col items-center justify-center gap-2">
+          <FileText className="w-8 h-8 text-slate-400 group-hover:text-blue-500 transition-colors" />
+          <span className="text-xs font-medium text-slate-500">{isPdf ? 'PDF' : 'File'}</span>
+        </div>
+      ) : (
+        <img 
+          src={url} 
+          alt={label} 
+          className="w-full h-28 object-cover bg-slate-50" 
+          onError={() => setError(true)}
+        />
+      )}
+      <div className="absolute top-0 left-0 right-0 bottom-8 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+        <span className="text-white text-xs font-semibold flex items-center gap-1">
+          <ExternalLink className="w-3 h-3" /> Open
+        </span>
+      </div>
+      <div className="px-2 py-2 bg-slate-50 text-xs font-bold text-center text-slate-700 border-t border-slate-200 truncate">
+        {label}
+      </div>
+    </a>
+  );
+};
 
 export default function JoinRequest() {
   const [activeTab, setActiveTab] = useState("pending")
@@ -24,7 +73,6 @@ export default function JoinRequest() {
   const [rejectionReason, setRejectionReason] = useState("")
   const [filters, setFilters] = useState({
     zone: "",
-    jobType: "",
     vehicleType: "",
   })
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -103,9 +151,6 @@ export default function JoinRequest() {
     let result = [...requests]
     
     // Client-side filtering for additional filters not supported by backend
-    if (filters.jobType) {
-      result = result.filter(request => request.jobType === filters.jobType)
-    }
 
     return result
   }, [requests, filters])
@@ -210,18 +255,17 @@ export default function JoinRequest() {
   }
 
   const handleResetFilters = () => {
-    setFilters({ zone: "", jobType: "", vehicleType: "" })
+    setFilters({ zone: "", vehicleType: "" })
   }
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
     setSearchQuery("") // Reset search when changing tabs
-    setFilters({ zone: "", jobType: "", vehicleType: "" }) // Reset filters
+    setFilters({ zone: "", vehicleType: "" }) // Reset filters
   }
 
   const activeFiltersCount = Object.values(filters).filter(v => v).length
   const zones = [...new Set(requests.map(r => r.zone))].filter(Boolean)
-  const jobTypes = [...new Set(requests.map(r => r.jobType))].filter(Boolean)
   const vehicleTypes = [...new Set(requests.map(r => r.vehicleType))].filter(Boolean)
 
   return (
@@ -355,12 +399,7 @@ export default function JoinRequest() {
                         <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
                       </div>
                     </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      <div className="flex items-center gap-2">
-                        <span>Job Type</span>
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 cursor-pointer hover:text-slate-600" />
-                      </div>
-                    </th>
+
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
                         <span>Vehicle Type</span>
@@ -379,7 +418,7 @@ export default function JoinRequest() {
                 <tbody className="bg-white divide-y divide-slate-100">
                   {filteredRequests.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-20 text-center">
+                      <td colSpan={7} className="px-6 py-20 text-center">
                         <p className="text-sm text-slate-500">
                           {error ? "Error loading requests" : "No requests found"}
                         </p>
@@ -426,9 +465,7 @@ export default function JoinRequest() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm text-slate-700">{request.zone}</span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-slate-700">{request.jobType}</span>
-                        </td>
+
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm text-slate-700">{request.vehicleType}</span>
                         </td>
@@ -755,97 +792,63 @@ export default function JoinRequest() {
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
                       {/* Aadhar */}
-                      {viewDetails.documents.aadhar && (
-                        <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase">Aadhar Card</label>
-                          <div className="mt-2">
-                            {viewDetails.documents.aadhar.number && (
-                              <p className="text-sm text-slate-700 mb-1">Number: {viewDetails.documents.aadhar.number}</p>
-                            )}
-                            {viewDetails.documents.aadhar.document && (
-                              <a 
-                                href={viewDetails.documents.aadhar.document} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                <ExternalLink className="w-3 h-3" /> View Document
-                              </a>
-                            )}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Aadhar Card</label>
+                        <div className="mt-2">
+                          {viewDetails.documents.aadhar?.number && (
+                            <p className="text-sm font-semibold text-slate-900 mb-2">No. {viewDetails.documents.aadhar.number}</p>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <DocumentPreview url={viewDetails.documents.aadhar?.front || viewDetails.documents.aadhar?.document} label="Front Side" />
+                            <DocumentPreview url={viewDetails.documents.aadhar?.back} label="Back Side" />
                           </div>
                         </div>
-                      )}
+                      </div>
 
                       {/* PAN */}
-                      {viewDetails.documents.pan && (
-                        <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase">PAN Card</label>
-                          <div className="mt-2">
-                            {viewDetails.documents.pan.number && (
-                              <p className="text-sm text-slate-700 mb-1">Number: {viewDetails.documents.pan.number}</p>
-                            )}
-                            {viewDetails.documents.pan.document && (
-                              <a 
-                                href={viewDetails.documents.pan.document} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                <ExternalLink className="w-3 h-3" /> View Document
-                              </a>
-                            )}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase">PAN Card</label>
+                        <div className="mt-2">
+                          {viewDetails.documents.pan?.number && (
+                            <p className="text-sm font-semibold text-slate-900 mb-2">No. {viewDetails.documents.pan.number}</p>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <DocumentPreview url={viewDetails.documents.pan?.document} label="PAN Document" />
                           </div>
                         </div>
-                      )}
+                      </div>
 
                       {/* Driving License */}
-                      {viewDetails.documents.drivingLicense && (
-                        <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase">Driving License</label>
-                          <div className="mt-2">
-                            {viewDetails.documents.drivingLicense.number && (
-                              <p className="text-sm text-slate-700 mb-1">Number: {viewDetails.documents.drivingLicense.number}</p>
-                            )}
-                            {viewDetails.documents.drivingLicense.expiryDate && (
-                              <p className="text-xs text-slate-500 mb-1">
-                                Expiry: {new Date(viewDetails.documents.drivingLicense.expiryDate).toLocaleDateString('en-GB')}
-                              </p>
-                            )}
-                            {viewDetails.documents.drivingLicense.document && (
-                              <a 
-                                href={viewDetails.documents.drivingLicense.document} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                <ExternalLink className="w-3 h-3" /> View Document
-                              </a>
-                            )}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Driving License</label>
+                        <div className="mt-2">
+                          {viewDetails.documents.drivingLicense?.number && (
+                            <p className="text-sm font-semibold text-slate-900 mb-1">No. {viewDetails.documents.drivingLicense.number}</p>
+                          )}
+                          {viewDetails.documents.drivingLicense?.expiryDate && (
+                            <p className="text-xs font-medium text-slate-500 mb-2">
+                              Expiry: {new Date(viewDetails.documents.drivingLicense.expiryDate).toLocaleDateString('en-GB')}
+                            </p>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <DocumentPreview url={viewDetails.documents.drivingLicense?.front || viewDetails.documents.drivingLicense?.document} label="Front Side" />
+                            <DocumentPreview url={viewDetails.documents.drivingLicense?.back} label="Back Side" />
                           </div>
                         </div>
-                      )}
+                      </div>
 
                       {/* Vehicle RC */}
-                      {viewDetails.documents.vehicleRC && (viewDetails.documents.vehicleRC.number || viewDetails.documents.vehicleRC.document) && (
-                        <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase">Vehicle RC</label>
-                          <div className="mt-2">
-                            {viewDetails.documents.vehicleRC.number && (
-                              <p className="text-sm text-slate-700 mb-1">Number: {viewDetails.documents.vehicleRC.number}</p>
-                            )}
-                            {viewDetails.documents.vehicleRC.document && (
-                              <a 
-                                href={viewDetails.documents.vehicleRC.document} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                <ExternalLink className="w-3 h-3" /> View Document
-                              </a>
-                            )}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Vehicle RC</label>
+                        <div className="mt-2">
+                          {viewDetails.documents.vehicleRC?.number && (
+                            <p className="text-sm font-semibold text-slate-900 mb-2">No. {viewDetails.documents.vehicleRC.number}</p>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <DocumentPreview url={viewDetails.documents.vehicleRC?.document} label="RC Document" />
                           </div>
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -961,19 +964,7 @@ export default function JoinRequest() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Job Type</label>
-              <select
-                value={filters.jobType}
-                onChange={(e) => setFilters({ ...filters, jobType: e.target.value })}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="">All Job Types</option>
-                {jobTypes.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
+
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">Vehicle Type</label>
               <select

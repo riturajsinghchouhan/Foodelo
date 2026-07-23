@@ -1,3 +1,4 @@
+import { listPublicApprovedFoods } from '../services/restaurantFood.service.js';
 import {
     registerRestaurant,
     listApprovedRestaurants,
@@ -19,11 +20,30 @@ import {
 } from '../../dining/services/dining.service.js';
 import { validateRestaurantRegisterDto } from '../validators/restaurant.validator.js';
 import { sendResponse } from '../../../../utils/response.js';
+import { FoodBusinessSettings } from '../../admin/models/businessSettings.model.js';
+import { sendRestaurantOnboardingEmail } from '../../../../utils/email.js';
 
 export const registerRestaurantController = async (req, res, next) => {
     try {
         const validated = validateRestaurantRegisterDto(req.body);
         const restaurant = await registerRestaurant(validated, req.files);
+
+        // Send onboarding email with T&C asynchronously
+        (async () => {
+            try {
+                const settings = await FoodBusinessSettings.findOne().lean();
+                const pdfUrl = settings?.termsAndConditionsPdf?.url || null;
+                const email = validated.ownerEmail || restaurant.ownerEmail;
+                const restaurantName = validated.restaurantName || restaurant.restaurantName;
+                
+                if (email) {
+                    await sendRestaurantOnboardingEmail(email, restaurantName, pdfUrl);
+                }
+            } catch (err) {
+                console.error("Error sending onboarding email:", err);
+            }
+        })();
+
         return sendResponse(res, 201, 'Restaurant registered successfully', restaurant);
     } catch (error) {
         next(error);
@@ -39,9 +59,18 @@ export const listApprovedRestaurantsController = async (req, res, next) => {
     }
 };
 
+export const listPublicApprovedFoodsController = async (req, res, next) => {
+    try {
+        const data = await listPublicApprovedFoods(req.query || {});
+        return sendResponse(res, 200, 'Foods fetched successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getApprovedRestaurantController = async (req, res, next) => {
     try {
-        const restaurant = await getApprovedRestaurantByIdOrSlug(req.params.id);
+        const restaurant = await getApprovedRestaurantByIdOrSlug(req.params.id, req.query);
         if (!restaurant) {
             return res.status(404).json({ success: false, message: 'Restaurant not found' });
         }

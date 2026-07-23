@@ -3,6 +3,7 @@ import { upload } from '../../../../middleware/upload.js';
 import {
     registerRestaurantController,
     listApprovedRestaurantsController,
+    listPublicApprovedFoodsController,
     getApprovedRestaurantController,
     listPublicOffersController,
     getCurrentRestaurantController,
@@ -42,7 +43,8 @@ import {
 import {
     createRestaurantFoodController,
     bulkCreateRestaurantFoodController,
-    updateRestaurantFoodController
+    updateRestaurantFoodController,
+    deleteRestaurantFoodController
 } from '../controllers/restaurantFood.controller.js';
 import {
     listAddonsController,
@@ -55,6 +57,7 @@ import { downloadRestaurantMenuPdf } from '../../admin/controllers/admin.control
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
+import { getRestaurantDashboardStatsController } from '../controllers/restaurantDashboard.controller.js';
 import { deleteRestaurantAccountController } from '../controllers/deleteAccount.controller.js';
 
 import { cacheResponse, invalidateCache } from '../../../../middleware/cache.js';
@@ -87,6 +90,7 @@ router.get('/restaurants/:id/outlet-timings', cacheResponse(600, 'restaurant_tim
 router.get('/offers', cacheResponse(300, 'offers'), listPublicOffersController);
 // Public: categories list (zone-aware; returns zone categories + global)
 router.get('/categories/public', cacheResponse(600, 'categories'), listCategoriesController);
+router.get('/foods/public', cacheResponse(300, 'foods'), listPublicApprovedFoodsController);
 
 // Restaurant dashboard/profile (Bearer token + RESTAURANT role)
 router.get('/current', authMiddleware, requireRestaurant, getCurrentRestaurantController);
@@ -108,6 +112,7 @@ router.get('/dining-settings/pending', authMiddleware, requireRestaurant, getPen
 router.get('/outlet-timings', authMiddleware, requireRestaurant, getCurrentRestaurantOutletTimingsController);
 router.put('/outlet-timings', authMiddleware, requireRestaurant, upsertCurrentRestaurantOutletTimingsController);
 router.get('/finance', authMiddleware, requireRestaurant, getRestaurantFinanceController);
+router.get('/dashboard-stats', authMiddleware, requireRestaurant, getRestaurantDashboardStatsController);
 router.post('/withdraw', authMiddleware, requireRestaurant, createWithdrawalRequestController);
 router.get('/withdrawals', authMiddleware, requireRestaurant, listMyWithdrawalsController);
 router.post(
@@ -188,6 +193,10 @@ router.patch('/foods/:id', authMiddleware, requireRestaurant, async (req, res, n
     await invalidateCache('restaurant_menu:*');
     next();
 }, updateRestaurantFoodController);
+router.delete('/foods/:id', authMiddleware, requireRestaurant, async (req, res, next) => {
+    await invalidateCache('restaurant_menu:*');
+    next();
+}, deleteRestaurantFoodController);
 
 // Add-ons (restaurant dashboard) - approval handled by admin
 router.get('/addons', authMiddleware, requireRestaurant, listAddonsController);

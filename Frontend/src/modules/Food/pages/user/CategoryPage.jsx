@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, startTransition, useDeferredValue, useCallback } from "react"
+import { useState, useMemo, useRef, useEffect, startTransition, useDeferredValue } from "react"
 import { useParams, Link, useNavigate } from "react-router-dom"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -14,14 +14,13 @@ import {
 
 // Import shared food images - prevents duplication
 import { foodImages } from "@food/constants/images"
-import api from "@food/api"
-import { restaurantAPI, adminAPI } from "@food/api"
+import api, { restaurantAPI, getPublicCategories, getPublicFoods } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { useProfile } from "@food/context/ProfileContext"
-import { useLocation } from "@food/hooks/useLocation"
-import { useZone } from "@food/hooks/useZone"
+import { useAppLocation } from "@food/hooks/useAppLocation"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import { getMenuFromResponse } from "@food/utils/menuItems"
+import { normalizeImageUrl } from "@food/utils/common"
 
 // Filter options
 const filterOptions = [
@@ -42,10 +41,9 @@ export default function CategoryPage() {
   const { category } = useParams()
   const navigate = useNavigate()
   const { vegMode, vegModeOption } = useProfile()
-  const { location } = useLocation()
-  const { zoneId, isOutOfService } = useZone(location)
+  const { location, zoneId, isOutOfService } = useAppLocation()
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || '')
+  const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || 'all')
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [favorites, setFavorites] = useState(new Set())
   const [sortBy, setSortBy] = useState(null)
@@ -70,22 +68,38 @@ export default function CategoryPage() {
   const [isEnrichingMenus, setIsEnrichingMenus] = useState(false)
   const [approvedFoodsData, setApprovedFoodsData] = useState([])
   const [categoryKeywords, setCategoryKeywords] = useState({})
-  
-  // Pagination State
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
-  const [isFetchingMore, setIsFetchingMore] = useState(false)
-  const ITEMS_PER_PAGE = 20
-
   const showCategorySkeleton = useDelayedLoading(loadingCategories)
   const deferredSearchQuery = useDeferredValue(searchQuery)
+  const [visibleCount, setVisibleCount] = useState(20)
+  const observerTarget = useRef(null)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => prev + 20)
+        }
+      },
+      { threshold: 0.1 }
+    )
+    
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current)
+    }
+    
+    return () => {
+      if (observerTarget.current) {
+        observer.unobserve(observerTarget.current)
+      }
+    }
+  }, [observerTarget.current])
   const BACKEND_ORIGIN = useMemo(() => API_BASE_URL.replace(/\/api\/?$/, ""), [])
   const slugify = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
   const buildRestaurantLink = (restaurant) => {
-    const restaurantSlug = slugify(restaurant?.name || "")
+    const restaurantIdentifier = restaurant?.slug || restaurant?.restaurantId || restaurant?.mongoId || slugify(restaurant?.name || "")
     const dishId = restaurant?.dishId || restaurant?.categoryDish?.id || restaurant?.categoryDish?._id || null
-    if (!dishId) return `/user/restaurants/${restaurantSlug}`
-    return `/user/restaurants/${restaurantSlug}?dish=${encodeURIComponent(String(dishId))}`
+    if (!dishId) return `/user/restaurants/${restaurantIdentifier}`
+    return `/user/restaurants/${restaurantIdentifier}?dish=${encodeURIComponent(String(dishId))}`
   }
   const normalizeCategoryToken = (value) =>
     String(value || "")
@@ -100,11 +114,39 @@ export default function CategoryPage() {
     return keywords.some((keyword) => {
       const normalizedKeyword = normalizeCategoryToken(keyword)
       if (!normalizedKeyword) return false
-      return (
+
+      // Exact match or slug match
+      if (
         normalizedValue === normalizedKeyword ||
-        normalizedValue.includes(normalizedKeyword) ||
         slugify(normalizedValue) === slugify(normalizedKeyword)
-      )
+      ) {
+        console.log(`[CategoryMatch] EXACT MATCH: value=${value}, keyword=${keyword}`)
+        return true
+      }
+
+      // Ignore very short keywords or common stop words from matching as substrings
+      const stopWords = ['of', 'the', 'and', 'in', 'with', 'a', 'an', 'to', 'for']
+      if (normalizedKeyword.length <= 2 || stopWords.includes(normalizedKeyword)) {
+        return false
+      }
+
+      // Substring match with word boundaries
+      try {
+        const regex = new RegExp(`\\b${normalizedKeyword}\\b`, 'i')
+        if (regex.test(normalizedValue)) {
+          console.log(`[CategoryMatch] REGEX MATCH: value=${value}, keyword=${keyword}`)
+          return true
+        }
+      } catch (e) {
+        if (normalizedValue.includes(` ${normalizedKeyword} `) || 
+            normalizedValue.startsWith(`${normalizedKeyword} `) || 
+            normalizedValue.endsWith(` ${normalizedKeyword}`)) {
+          console.log(`[CategoryMatch] FALLBACK MATCH: value=${value}, keyword=${keyword}`)
+          return true
+        }
+      }
+
+      return false
     })
   }
   const uniqueByRestaurant = (list) => {
@@ -160,8 +202,10 @@ export default function CategoryPage() {
 
     approvedFoodsInFlightRef.current = (async () => {
       try {
-        const response = await adminAPI.getFoods({ limit: 1000 })
-        const list = response?.data?.data?.foods || []
+        const params = { limit: 50 }
+        if (zoneId) params.zoneId = zoneId
+        const data = await getPublicFoods(params)
+        const list = data?.foods || []
         const approvedFoods = Array.isArray(list)
           ? list.filter((food) =>
               String(food?.approvalStatus || "").toLowerCase() === "approved" &&
@@ -183,6 +227,9 @@ export default function CategoryPage() {
   }
 
   useEffect(() => {
+    approvedFoodsCacheRef.current = null
+    approvedFoodsInFlightRef.current = null
+
     let cancelled = false
 
     void (async () => {
@@ -195,7 +242,7 @@ export default function CategoryPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [zoneId])
 
   const buildFallbackMenuFromFoods = (foods, restaurant) => {
     const restaurantIds = new Set(
@@ -339,80 +386,6 @@ export default function CategoryPage() {
       })
   }
 
-  const normalizeImageUrl = (value) => {
-    if (!value) return ""
-
-    const raw =
-      typeof value === "string"
-        ? value
-        : typeof value === "object"
-          ? (value.url || value.secure_url || value.imageUrl || value.image || value.src || value.path || "")
-          : ""
-
-    if (typeof raw !== "string") return ""
-    const trimmed = raw.trim()
-    if (!trimmed) return ""
-    if (/^data:/i.test(trimmed) || /^blob:/i.test(trimmed)) return trimmed
-
-    const appProtocol = typeof window !== "undefined" ? window.location?.protocol : ""
-    const appHost = typeof window !== "undefined" ? window.location?.hostname : ""
-    let normalized = trimmed
-      .replace(/\\/g, "/")
-      .replace(/^(https?):\/(?!\/)/i, "$1://")
-      .replace(/^(https?:\/\/)(https?:\/\/)/i, "$1")
-
-    if (/^\/\//.test(normalized)) {
-      normalized = `${appProtocol || "https:"}${normalized}`
-    }
-
-    const hasSignedParams = (url) =>
-      /[?&](X-Amz-|Signature=|Expires=|AWSAccessKeyId=|GoogleAccessId=|token=|sig=|se=|sp=|sv=)/i.test(url)
-
-    if (/^https?:\/\//i.test(normalized)) {
-      try {
-        const parsed = new URL(normalized, window.location.origin)
-        if (
-          appHost &&
-          appHost !== "localhost" &&
-          appHost !== "127.0.0.1" &&
-          /^(localhost|127\.0\.0\.1)$/i.test(parsed.hostname)
-        ) {
-          try {
-            const backendUrl = new URL(BACKEND_ORIGIN)
-            parsed.protocol = backendUrl.protocol
-            parsed.hostname = backendUrl.hostname
-            parsed.port = backendUrl.port
-          } catch {
-            parsed.protocol = window.location.protocol
-            parsed.hostname = window.location.hostname
-            if (window.location.port) parsed.port = window.location.port
-          }
-        }
-        if (appProtocol === "https:" && parsed.protocol === "http:") {
-          parsed.protocol = "https:"
-        }
-        const finalUrl = parsed.toString()
-        return hasSignedParams(finalUrl) ? finalUrl : encodeURI(finalUrl)
-      } catch {
-        return normalized
-      }
-    }
-
-    const absolutePath = normalized.startsWith("/")
-      ? `${BACKEND_ORIGIN}${normalized}`
-      : `${BACKEND_ORIGIN}/${normalized.replace(/^\.?\/*/, "")}`
-
-    try {
-      const parsed = new URL(absolutePath, window.location.origin)
-      if (appProtocol === "https:" && parsed.protocol === "http:") {
-        parsed.protocol = "https:"
-      }
-      const finalUrl = parsed.toString()
-      return hasSignedParams(finalUrl) ? finalUrl : encodeURI(finalUrl)
-    } catch {
-      return absolutePath
-    }
-  }
 
   const currentFilterStorageKey = useMemo(
     () => slugify(selectedCategory || category || "all") || "all",
@@ -578,22 +551,22 @@ export default function CategoryPage() {
     return uniqueByRestaurant(nextRows)
   }
 
-  // Fetch categories from admin API
+  // Fetch categories from public API (cached)
   useEffect(() => {
     let isCancelled = false;
 
     const fetchCategories = async () => {
       try {
         setLoadingCategories(true)
-        const response = await adminAPI.getPublicCategories(zoneId ? { zoneId } : {})
+        const data = await getPublicCategories(zoneId || null)
 
         if (isCancelled) return;
 
-        if (response.data && response.data.success && response.data.data && response.data.data.categories) {
-          const categoriesArray = response.data.data.categories
+        const categoriesArray = data?.categories || []
 
-          // Transform API categories to match expected format
+        if (Array.isArray(categoriesArray) && categoriesArray.length > 0) {
           const transformedCategories = [
+            { id: 'all', name: "All", image: null, slug: 'all' },
             ...categoriesArray.map((cat) => ({
               id: cat.slug || cat.id,
               name: cat.name,
@@ -607,23 +580,26 @@ export default function CategoryPage() {
 
           // Generate category keywords dynamically from category names
           const keywordsMap = {}
+          const stopWords = ['of', 'the', 'and', 'in', 'with', 'a', 'an', 'to', 'for']
           categoriesArray.forEach((cat) => {
             const categoryId = cat.slug || cat.id
             const categoryName = cat.name.toLowerCase()
 
-            // Generate keywords from category name
-            const words = categoryName.split(/[\s-]+/).filter(w => w.length > 0)
+            // Generate keywords from category name, filtering out stop words and short words
+            const words = categoryName.split(/[\s-]+/).filter(w => w.length > 2 && !stopWords.includes(w))
             keywordsMap[categoryId] = [categoryName, ...words]
           })
 
           setCategoryKeywords(keywordsMap)
         } else {
-          setCategories([])
+          // Keep default "All" category on error
+          setCategories([{ id: 'all', name: "All", image: null, slug: 'all' }])
         }
       } catch (error) {
         if (isCancelled) return;
         debugError('Error fetching categories:', error)
-        setCategories([])
+        // Keep default "All" category on error
+        setCategories([{ id: 'all', name: "All", image: null, slug: 'all' }])
       } finally {
         if (!isCancelled) setLoadingCategories(false)
       }
@@ -638,6 +614,7 @@ export default function CategoryPage() {
 
   // Helper function to check if menu has dishes matching category keywords
   const getCategoryKeywords = (categoryId) => {
+    if (categoryId === 'all') return ['all']
     const raw = String(categoryId || "").trim().toLowerCase()
     const fromAdmin = categoryKeywords[raw]
     let keywords = []
@@ -663,6 +640,8 @@ export default function CategoryPage() {
     if (!menu || !menu.sections || !Array.isArray(menu.sections)) {
       return false
     }
+
+    if (categoryId === 'all') return true
 
     const keywords = getCategoryKeywords(categoryId)
     if (keywords.length === 0) {
@@ -721,8 +700,9 @@ export default function CategoryPage() {
       return []
     }
 
-    const keywords = getCategoryKeywords(categoryId)
-    if (keywords.length === 0) {
+    const isAll = categoryId === 'all'
+    const keywords = isAll ? [] : getCategoryKeywords(categoryId)
+    if (!isAll && keywords.length === 0) {
       return []
     }
 
@@ -730,14 +710,14 @@ export default function CategoryPage() {
 
     for (const section of menu.sections) {
       const sectionNameLower = (section?.name || "").toLowerCase()
-      const sectionMatches = matchesCategoryText(sectionNameLower, keywords)
+      const sectionMatches = isAll || matchesCategoryText(sectionNameLower, keywords)
 
       if (section.items && Array.isArray(section.items)) {
         for (const item of section.items) {
           const itemNameLower = (item.name || '').toLowerCase()
           const itemCategoryLower = (item.categoryName || item.category || '').toLowerCase()
 
-          const itemMatches =
+          const itemMatches = isAll ||
             matchesCategoryText(itemNameLower, keywords) ||
             matchesCategoryText(itemCategoryLower, keywords)
 
@@ -769,13 +749,13 @@ export default function CategoryPage() {
       if (section.subsections && Array.isArray(section.subsections)) {
         for (const subsection of section.subsections) {
           const subsectionNameLower = (subsection?.name || "").toLowerCase()
-          const subsectionMatches = matchesCategoryText(subsectionNameLower, keywords)
+          const subsectionMatches = isAll || matchesCategoryText(subsectionNameLower, keywords)
           const subItems = Array.isArray(subsection?.items) ? subsection.items : []
 
           for (const item of subItems) {
             const itemNameLower = (item?.name || "").toLowerCase()
             const itemCategoryLower = (item?.categoryName || item?.category || "").toLowerCase()
-            const itemMatches =
+            const itemMatches = isAll ||
               matchesCategoryText(itemNameLower, keywords) ||
               matchesCategoryText(itemCategoryLower, keywords)
 
@@ -817,10 +797,8 @@ export default function CategoryPage() {
   useEffect(() => {
     const fetchRestaurants = async () => {
       try {
-        if (page === 1) setLoadingRestaurants(true)
-        else setIsFetchingMore(true)
-        
-        const params = { limit: ITEMS_PER_PAGE, page }
+        setLoadingRestaurants(true)
+        const params = {}
         if (zoneId) {
           params.zoneId = zoneId
         }
@@ -828,10 +806,6 @@ export default function CategoryPage() {
 
         if (response.data && response.data.success && response.data.data && response.data.data.restaurants) {
           const restaurantsArray = response.data.data.restaurants
-          
-          if (restaurantsArray.length < ITEMS_PER_PAGE) {
-            setHasMore(false)
-          }
 
           // Helper function to check if value is a default/mock value
           const isDefaultValue = (value, fieldName) => {
@@ -922,15 +896,7 @@ export default function CategoryPage() {
             }).filter(Boolean)
 
           startTransition(() => {
-            if (page === 1) {
-              setRestaurantsData(restaurantsWithIds)
-            } else {
-              setRestaurantsData(prev => {
-                const existingIds = new Set(prev.map(r => r.id))
-                const newItems = restaurantsWithIds.filter(r => !existingIds.has(r.id))
-                return [...prev, ...newItems]
-              })
-            }
+            setRestaurantsData(restaurantsWithIds)
           })
 
           setIsEnrichingMenus(true)
@@ -957,7 +923,7 @@ export default function CategoryPage() {
                       let menu = null
                       for (const lookupId of lookupIds) {
                         try {
-                          const menuResponse = await restaurantAPI.getMenuByRestaurantId(lookupId, { noCache: true })
+                          const menuResponse = await restaurantAPI.getMenuByRestaurantId(lookupId)
                           const rawMenu = getMenuFromResponse(menuResponse)
                           const normalizedMenu = normalizeMenu(rawMenu)
                           if (menuResponse?.data?.success && normalizedMenu?.sections?.length > 0) {
@@ -1027,16 +993,7 @@ export default function CategoryPage() {
 
               if (enrichmentRequestId === menuEnrichmentRequestRef.current) {
                 startTransition(() => {
-                  if (page === 1) {
-                    setRestaurantsData(transformedRestaurants)
-                  } else {
-                    setRestaurantsData(prev => {
-                       const map = new Map()
-                       prev.forEach(r => map.set(r.id, r))
-                       transformedRestaurants.forEach(r => map.set(r.id, r))
-                       return Array.from(map.values())
-                    })
-                  }
+                  setRestaurantsData(transformedRestaurants)
                 })
               }
             } finally {
@@ -1046,33 +1003,18 @@ export default function CategoryPage() {
             }
           })()
         } else {
-          if (page === 1) setRestaurantsData([])
-          setHasMore(false)
+          setRestaurantsData([])
         }
       } catch (error) {
         debugError('Error fetching restaurants:', error)
-        if (page === 1) setRestaurantsData([])
-        setHasMore(false)
+        setRestaurantsData([])
       } finally {
         setLoadingRestaurants(false)
-        setIsFetchingMore(false)
       }
     }
 
     fetchRestaurants()
-  }, [zoneId, isOutOfService, page])
-
-  const observer = useRef()
-  const lastElementRef = useCallback(node => {
-    if (loadingRestaurants || isFetchingMore) return
-    if (observer.current) observer.current.disconnect()
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore) {
-        setPage(prevPage => prevPage + 1)
-      }
-    })
-    if (node) observer.current.observe(node)
-  }, [loadingRestaurants, isFetchingMore, hasMore])
+  }, [zoneId, isOutOfService])
 
   // Update selected category when URL changes
   useEffect(() => {
@@ -1205,68 +1147,46 @@ export default function CategoryPage() {
     })
   }
 
-  // Filter dishes based on active filters and selected category
-  const matchedDishes = useMemo(() => {
+  // Filter restaurants based on active filters and selected category
+  // Expand restaurants into dish cards (one card per matching dish)
+  const filteredRecommended = useMemo(() => {
     const sourceData = restaurantsData.length > 0 ? restaurantsData : []
     let filtered = [...sourceData]
+
     const expandedDishes = []
-      
+
     filtered.forEach(r => {
       if (r.menu) {
-        let validDishes = [];
-        if (selectedCategory && selectedCategory !== 'all') {
-          const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
-          if (hasCategoryItem) {
-            const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
-            validDishes = vegMode ? categoryDishes.filter(d => d.foodType === "Veg") : categoryDishes;
+        const hasCategoryItem = checkCategoryInMenu(r.menu, selectedCategory)
+        if (hasCategoryItem) {
+          // Get ALL matching dishes for this category
+          const categoryDishes = getAllCategoryDishesFromMenu(r.menu, selectedCategory)
+
+          if (categoryDishes.length > 0) {
+            const validDishes = vegMode
+              ? categoryDishes.filter((dish) => dish.foodType === "Veg")
+              : categoryDishes;
+
+            validDishes.forEach((dishForCard) => {
+              expandedDishes.push({
+                ...r,
+                id: `${r.id || r.restaurantId}-${dishForCard.itemId}`,
+                dishId: dishForCard.itemId || `${r.id}-dish`,
+                categoryDish: dishForCard,
+                categoryDishName: dishForCard.name,
+                categoryDishPrice: dishForCard.price,
+                categoryDishImage: dishForCard.image,
+                categoryDishFoodType: dishForCard.foodType,
+              })
+            })
           }
-        } else {
-           // For no category, maybe don't show dishes or show all
-           const allDishes = [];
-           r.menu.sections?.forEach(section => {
-               section.items?.forEach(item => {
-                   allDishes.push({
-                      name: item.name,
-                      price: item.discountPercent > 0 ? Math.round((item.originalPrice || item.price || 0) * (1 - item.discountPercent/100)) : (item.originalPrice || item.price || 0),
-                      image: normalizeImageUrl(item.image?.url || item.image || section.image?.url || section.image),
-                      originalPrice: item.originalPrice || item.price || 0,
-                      itemId: item._id || item.id || `${item.name}-${item.price}`,
-                      foodType: item.foodType,
-                   })
-               })
-               section.subsections?.forEach(sub => {
-                   sub.items?.forEach(item => {
-                       allDishes.push({
-                          name: item.name,
-                          price: item.discountPercent > 0 ? Math.round((item.originalPrice || item.price || 0) * (1 - item.discountPercent/100)) : (item.originalPrice || item.price || 0),
-                          image: normalizeImageUrl(item.image?.url || item.image || sub.image?.url || sub.image || section.image?.url || section.image),
-                          originalPrice: item.originalPrice || item.price || 0,
-                          itemId: item._id || item.id || `${item.name}-${item.price}`,
-                          foodType: item.foodType,
-                       })
-                   })
-               })
-           })
-           validDishes = vegMode ? allDishes.filter(d => d.foodType === "Veg") : allDishes;
         }
-        
-        validDishes.forEach((dishForCard) => {
-          expandedDishes.push({
-            ...r,
-            id: `${r.id || r.restaurantId}-${dishForCard.itemId}`,
-            dishId: dishForCard.itemId || `${r.id}-dish`,
-            categoryDish: dishForCard,
-            categoryDishName: dishForCard.name,
-            categoryDishPrice: dishForCard.price,
-            categoryDishImage: dishForCard.image,
-          })
-        })
       }
     })
 
     filtered = expandedDishes
 
-    if (filtered.length === 0 && selectedCategory && selectedCategory !== 'all') {
+    if (filtered.length === 0 && selectedCategory !== 'all') {
       const fallbackDishes = getCategoryFallbackDishesFromApprovedFoods(selectedCategory, sourceData)
       filtered = vegMode
         ? fallbackDishes.filter((dish) => dish.categoryDishFoodType === "Veg")
@@ -1281,18 +1201,20 @@ export default function CategoryPage() {
     let filtered = [...sourceData]
 
     if (selectedCategory && selectedCategory !== 'all') {
+      // Only keep restaurants that have this category
       filtered = filtered.filter(r => {
-        if (r.menu && checkCategoryInMenu(r.menu, selectedCategory)) return true;
-        const fallbackDishes = getCategoryFallbackDishesFromApprovedFoods(selectedCategory, [r]);
-        return fallbackDishes.length > 0;
-      });
+          const categoryNameLower = selectedCategory.toLowerCase();
+          const matchesCuisine = (r.cuisines || []).some(c => c.toLowerCase().includes(categoryNameLower));
+          const hasInMenu = r.menu ? checkCategoryInMenu(r.menu, selectedCategory) : false;
+          return matchesCuisine || hasInMenu;
+      })
     }
 
     return applyFiltersAndSorting(filtered)
   }, [selectedCategory, activeFilters, deferredSearchQuery, restaurantsData, categoryKeywords, vegMode, vegModeOption, approvedFoodsData, sortBy])
 
   const showRestaurantSkeleton = useDelayedLoading(
-    isLoadingFilterResults || loadingRestaurants || (isEnrichingMenus && selectedCategory && selectedCategory !== 'all' && matchedDishes.length === 0 && filteredAllRestaurants.length === 0),
+    isLoadingFilterResults || loadingRestaurants || (isEnrichingMenus && selectedCategory !== 'all' && filteredRecommended.length === 0),
     { delay: 140, minDuration: 360 }
   )
 
@@ -1309,32 +1231,30 @@ export default function CategoryPage() {
 
   // Check if should show grayscale (user out of service)
   const shouldShowGrayscale = isOutOfService
-  const isCategoryView = selectedCategory && selectedCategory !== 'all'
 
   return (
     <div className={`min-h-screen bg-white dark:bg-[#0a0a0a] ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}>
       {/* Sticky Header */}
       <div className="sticky top-0 z-20 bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur supports-[backdrop-filter]:bg-white/90 shadow-sm">
         <div className="max-w-7xl mx-auto">
-          {/* Search Bar with Back Button */}
-          <div className="flex items-center gap-2 px-3 md:px-6 py-3 border-b border-gray-100 dark:border-gray-800">
+          {/* Search Bar, Back Button, and View Toggle */}
+          <div className="flex items-center gap-2 px-3 md:px-6 py-2 border-b border-gray-100 dark:border-gray-800">
             <button
               onClick={() => navigate('/user')}
-              className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
+              className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors flex-shrink-0"
             >
-              <ArrowLeft className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+              <ArrowLeft className="h-4 w-4 text-gray-700 dark:text-gray-300" />
             </button>
 
-            <div className="flex-1 relative max-w-2xl">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+            <div className="flex-1 relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-500" />
               <Input
-                placeholder="Restaurant name or a dish..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-3 h-9 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-xs dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
+                className="pl-8 pr-3 h-9 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-gray-500 dark:focus:border-gray-600 text-xs md:text-sm dark:text-white placeholder:text-gray-600 dark:placeholder:text-gray-400"
               />
             </div>
-
           </div>
 
           {/* Browse Category Section */}
@@ -1349,35 +1269,34 @@ export default function CategoryPage() {
             {showCategorySkeleton ? (
               <CategoryChipRowSkeleton className="py-3" />
             ) : (
-              categories && categories.length > 0 ? categories.map((cat) => {
+              categories && categories.length > 0 ? categories.filter(cat => cat.id !== 'all' && cat.slug !== 'all').map((cat) => {
                 const categorySlug = cat.slug || cat.id
                 const isSelected = selectedCategory === categorySlug || selectedCategory === cat.id
-                const isAllCategory = categorySlug === "all" || cat.id === "all"
                 return (
                   <button
                     key={cat.id}
                     onClick={() => handleCategorySelect(cat)}
                     data-category-selected={isSelected ? "true" : "false"}
-                    className={`flex flex-col items-center gap-2 flex-shrink-0 pb-1.5 px-1 transition-all ${isSelected ? 'border-b-2 border-[#e23744]' : 'border-b-2 border-transparent'}`}
+                    className={`flex flex-col items-center gap-1.5 flex-shrink-0 pb-2 transition-all ${isSelected ? 'border-b-2 border-primary' : ''
+                      }`}
                   >
-                    {isAllCategory ? (
-                      <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full transition-all flex items-center justify-center border-2 ${isSelected ? 'border-[#e23744] bg-[#e23744]/10 dark:bg-[#e23744]/20' : 'border-transparent bg-gray-50 dark:bg-[#222222]'}`}>
-                        <Grid2x2 className={`h-6 w-6 md:h-7 md:w-7 ${isSelected ? 'text-[#e23744]' : 'text-gray-500 dark:text-gray-400'}`} />
-                      </div>
-                    ) : cat.image ? (
-                      <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden transition-all border-2 ${isSelected ? 'border-[#e23744] p-0.5' : 'border-transparent'}`}>
+                    {cat.image ? (
+                  <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-2 transition-all ${isSelected ? 'border-primary shadow-lg' : 'border-transparent'
+                        }`}>
                         <img
                           src={cat.image}
                           alt={cat.name}
-                          className="w-full h-full object-cover rounded-full"
+                          className="w-full h-full object-cover"
                           onError={(e) => {
+                            // If the backend image is missing/broken, show initials instead of fake assets.
                             e.target.style.display = 'none'
                           }}
                         />
                       </div>
                     ) : (
                       <div
-                        className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center transition-all border-2 ${isSelected ? 'border-[#e23744] bg-[#e23744]/10 dark:bg-[#e23744]/20' : 'border-transparent'}`}
+                        className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 transition-all ${isSelected ? 'border-primary shadow-lg bg-primary/10 dark:bg-primary/20' : 'border-transparent'
+                          }`}
                         aria-label={`${cat.name} category`}
                       >
                         <span className="text-sm md:text-base font-semibold text-gray-600 dark:text-gray-300">
@@ -1385,7 +1304,7 @@ export default function CategoryPage() {
                         </span>
                       </div>
                     )}
-                    <span className={`text-xs md:text-sm font-medium whitespace-nowrap ${isSelected ? 'text-[#e23744] dark:text-[#e23744]' : 'text-gray-600 dark:text-gray-400'
+                    <span className={`text-xs md:text-sm font-medium whitespace-nowrap ${isSelected ? 'text-primary dark:text-primary' : 'text-gray-600 dark:text-gray-400'
                       }`}>
                       {cat.name}
                     </span>
@@ -1398,6 +1317,7 @@ export default function CategoryPage() {
               )
             )}
           </div>
+
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap gap-2 px-4 md:px-6 py-3">
@@ -1412,10 +1332,10 @@ export default function CategoryPage() {
               <Button
                 variant="outline"
                 onClick={() => setIsFilterOpen(true)}
-                className="h-8 md:h-9 px-3 md:px-4 rounded-lg flex items-center gap-2 whitespace-nowrap shrink-0 transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                className="h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
               >
-                <SlidersHorizontal className="h-4 w-4 md:h-5 md:w-5" />
-                <span className="text-xs md:text-sm font-bold text-gray-700 dark:text-gray-300">Filters</span>
+                <SlidersHorizontal className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                <span className="text-xs md:text-sm font-bold text-black dark:text-white">Filters</span>
               </Button>
               {[
                 { id: 'under-30-mins', label: 'Under 30 mins' },
@@ -1429,12 +1349,12 @@ export default function CategoryPage() {
                     key={filter.id}
                     variant="outline"
                     onClick={() => toggleFilter(filter.id)}
-                    className={`h-8 md:h-9 px-3 md:px-4 rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
-                      ? 'bg-[#7e3866] text-white border border-[#7e3866] hover:bg-[#55254b]'
+                    className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
+                      ? 'bg-primary text-white border border-primary hover:bg-secondary'
                       : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }`}
                   >
-                    <span className={`text-xs md:text-sm font-bold ${isActive ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>{filter.label}</span>
+                    <span className={`text-xs md:text-sm text-black dark:text-white font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
                   </Button>
                 )
               })}
@@ -1461,13 +1381,13 @@ export default function CategoryPage() {
                     key={filter.id}
                     variant="outline"
                     onClick={() => toggleFilter(filter.id)}
-                    className={`h-8 md:h-9 px-3 md:px-4 rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
-                      ? 'bg-[#7e3866] text-white border border-[#7e3866] hover:bg-[#55254b]'
+                    className={`h-7 md:h-8 px-2.5 md:px-3 rounded-md flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${isActive
+                      ? 'bg-primary text-white border border-primary hover:bg-secondary'
                       : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }`}
                   >
-                    {Icon && <Icon className={`h-4 w-4 md:h-5 md:w-5 ${isActive ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`} />}
-                    <span className={`text-xs md:text-sm font-bold ${isActive ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>{filter.label}</span>
+                    {Icon && <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`} />}
+                    <span className={`text-xs md:text-sm font-bold ${isActive ? 'text-white' : 'text-black dark:text-white'}`}>{filter.label}</span>
                   </Button>
                 )
               })}
@@ -1479,99 +1399,85 @@ export default function CategoryPage() {
       {/* Content */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-6 md:space-y-8 lg:space-y-10">
         <div className="max-w-7xl mx-auto">
-          {/* MATCHED DISHES Section - Show only when there are matched dishes */}
-          {matchedDishes.length > 0 && (
+          {/* MATCHED DISHES Section */}
+          {filteredRecommended.length > 0 && selectedCategory !== 'all' && (
             <section>
               <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
                 MATCHED DISHES
               </h2>
 
-              {/* Horizontal List for Matched Dishes */}
-              <div className="flex flex-col gap-4">
-                {matchedDishes.map((restaurant) => {
-                  const foodType = restaurant.categoryDish?.foodType || 'Veg'
-                  const isVeg = foodType === 'Veg'
-                  
+              {/* Dishes List - Horizontal Cards */}
+              <div className="flex flex-col gap-3 md:gap-4">
+                {filteredRecommended.slice(0, visibleCount).map((restaurant) => {
                   return (
                     <Link
                       key={restaurant.id}
                       to={buildRestaurantLink(restaurant)}
-                      className="block"
+                      className="block w-full"
                     >
                       <motion.div
                         whileHover={{ scale: 1.01 }}
                         whileTap={{ scale: 0.98 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                        className={`group flex items-stretch p-3 md:p-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-sm hover:shadow-md transition-shadow ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}
+                        className={`flex gap-3 md:gap-4 bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-gray-800 p-2 md:p-3 rounded-2xl md:rounded-3xl shadow-sm hover:shadow-md transition-all duration-300 ${shouldShowGrayscale ? 'grayscale opacity-75' : ''}`}
                       >
-                        {/* Image Container (Left) */}
-                        <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex-shrink-0 rounded-xl overflow-hidden">
-                          {/* Use category dish image if available, otherwise restaurant image */}
+                        {/* Image Container */}
+                        <div className="relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-xl md:rounded-2xl overflow-hidden flex-shrink-0 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                          {/* Veg/Non-veg icon */}
+                          <div className="absolute top-1.5 left-1.5 z-10 bg-white/90 backdrop-blur-sm rounded-sm p-0.5 border border-gray-200">
+                            <div className={`w-2.5 h-2.5 md:w-3 md:h-3 rounded-full ${restaurant.categoryDishFoodType === 'Veg' ? 'bg-green-500' : 'bg-red-500'}`} />
+                          </div>
+
                           {restaurant.categoryDishImage ? (
                             <img
                               src={restaurant.categoryDishImage}
                               alt={restaurant.categoryDishName || restaurant.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              onError={(e) => {
-                                if (restaurant.image) {
-                                  e.target.src = restaurant.image
-                                } else {
-                                  e.target.style.display = 'none'
-                                }
-                              }}
-                            />
-                          ) : restaurant.image ? (
-                            <img
-                              src={restaurant.image}
-                              alt={restaurant.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              className="w-full h-full object-cover"
                               onError={(e) => {
                                 e.target.style.display = 'none'
+                                e.target.parentElement.innerHTML += '<div class="w-full h-full flex items-center justify-center text-gray-300"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></div>'
                               }}
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-3xl">
-                              ???
+                            <div className="w-full h-full flex items-center justify-center text-gray-300 bg-gray-100 dark:bg-gray-800">
+                               <UtensilsCrossed className="w-8 h-8" />
                             </div>
                           )}
-
-                          {/* Veg/Non-Veg Badge on Image */}
-                          <div className={`absolute top-2 left-2 bg-white dark:bg-black p-0.5 rounded-sm border ${isVeg ? 'border-green-600' : 'border-red-600'}`}>
-                            <div className={`w-2 h-2 rounded-full ${isVeg ? 'bg-green-600' : 'bg-red-600'}`} />
-                          </div>
                         </div>
 
-                        {/* Content Container (Right) */}
-                        <div className="flex-1 min-w-0 pl-4 py-1 flex flex-col h-full justify-between">
-                          <div>
-                            {/* Restaurant Tag */}
-                            <span className="text-[10px] md:text-xs font-bold text-[#e23744] uppercase tracking-wider bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-sm mb-1.5 inline-block">
+                        {/* Content */}
+                        <div className="flex-1 py-1 flex flex-col min-w-0">
+                          {/* Restaurant Name Pill */}
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="bg-pink-50 dark:bg-pink-950/30 text-pink-700 dark:text-pink-400 text-[9px] md:text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full line-clamp-1">
                               {restaurant.name}
                             </span>
-                            
-                            {/* Dish Name */}
-                            <h3 className="font-bold text-gray-900 dark:text-white text-base md:text-lg line-clamp-1">
-                              {restaurant.categoryDishName || restaurant.featuredDish || restaurant.name}
-                            </h3>
                           </div>
 
-                          {/* Bottom Row: Rating, Time, Price */}
-                          <div className="flex items-center justify-between mt-auto pt-2">
-                            <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-gray-500 dark:text-gray-400">
-                              <div className="flex items-center gap-1">
-                                <Star className="h-3.5 w-3.5 fill-[#e23744] text-[#e23744]" />
-                                <span className="font-bold text-gray-700 dark:text-gray-300">{restaurant.rating || "4.3"}</span>
+                          {/* Dish Name */}
+                          <h3 className="font-bold text-gray-900 dark:text-white text-sm md:text-base leading-tight mb-2 line-clamp-2">
+                            {restaurant.categoryDishName || restaurant.featuredDish || restaurant.name}
+                          </h3>
+
+                          <div className="mt-auto flex items-end justify-between gap-2">
+                            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                              <div className="flex items-center gap-1 font-semibold text-gray-700 dark:text-gray-300">
+                                <Star className="w-3 h-3 text-red-500 fill-red-500" />
+                                <span>{restaurant.rating || "New"}</span>
                               </div>
-                              <span className="text-gray-300 dark:text-gray-600">•</span>
                               {restaurant.deliveryTime && (
-                                <div className="flex items-center gap-1">
-                                  <Clock className="h-3.5 w-3.5" strokeWidth={1.5} />
-                                  <span>{restaurant.deliveryTime}</span>
-                                </div>
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    <span>{restaurant.deliveryTime}</span>
+                                  </div>
+                                </>
                               )}
                             </div>
-                            <div className="font-bold text-gray-900 dark:text-white text-base md:text-lg">
-                              ₹{restaurant.categoryDishPrice || restaurant.featuredPrice || "160.00"}
+                            
+                            {/* Price */}
+                            <div className="text-sm md:text-base font-bold text-gray-900 dark:text-white shrink-0">
+                              ₹{(restaurant.categoryDishPrice || restaurant.featuredPrice || 0).toFixed(2)}
                             </div>
                           </div>
                         </div>
@@ -1584,7 +1490,7 @@ export default function CategoryPage() {
           )}
 
           {/* ALL RESTAURANTS Section */}
-          <section className="relative mt-8">
+          <section className="relative mt-8 md:mt-12">
             <h2 className="text-xs sm:text-sm md:text-base font-semibold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-4 md:mb-6">
               ALL RESTAURANTS
             </h2>
@@ -1600,7 +1506,7 @@ export default function CategoryPage() {
 
             {/* Large Restaurant Cards */}
             <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5 lg:gap-6 xl:gap-7 items-stretch ${showRestaurantSkeleton ? 'opacity-50' : 'opacity-100'} transition-opacity duration-300`}>
-              {filteredAllRestaurants.map((restaurant) => {
+              {filteredAllRestaurants.slice(0, visibleCount).map((restaurant) => {
                 const isFavorite = favorites.has(restaurant.id)
 
                 return (
@@ -1689,22 +1595,24 @@ export default function CategoryPage() {
                         {/* Content Section */}
                         <CardContent className="p-4 sm:p-5 gap-0 flex-1 flex flex-col bg-white dark:bg-[#1a1a1a] rounded-b-2xl">
                           {/* Restaurant Name & Rating */}
-                          <div className="flex items-center justify-between gap-2 mb-2 lg:mb-3">
-                            <h3 className="flex-1 text-base sm:text-lg md:text-xl font-bold text-gray-900 dark:text-white line-clamp-1 leading-tight">
-                              {restaurant.name}
-                            </h3>
-                            <div className="flex-shrink-0 bg-emerald-600 text-white px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-                              <span className="text-xs md:text-sm font-bold">{restaurant.rating || "New"}</span>
-                              <Star className="h-3 w-3 fill-white text-white" />
+                          <div className="flex items-start justify-between gap-2 mb-2 lg:mb-3">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-md md:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white line-clamp-1 lg:line-clamp-2 leading-tight">
+                                {restaurant.name}
+                              </h3>
+                            </div>
+                            <div className="flex-shrink-0 bg-emerald-600 text-white px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-sm">
+                              <span className="text-sm md:text-base lg:text-lg font-bold">{restaurant.rating || "New"}</span>
+                              <Star className="h-3.5 w-3.5 md:h-4 md:w-4 lg:h-5 lg:w-5 fill-white text-white" />
                             </div>
                           </div>
 
                           {/* Delivery Time & Distance */}
                           {(restaurant.deliveryTime || restaurant.distance) && (
-                            <div className="flex items-center gap-1.5 text-xs sm:text-sm md:text-base text-gray-500 dark:text-gray-400">
+                            <div className="flex items-center gap-1.5 text-sm md:text-base text-gray-500 dark:text-gray-400 mb-3">
                               {restaurant.deliveryTime && (
                                 <>
-                                  <Clock className="h-3.5 w-3.5 md:h-4 md:w-4" strokeWidth={1.5} />
+                                  <Clock className="h-4 w-4 md:h-5 md:w-5" strokeWidth={1.5} />
                                   <span className="font-medium">{restaurant.deliveryTime}</span>
                                 </>
                               )}
@@ -1718,7 +1626,7 @@ export default function CategoryPage() {
                           {/* Offer Badge */}
                           {restaurant.offer && (
                             <div className="flex items-center gap-2 text-sm md:text-base mt-auto pt-3 border-t border-gray-50 dark:border-gray-800/50">
-                              <BadgePercent className="h-4.5 w-4.5 md:h-5 md:w-5 text-[#7e3866]" strokeWidth={2} />
+                              <BadgePercent className="h-4.5 w-4.5 md:h-5 md:w-5 text-primary" strokeWidth={2} />
                               <span className="text-gray-700 dark:text-gray-300 font-medium text-xs sm:text-sm">{restaurant.offer}</span>
                             </div>
                           )}
@@ -1729,6 +1637,13 @@ export default function CategoryPage() {
                 )
               })}
             </div>
+
+            {/* Infinite Scroll Observer Target */}
+            {filteredAllRestaurants.length > visibleCount && (
+              <div ref={observerTarget} className="h-20 flex items-center justify-center mt-4">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            )}
 
             {/* Empty State */}
             {filteredAllRestaurants.length === 0 && (
@@ -1756,11 +1671,6 @@ export default function CategoryPage() {
                 </Button>
               </div>
             )}
-            
-            {/* Infinite Scroll Sentinel */}
-            <div ref={lastElementRef} className="h-10 mt-4 flex items-center justify-center">
-              {isFetchingMore && <Loader2 className="h-6 w-6 animate-spin text-gray-400" />}
-            </div>
           </section>
         </div>
       </div>
@@ -1789,7 +1699,7 @@ export default function CategoryPage() {
                         setSortBy(null)
                         setTimeout(() => setIsLoadingFilterResults(false), 500)
                       }}
-                      className="text-[#7e3866] font-medium text-sm md:text-base hover:underline"
+                      className="text-primary font-medium text-sm md:text-base hover:underline"
                     >
                       Clear all
                     </button>
@@ -1820,11 +1730,11 @@ export default function CategoryPage() {
                                 section.scrollIntoView({ behavior: 'smooth', block: 'start' })
                               }
                             }}
-                            className={`flex flex-col items-center gap-1 py-4 px-2 text-center relative transition-colors ${isActive ? 'bg-white dark:bg-[#1a1a1a] text-[#7e3866]' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                            className={`flex flex-col items-center gap-1 py-4 px-2 text-center relative transition-colors ${isActive ? 'bg-white dark:bg-[#1a1a1a] text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
                               }`}
                           >
                             {isActive && (
-                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#7e3866] rounded-r" />
+                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r" />
                             )}
                             <Icon className="h-5 w-5 md:h-6 md:w-6" strokeWidth={1.5} />
                             <span className="text-xs md:text-sm font-medium leading-tight">{tab.label}</span>
@@ -1854,8 +1764,8 @@ export default function CategoryPage() {
                               key={option.id || 'relevance'}
                               onClick={() => setSortBy(option.id)}
                               className={`px-4 md:px-5 py-3 md:py-4 rounded-xl border text-left transition-colors ${sortBy === option.id
-                                ? 'border-[#7e3866] bg-[#F9F9FB] dark:bg-[#7e3866]/20'
-                                : 'border-gray-200 dark:border-gray-700 hover:border-[#7e3866]'
+                                ? 'border-primary bg-[#F9F9FB] dark:bg-primary/20'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-primary'
                                 }`}
                             >
                               <span className={`text-sm md:text-base font-medium ${sortBy === option.id ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}`}>
@@ -1877,22 +1787,22 @@ export default function CategoryPage() {
                           <button
                             onClick={() => toggleFilter('under-30-mins')}
                             className={`flex flex-col items-center gap-2 p-4 md:p-5 rounded-xl border transition-colors ${activeFilters.has('under-30-mins')
-                              ? 'border-[#7e3866] bg-[#F9F9FB] dark:bg-[#7e3866]/20'
-                              : 'border-gray-200 dark:border-gray-700 hover:border-[#7e3866]'
+                              ? 'border-primary bg-[#F9F9FB] dark:bg-primary/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-primary'
                               }`}
                           >
-                            <Timer className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('under-30-mins') ? 'text-[#7e3866]' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('under-30-mins') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Under 30 mins</span>
+                            <Timer className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('under-30-mins') ? 'text-primary' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('under-30-mins') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Under 30 mins</span>
                           </button>
                           <button
                             onClick={() => toggleFilter('delivery-under-45')}
                             className={`flex flex-col items-center gap-2 p-4 md:p-5 rounded-xl border transition-colors ${activeFilters.has('delivery-under-45')
-                              ? 'border-[#7e3866] bg-[#F9F9FB] dark:bg-[#7e3866]/20'
-                              : 'border-gray-200 dark:border-gray-700 hover:border-[#7e3866]'
+                              ? 'border-primary bg-[#F9F9FB] dark:bg-primary/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-primary'
                               }`}
                           >
-                            <Timer className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('delivery-under-45') ? 'text-[#7e3866]' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('delivery-under-45') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Under 45 mins</span>
+                            <Timer className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('delivery-under-45') ? 'text-primary' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('delivery-under-45') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Under 45 mins</span>
                           </button>
                         </div>
                       </div>
@@ -1908,12 +1818,12 @@ export default function CategoryPage() {
                           <button
                             onClick={() => toggleFilter('rating-35-plus')}
                             className={`flex flex-col items-center gap-2 p-4 md:p-5 rounded-xl border transition-colors ${activeFilters.has('rating-35-plus')
-                              ? 'border-[#7e3866] bg-[#F9F9FB] dark:bg-[#7e3866]/20'
-                              : 'border-gray-200 dark:border-gray-700 hover:border-[#7e3866]'
+                              ? 'border-primary bg-[#F9F9FB] dark:bg-primary/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-primary'
                               }`}
                           >
-                            <Star className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('rating-35-plus') ? 'text-[#7e3866] fill-[#7e3866]' : 'text-gray-400 dark:text-gray-500'}`} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('rating-35-plus') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Rated 3.5+</span>
+                            <Star className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('rating-35-plus') ? 'text-primary fill-primary' : 'text-gray-400 dark:text-gray-500'}`} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('rating-35-plus') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Rated 3.5+</span>
                           </button>
                           <button
                             onClick={() => toggleFilter('rating-4-plus')}
@@ -1922,8 +1832,8 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <Star className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('rating-4-plus') ? 'text-[#7e3866] fill-[#7e3866]' : 'text-gray-400 dark:text-gray-500'}`} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('rating-4-plus') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Rated 4.0+</span>
+                            <Star className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('rating-4-plus') ? 'text-primary fill-primary' : 'text-gray-400 dark:text-gray-500'}`} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('rating-4-plus') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Rated 4.0+</span>
                           </button>
                           <button
                             onClick={() => toggleFilter('rating-45-plus')}
@@ -1932,8 +1842,8 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <Star className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('rating-45-plus') ? 'text-[#7e3866] fill-[#7e3866]' : 'text-gray-400 dark:text-gray-500'}`} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('rating-45-plus') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Rated 4.5+</span>
+                            <Star className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('rating-45-plus') ? 'text-primary fill-primary' : 'text-gray-400 dark:text-gray-500'}`} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('rating-45-plus') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Rated 4.5+</span>
                           </button>
                         </div>
                       </div>
@@ -1953,8 +1863,8 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <MapPin className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('distance-under-1km') ? 'text-[#7e3866]' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('distance-under-1km') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Under 1 km</span>
+                            <MapPin className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('distance-under-1km') ? 'text-primary' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('distance-under-1km') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Under 1 km</span>
                           </button>
                           <button
                             onClick={() => toggleFilter('distance-under-2km')}
@@ -1963,8 +1873,8 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <MapPin className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('distance-under-2km') ? 'text-[#7e3866]' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('distance-under-2km') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Under 2 km</span>
+                            <MapPin className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('distance-under-2km') ? 'text-primary' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('distance-under-2km') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Under 2 km</span>
                           </button>
                         </div>
                       </div>
@@ -1984,7 +1894,7 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('price-under-200') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Under ₹200</span>
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('price-under-200') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Under ₹200</span>
                           </button>
                           <button
                             onClick={() => toggleFilter('under-250')}
@@ -1993,7 +1903,7 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('under-250') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Under ₹250</span>
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('under-250') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Under ₹250</span>
                           </button>
                           <button
                             onClick={() => toggleFilter('price-under-500')}
@@ -2002,7 +1912,7 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('price-under-500') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Under ₹500</span>
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('price-under-500') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Under ₹500</span>
                           </button>
                         </div>
                       </div>
@@ -2022,8 +1932,8 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <BadgePercent className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('flat-50-off') ? 'text-[#7e3866]' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('flat-50-off') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Flat 50% OFF</span>
+                            <BadgePercent className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('flat-50-off') ? 'text-primary' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('flat-50-off') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Flat 50% OFF</span>
                           </button>
                           <button
                             onClick={() => toggleFilter('price-match')}
@@ -2032,8 +1942,8 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <BadgePercent className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('price-match') ? 'text-[#7e3866]' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('price-match') ? 'text-[#7e3866]' : 'text-gray-700 dark:text-gray-300'}`}>Price Match</span>
+                            <BadgePercent className={`h-6 w-6 md:h-7 md:w-7 ${activeFilters.has('price-match') ? 'text-primary' : 'text-gray-600 dark:text-gray-400'}`} strokeWidth={1.5} />
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('price-match') ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>Price Match</span>
                           </button>
                         </div>
                       </div>
@@ -2043,10 +1953,10 @@ export default function CategoryPage() {
                         <div className="space-y-4">
                           <h3 className="text-lg md:text-xl font-semibold text-gray-900 dark:text-white">Trust Markers</h3>
                           <div className="flex flex-col gap-3 md:gap-4">
-                            <button className="px-4 md:px-5 py-3 md:py-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-[#7e3866] text-left transition-colors">
+                            <button className="px-4 md:px-5 py-3 md:py-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-primary text-left transition-colors">
                               <span className="text-sm md:text-base font-medium text-gray-700 dark:text-gray-300">Top Rated</span>
                             </button>
-                            <button className="px-4 md:px-5 py-3 md:py-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-[#7e3866] text-left transition-colors">
+                            <button className="px-4 md:px-5 py-3 md:py-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-primary text-left transition-colors">
                               <span className="text-sm md:text-base font-medium text-gray-700 dark:text-gray-300">Trusted by 1000+ users</span>
                             </button>
                           </div>
@@ -2073,7 +1983,7 @@ export default function CategoryPage() {
                         }, 500)
                       }}
                       className={`flex-1 py-3 md:py-4 font-semibold rounded-xl transition-colors text-sm md:text-base ${activeFilters.size > 0 || sortBy
-                        ? 'bg-[#7e3866] text-white hover:bg-[#55254b]'
+                        ? 'bg-primary text-white hover:bg-secondary'
                         : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                         }`}
                     >

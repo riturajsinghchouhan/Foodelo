@@ -68,6 +68,7 @@ const sanitizeRestaurantForAuthResponse = (restaurantDoc = {}) => {
     email: restaurantDoc?.ownerEmail || "",
     status: restaurantDoc?.status || "",
     profileImage: toSafeImageUrl(restaurantDoc?.profileImage),
+    createdAt: restaurantDoc?.createdAt,
   };
 };
 
@@ -89,6 +90,7 @@ const sanitizeDeliveryForAuthResponse = (deliveryDoc = {}) => {
     profileImage: toSafeImageUrl(deliveryDoc?.profilePhoto),
     walletAmount: Number(deliveryDoc?.walletAmount || 0),
     refCode: deliveryDoc?.referralCode || "",
+    createdAt: deliveryDoc?.createdAt,
   };
 };
 
@@ -114,19 +116,27 @@ export const verifyUserOtpAndLogin = async (
 ) => {
   const trimmedName = typeof name === "string" ? name.trim() : "";
   const existingUser = await FoodUser.findOne({ phone });
+  const needsNamePrompt = !existingUser && !trimmedName;
 
-  const result = await verifyOtp(phone, otp);
+  const result = await verifyOtp(phone, otp, { consume: !needsNamePrompt });
 
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
   }
 
+  // For first-time signup, require name before completing registration.
+  // We return a special flag without consuming the OTP so the frontend can prompt the user.
+  if (needsNamePrompt) {
+    return {
+      isNewUser: true,
+      needsName: true
+    };
+  }
+
   let userDoc = existingUser;
   
   // Ensure user exists and mark as verified on successful OTP.
-  // Check if user is new or hasn't provided a name yet
-  const needsNamePrompt = !userDoc || !userDoc.name || String(userDoc.name).trim() === "" || String(userDoc.name).toLowerCase() === "null";
-  const isNewUser = needsNamePrompt;
+  const isNewUser = !existingUser;
 
   if (!userDoc) {
     userDoc = await FoodUser.create({
@@ -184,7 +194,7 @@ export const verifyUserOtpAndLogin = async (
 
   // Referral crediting: only for brand new accounts.
   const refRaw = typeof ref === "string" ? String(ref).trim() : "";
-  if (!existingUser && refRaw) {
+  if (isNewUser && refRaw) {
     try {
       if (mongoose.Types.ObjectId.isValid(refRaw)) {
         const referrerId = new mongoose.Types.ObjectId(refRaw);
@@ -231,6 +241,12 @@ export const verifyUserOtpAndLogin = async (
                   role: "USER",
                   refereeId: String(userDoc._id),
                   referralLogId: String(log._id),
+                }),
+                creditReferralReward(userDoc._id, reward, {
+                  role: "USER",
+                  referrerId: String(referrerId),
+                  referralLogId: String(log._id),
+                  note: "Signup via referral bonus",
                 }),
               ]);
             } else {
@@ -380,7 +396,9 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   }
 
   // If restaurant approval status is used, handle pending/rejected states by returning info instead of throwing errors.
-    if (restaurantDoc.status && restaurantDoc.status !== "approved") {
+  // Legacy restaurants created before this feature was rolled out (May 26, 2026) bypass this block.
+  const isLegacyRestaurant = restaurantDoc.createdAt && new Date(restaurantDoc.createdAt) < new Date("2026-05-26T00:00:00Z");
+  if (restaurantDoc.status && restaurantDoc.status !== "approved" && !isLegacyRestaurant) {
     return {
       pendingApproval: true,
       status: restaurantDoc.status,
@@ -471,7 +489,9 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
     }
   }
 
-  if (deliveryPartner.status && deliveryPartner.status !== "approved") {
+  // Bypass for legacy delivery partners created before this feature was rolled out.
+  const isLegacyDelivery = deliveryPartner.createdAt && new Date(deliveryPartner.createdAt) < new Date("2026-05-26T00:00:00Z");
+  if (deliveryPartner.status && deliveryPartner.status !== "approved" && !isLegacyDelivery) {
     const isRejected = deliveryPartner.status === "rejected";
     return {
       pendingApproval: true,
@@ -513,25 +533,26 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
 };
 
 export const logout = async (refreshToken, fcmToken, platform) => {
-  if (!refreshToken) {
-    throw new ValidationError("Refresh token is required");
+  const sanitizedFcmToken = fcmToken ? String(fcmToken).trim().replace(/^["']|["']$/g, '') : null;
+
+  if (!refreshToken && !sanitizedFcmToken) {
+    throw new ValidationError("Refresh token or FCM token is required");
   }
 
   // 1. Remove specific FCM token from ALL collections if provided
-  if (fcmToken) {
-    console.log(`[FCM-Logout] Starting logout-driven token removal: platform=${platform}, tokenPreview=${fcmToken?.slice(0, 10)}...`);
+  if (sanitizedFcmToken) {
+    console.log(`[FCM-Logout] Starting logout-driven token removal: platform=${platform}, tokenPreview=${sanitizedFcmToken?.slice(0, 10)}...`);
     
     // We try to remove the token from all 4 possible models regardless of the user ID, 
     // ensuring no stale connections are left across any role or app the user was logged into.
-    const field = platform === "mobile" ? "fcmTokenMobile" : "fcmTokens";
     const models = [FoodUser, FoodRestaurant, FoodDeliveryPartner, FoodAdmin];
     
     try {
       await Promise.all(
         models.map((model) =>
           model.updateMany(
-            { [field]: fcmToken },
-            { $pull: { [field]: fcmToken } },
+            { $or: [{ fcmTokens: sanitizedFcmToken }, { fcmTokenMobile: sanitizedFcmToken }] },
+            { $pull: { fcmTokens: sanitizedFcmToken, fcmTokenMobile: sanitizedFcmToken } },
           ),
         ),
       );
@@ -542,8 +563,13 @@ export const logout = async (refreshToken, fcmToken, platform) => {
   }
 
   // 2. Invalidate the refresh token (standard logout procedure)
-  const deleted = await FoodRefreshToken.deleteOne({ token: refreshToken });
-  return { invalidated: deleted.deletedCount > 0 };
+  let invalidated = false;
+  if (refreshToken) {
+    const deleted = await FoodRefreshToken.deleteOne({ token: refreshToken });
+    invalidated = deleted.deletedCount > 0;
+  }
+  
+  return { invalidated };
 };
 
 export const getProfile = async (userId, role) => {
@@ -558,6 +584,8 @@ export const getProfile = async (userId, role) => {
       profile = await FoodUser.findById(id).lean();
       break;
     case ROLES.ADMIN:
+    case 'SUPER_ADMIN':
+    case 'SUB_ADMIN':
       profile = await FoodAdmin.findById(id).select("-password").lean();
       break;
     case ROLES.RESTAURANT:

@@ -12,6 +12,16 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+const getDefaultDays = () => ({
+  Monday: { isOpen: true, openingTime: "11:00", closingTime: "23:00" },
+  Tuesday: { isOpen: true, openingTime: "11:00", closingTime: "23:00" },
+  Wednesday: { isOpen: true, openingTime: "11:00", closingTime: "23:00" },
+  Thursday: { isOpen: true, openingTime: "11:00", closingTime: "23:00" },
+  Friday: { isOpen: true, openingTime: "11:00", closingTime: "23:00" },
+  Saturday: { isOpen: true, openingTime: "11:00", closingTime: "23:00" },
+  Sunday: { isOpen: true, openingTime: "11:00", closingTime: "23:00" },
+})
+
 // Inline placeholder (no external request, avoids referrer policy / 500 from via.placeholder)
 const PLACEHOLDER_40 = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect fill='%23e2e8f0' width='40' height='40'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-size='12' font-family='sans-serif'%3E?%3C/text%3E%3C/svg%3E"
 const PLACEHOLDER_128 = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Crect fill='%23e2e8f0' width='128' height='128'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-size='32' font-family='sans-serif'%3E?%3C/text%3E%3C/svg%3E"
@@ -104,6 +114,57 @@ const getPrimaryRestaurantImage = (restaurant, fallback = "") => {
   )
 }
 
+const normalizeZoneId = (zoneId) => {
+  if (!zoneId) return ""
+  if (typeof zoneId === "string") return zoneId
+  return zoneId?._id || zoneId?.id || ""
+}
+
+const formatDateInput = (value) => {
+  if (!value) return ""
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toISOString().slice(0, 10)
+}
+
+const emptyDetailsForm = () => ({
+  name: "",
+  pureVegRestaurant: false,
+  ownerName: "",
+  ownerEmail: "",
+  ownerPhone: "",
+  primaryContactNumber: "",
+  email: "",
+  estimatedDeliveryTime: "",
+  estimatedDeliveryTimeMinutes: "",
+  openingTime: "",
+  closingTime: "",
+  outletTimings: getDefaultDays(),
+  isActive: true,
+  isAcceptingOrders: true,
+  cuisinesText: "",
+  offer: "",
+  featuredDish: "",
+  featuredPrice: "",
+  discount: 0,
+  panNumber: "",
+  nameOnPan: "",
+  gstRegistered: false,
+  gstNumber: "",
+  gstLegalName: "",
+  gstAddress: "",
+  fssaiNumber: "",
+  fssaiExpiry: "",
+  accountNumber: "",
+  ifscCode: "",
+  accountHolderName: "",
+  accountType: "savings",
+  upiId: "",
+  panImageUrl: "",
+  gstImageUrl: "",
+  fssaiImageUrl: "",
+})
+
 
 export default function RestaurantsList() {
   const navigate = useNavigate()
@@ -121,21 +182,17 @@ export default function RestaurantsList() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" })
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [savingDetails, setSavingDetails] = useState(false)
-  const [detailsForm, setDetailsForm] = useState({
-    name: "",
-    pureVegRestaurant: false,
-    ownerName: "",
-    ownerEmail: "",
-    ownerPhone: "",
-    primaryContactNumber: "",
-    email: "",
-    estimatedDeliveryTime: "",
-    openingTime: "",
-    closingTime: "",
-    isActive: true,
-  })
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 50
+
+  const [detailsForm, setDetailsForm] = useState(() => emptyDetailsForm())
   const [profileImageFile, setProfileImageFile] = useState(null)
   const [profileImagePreview, setProfileImagePreview] = useState("")
+  const [docFiles, setDocFiles] = useState({
+    panImage: null,
+    gstImage: null,
+    fssaiImage: null,
+  })
   const [isEditingLocation, setIsEditingLocation] = useState(false)
   const [savingLocation, setSavingLocation] = useState(false)
   const [locationEditError, setLocationEditError] = useState("")
@@ -256,7 +313,7 @@ export default function RestaurantsList() {
             ownerPhone: restaurant.ownerPhone || restaurant.phone || "N/A",
             zone: zoneLabelFromRestaurant(restaurant),
             approvalStatus: normalizeApprovalStatus(restaurant),
-            isActive: restaurant.isActive !== false,
+            isActive: restaurant.status === "approved",
             rating: restaurant.ratings?.average || restaurant.rating || 0,
             logo: getPrimaryRestaurantImage(restaurant, PLACEHOLDER_40),
             originalData: restaurant,
@@ -375,6 +432,17 @@ export default function RestaurantsList() {
     return result
   }, [restaurants, searchQuery, filters, sortConfig])
 
+  // Reset to first page when search or filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, filters, sortConfig])
+
+  const totalPages = Math.ceil(filteredRestaurants.length / itemsPerPage)
+  const paginatedRestaurants = filteredRestaurants.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
+
   const handleSort = (key) => {
     let direction = "asc"
     if (sortConfig.key === key && sortConfig.direction === "asc") {
@@ -445,7 +513,7 @@ export default function RestaurantsList() {
     const longitude = (hasValidNumbers && !looksUnset) ? lngNum : ""
 
     return {
-      zoneId: restaurant?.zoneId || restaurant?.location?.zoneId || "",
+      zoneId: normalizeZoneId(restaurant?.zoneId) || "",
       latitude: latitude || "",
       longitude: longitude || "",
       formattedAddress: loc.formattedAddress || loc.address || "",
@@ -722,35 +790,34 @@ export default function RestaurantsList() {
   }
 
   const buildDetailsFormFromRestaurant = (restaurant) => {
-    if (!restaurant) {
-      return {
-        name: "",
-        pureVegRestaurant: false,
-        ownerName: "",
-        ownerEmail: "",
-        ownerPhone: "",
-        primaryContactNumber: "",
-        email: "",
-        estimatedDeliveryTime: "",
-        openingTime: "",
-        closingTime: "",
-        isActive: true,
-      }
-    }
+    if (!restaurant) return emptyDetailsForm()
+
+    const step2 = restaurant.onboarding?.step2 || {}
+    const step3 = restaurant.onboarding?.step3 || {}
+    const step4 = restaurant.onboarding?.step4 || {}
+    const pan = step3.pan || {}
+    const gst = step3.gst || {}
+    const fssai = step3.fssai || {}
+    const bank = step3.bank || {}
+
+    const cuisines =
+      (Array.isArray(restaurant.cuisines) && restaurant.cuisines.length > 0 && restaurant.cuisines) ||
+      (Array.isArray(step2.cuisines) && step2.cuisines.length > 0 && step2.cuisines) ||
+      []
 
     const openingTimeValue =
       restaurant.openingTime ||
       restaurant.deliveryTimings?.openingTime ||
-      restaurant.onboarding?.step2?.deliveryTimings?.openingTime ||
+      step2.deliveryTimings?.openingTime ||
       ""
     const closingTimeValue =
       restaurant.closingTime ||
       restaurant.deliveryTimings?.closingTime ||
-      restaurant.onboarding?.step2?.deliveryTimings?.closingTime ||
+      step2.deliveryTimings?.closingTime ||
       ""
     const estimatedDeliveryTimeValue =
       restaurant.estimatedDeliveryTime ||
-      restaurant.onboarding?.step4?.estimatedDeliveryTime ||
+      step4.estimatedDeliveryTime ||
       ""
 
     return {
@@ -759,31 +826,84 @@ export default function RestaurantsList() {
         typeof restaurant.pureVegRestaurant === "boolean"
           ? restaurant.pureVegRestaurant
           : false,
-      ownerName: restaurant.ownerName || "",
-      ownerEmail: restaurant.ownerEmail || "",
-      ownerPhone: restaurant.ownerPhone || restaurant.phone || "",
+      ownerName: restaurant.ownerName || restaurant.onboarding?.step1?.ownerName || "",
+      ownerEmail: restaurant.ownerEmail || restaurant.onboarding?.step1?.ownerEmail || "",
+      ownerPhone: restaurant.ownerPhone || restaurant.phone || restaurant.onboarding?.step1?.ownerPhone || "",
       primaryContactNumber: restaurant.primaryContactNumber || restaurant.ownerPhone || "",
-      email: restaurant.email || restaurant.ownerEmail || "",
+      email: restaurant.ownerEmail || restaurant.onboarding?.step1?.ownerEmail || "",
       estimatedDeliveryTime: estimatedDeliveryTimeValue,
+      estimatedDeliveryTimeMinutes:
+        restaurant.estimatedDeliveryTimeMinutes != null
+          ? String(restaurant.estimatedDeliveryTimeMinutes)
+          : "",
       openingTime: openingTimeValue,
       closingTime: closingTimeValue,
-      isActive: restaurant.isActive !== false,
+      outletTimings: getDefaultDays(),
+      isActive: restaurant.status === "approved" || restaurant.isActive !== false,
+      isAcceptingOrders: restaurant.isAcceptingOrders !== false,
+      cuisinesText: cuisines.join(", "),
+      offer: restaurant.offer || step4.offer || "",
+      featuredDish: restaurant.featuredDish || step4.featuredDish || "",
+      featuredPrice:
+        restaurant.featuredPrice != null
+          ? String(restaurant.featuredPrice)
+          : step4.featuredPrice != null
+            ? String(step4.featuredPrice)
+            : "",
+      discount: restaurant.discount != null ? Number(restaurant.discount) : 0,
+      panNumber: restaurant.panNumber || pan.panNumber || "",
+      nameOnPan: restaurant.nameOnPan || pan.nameOnPan || "",
+      gstRegistered: restaurant.gstRegistered === true || gst.gstRegistered === true,
+      gstNumber: restaurant.gstNumber || gst.gstNumber || "",
+      gstLegalName: restaurant.gstLegalName || gst.legalName || "",
+      gstAddress: restaurant.gstAddress || gst.address || "",
+      fssaiNumber: restaurant.fssaiNumber || fssai.registrationNumber || "",
+      fssaiExpiry: formatDateInput(restaurant.fssaiExpiry || fssai.expiryDate),
+      accountNumber: restaurant.accountNumber || bank.accountNumber || "",
+      ifscCode: restaurant.ifscCode || bank.ifscCode || "",
+      accountHolderName: restaurant.accountHolderName || bank.accountHolderName || "",
+      accountType: restaurant.accountType || bank.accountType || "savings",
+      upiId: restaurant.upiId || bank.upiId || "",
+      panImageUrl: normalizeImageUrl(restaurant.panImage) || normalizeImageUrl(pan.image?.url) || "",
+      gstImageUrl: normalizeImageUrl(restaurant.gstImage) || normalizeImageUrl(gst.image?.url) || "",
+      fssaiImageUrl: normalizeImageUrl(restaurant.fssaiImage) || normalizeImageUrl(fssai.image?.url) || "",
     }
   }
 
-  const handleStartEditDetails = () => {
+  const handleStartEditDetails = async () => {
     const source = getDetailsEditSource()
     setDetailsForm(buildDetailsFormFromRestaurant(source))
+    setLocationForm(normalizeLocationFormFromRestaurant(source))
     setProfileImageFile(null)
     setProfileImagePreview(getPrimaryRestaurantImage(source))
+    setDocFiles({ panImage: null, gstImage: null, fssaiImage: null })
     setIsEditingLocation(true)
     setIsEditingDetails(true)
+    try {
+      const restaurantId = source._id || source.id
+      const res = await restaurantAPI.getOutletTimingsByRestaurantId(restaurantId)
+      const outletTimings = res?.data?.data?.outletTimings || res?.data?.outletTimings
+      if (outletTimings && typeof outletTimings === 'object') {
+        setDetailsForm(prev => ({ ...prev, outletTimings: { ...getDefaultDays(), ...outletTimings } }))
+      }
+    } catch (err) {
+      debugError("Failed to fetch outlet timings", err)
+    }
   }
 
   const handleCancelEditDetails = () => {
     setIsEditingDetails(false)
+    setIsEditingLocation(false)
     setProfileImageFile(null)
     setProfileImagePreview("")
+    setDocFiles({ panImage: null, gstImage: null, fssaiImage: null })
+  }
+
+  const uploadMediaFile = async (file, folder) => {
+    if (!file) return undefined
+    const uploadRes = await uploadAPI.uploadMedia(file, { folder })
+    const media = uploadRes?.data?.data?.file || uploadRes?.data?.data || uploadRes?.data?.file
+    return media?.url || undefined
   }
 
   const handleSaveDetails = async () => {
@@ -793,52 +913,115 @@ export default function RestaurantsList() {
     try {
       setSavingDetails(true)
 
-      let profileImage = undefined
-      if (profileImageFile) {
-        const uploadRes = await uploadAPI.uploadMedia(profileImageFile, {
-          folder: "appzeto/restaurant/profile",
-        })
-        const media = uploadRes?.data?.data?.file || uploadRes?.data?.data || uploadRes?.data?.file
-        if (media?.url) {
-          profileImage = { url: media.url, publicId: media.publicId || media.public_id }
-        }
-      }
+      const profileImage = profileImageFile
+        ? await uploadMediaFile(profileImageFile, "appzeto/restaurant/profile")
+        : undefined
+      const panImage = docFiles.panImage
+        ? await uploadMediaFile(docFiles.panImage, "appzeto/restaurant/documents/pan")
+        : undefined
+      const gstImage = docFiles.gstImage
+        ? await uploadMediaFile(docFiles.gstImage, "appzeto/restaurant/documents/gst")
+        : undefined
+      const fssaiImage = docFiles.fssaiImage
+        ? await uploadMediaFile(docFiles.fssaiImage, "appzeto/restaurant/documents/fssai")
+        : undefined
+
+      const cuisines = String(detailsForm.cuisinesText || "")
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean)
 
       const normalizedOpeningTime = normalizeTimeValue(detailsForm.openingTime.trim())
       const normalizedClosingTime = normalizeTimeValue(detailsForm.closingTime.trim())
-      const openingMinutes = timeToMinutes(normalizedOpeningTime)
-      const closingMinutes = timeToMinutes(normalizedClosingTime)
-      if (openingMinutes !== null && closingMinutes !== null) {
-        if (openingMinutes === closingMinutes) {
-          alert("Opening time and closing time cannot be same")
-          return
-        }
-        if (closingMinutes < openingMinutes) {
-          alert("Closing time cannot be less than opening time")
-          return
-        }
-      }
 
       const payload = {
         name: detailsForm.name.trim(),
         pureVegRestaurant: detailsForm.pureVegRestaurant === true,
         ownerName: detailsForm.ownerName.trim(),
-        ownerEmail: detailsForm.ownerEmail.trim(),
+        ownerEmail: (detailsForm.ownerEmail || detailsForm.email || "").trim(),
         ownerPhone: detailsForm.ownerPhone.trim(),
         primaryContactNumber: detailsForm.primaryContactNumber.trim(),
-        email: detailsForm.email.trim(),
         estimatedDeliveryTime: detailsForm.estimatedDeliveryTime.trim(),
+        estimatedDeliveryTimeMinutes:
+          detailsForm.estimatedDeliveryTimeMinutes === ""
+            ? undefined
+            : Number(detailsForm.estimatedDeliveryTimeMinutes),
         openingTime: normalizedOpeningTime,
         closingTime: normalizedClosingTime,
-        isActive: detailsForm.isActive,
+        cuisines,
+        offer: detailsForm.offer.trim(),
+        featuredDish: detailsForm.featuredDish.trim(),
+        featuredPrice:
+          detailsForm.featuredPrice === "" ? undefined : Number(detailsForm.featuredPrice),
+        discount: Number(detailsForm.discount) || 0,
+        isAcceptingOrders: detailsForm.isAcceptingOrders !== false,
+        panNumber: detailsForm.panNumber.trim(),
+        nameOnPan: detailsForm.nameOnPan.trim(),
+        gstRegistered: detailsForm.gstRegistered === true,
+        gstNumber: detailsForm.gstNumber.trim(),
+        gstLegalName: detailsForm.gstLegalName.trim(),
+        gstAddress: detailsForm.gstAddress.trim(),
+        fssaiNumber: detailsForm.fssaiNumber.trim(),
+        fssaiExpiry: detailsForm.fssaiExpiry || undefined,
+        accountNumber: detailsForm.accountNumber.trim(),
+        ifscCode: detailsForm.ifscCode.trim(),
+        accountHolderName: detailsForm.accountHolderName.trim(),
+        accountType: detailsForm.accountType.trim() || "savings",
+        upiId: detailsForm.upiId.trim(),
       }
 
-      if (profileImage) {
-        payload.profileImage = profileImage
-      }
+      if (profileImage) payload.profileImage = profileImage
+      if (panImage) payload.panImage = panImage
+      if (gstImage) payload.gstImage = gstImage
+      if (fssaiImage) payload.fssaiImage = fssaiImage
+
+      const sourceBeforeSave = getDetailsEditSource()
+      const wasActive =
+        sourceBeforeSave?.status === "approved" || sourceBeforeSave?.isActive !== false
 
       const response = await adminAPI.updateRestaurant(restaurantId, payload)
-      const updatedRestaurant = response?.data?.data?.restaurant
+
+      if (detailsForm.isActive !== wasActive) {
+        await adminAPI.updateRestaurantStatus(restaurantId, detailsForm.isActive)
+      }
+
+      if (detailsForm.outletTimings) {
+        await adminAPI.updateRestaurantOutletTimings(restaurantId, detailsForm.outletTimings)
+      }
+
+      const latitude = Number(locationForm.latitude)
+      const longitude = Number(locationForm.longitude)
+      const hasCoords = Number.isFinite(latitude) && Number.isFinite(longitude)
+      const hasAddress =
+        Boolean(locationForm.formattedAddress?.trim()) ||
+        Boolean(locationForm.addressLine1?.trim()) ||
+        Boolean(locationForm.city?.trim())
+
+      if (locationForm.zoneId && (hasCoords || hasAddress)) {
+        const locationPayload = {
+          zoneId: locationForm.zoneId,
+          formattedAddress: locationForm.formattedAddress || locationForm.addressLine1 || "",
+          address: locationForm.formattedAddress || locationForm.addressLine1 || "",
+          addressLine1: locationForm.addressLine1 || locationForm.formattedAddress || "",
+          addressLine2: locationForm.addressLine2 || "",
+          area: locationForm.area || "",
+          city: locationForm.city || "",
+          state: locationForm.state || "",
+          landmark: locationForm.landmark || "",
+          pincode: locationForm.pincode || "",
+          zipCode: locationForm.pincode || "",
+          postalCode: locationForm.pincode || "",
+        }
+        if (hasCoords) {
+          locationPayload.latitude = latitude
+          locationPayload.longitude = longitude
+          locationPayload.coordinates = [longitude, latitude]
+        }
+        await adminAPI.updateRestaurantLocation(restaurantId, locationPayload)
+      }
+
+      const refreshed = await adminAPI.getRestaurantById(restaurantId)
+      const updatedRestaurant = refreshed?.data?.data || response?.data?.data?.restaurant
 
       if (updatedRestaurant) {
         setRestaurantDetails(updatedRestaurant)
@@ -847,11 +1030,16 @@ export default function RestaurantsList() {
             (item._id === restaurantId || item.id === restaurantId)
               ? {
                 ...item,
-                name: updatedRestaurant.name || item.name,
+                name: updatedRestaurant.restaurantName || updatedRestaurant.name || item.name,
                 ownerName: updatedRestaurant.ownerName || item.ownerName,
                 ownerPhone: updatedRestaurant.ownerPhone || updatedRestaurant.phone || item.ownerPhone,
-                zone: updatedRestaurant.location?.area || updatedRestaurant.location?.city || item.zone,
-                isActive: updatedRestaurant.isActive !== false,
+                zone:
+                  updatedRestaurant.zoneId?.name ||
+                  updatedRestaurant.zoneId?.zoneName ||
+                  updatedRestaurant.location?.area ||
+                  updatedRestaurant.location?.city ||
+                  item.zone,
+                isActive: updatedRestaurant.status === "approved",
                 approvalStatus: normalizeApprovalStatus(updatedRestaurant),
                 logo: getPrimaryRestaurantImage(updatedRestaurant, item.logo),
                 originalData: {
@@ -865,7 +1053,9 @@ export default function RestaurantsList() {
       }
 
       setIsEditingDetails(false)
+      setIsEditingLocation(false)
       setProfileImageFile(null)
+      setDocFiles({ panImage: null, gstImage: null, fssaiImage: null })
       alert("Restaurant details updated successfully")
     } catch (err) {
       debugError("Error updating restaurant details:", err)
@@ -879,6 +1069,7 @@ export default function RestaurantsList() {
     setIsEditingDetails(false)
     setProfileImageFile(null)
     setProfileImagePreview("")
+    setDocFiles({ panImage: null, gstImage: null, fssaiImage: null })
     setIsEditingLocation(false)
     setLocationEditError("")
     setSelectedRestaurant(null)
@@ -1277,7 +1468,8 @@ export default function RestaurantsList() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRestaurants.map((restaurant, index) => {
+                    paginatedRestaurants.map((restaurant, index) => {
+                      const absoluteIndex = (currentPage - 1) * itemsPerPage + index + 1
                       const menuPdfUrl = normalizeFileUrl(
                         restaurant.originalData?.menuPdf || restaurant.menuPdf
                       )
@@ -1287,7 +1479,7 @@ export default function RestaurantsList() {
                         className="hover:bg-slate-50 transition-colors"
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                          <span className="text-sm font-medium text-slate-700">{absoluteIndex}</span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -1389,6 +1581,60 @@ export default function RestaurantsList() {
               </table>
             )}
           </div>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-200">
+              <div className="text-sm text-slate-500">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredRestaurants.length)} of {filteredRestaurants.length} restaurants
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                >
+                  Previous
+                </button>
+                <div className="flex items-center gap-1">
+                  {[...Array(Math.min(5, totalPages))].map((_, idx) => {
+                    // Show pages around current page
+                    let pageNum = currentPage;
+                    if (totalPages <= 5) {
+                      pageNum = idx + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = idx + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + idx;
+                    } else {
+                      pageNum = currentPage - 2 + idx;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                          currentPage === pageNum 
+                            ? "bg-blue-600 text-white" 
+                            : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1537,29 +1783,278 @@ export default function RestaurantsList() {
                       <label className="block text-xs text-slate-500 mb-1">Primary Contact</label>
                       <input type="text" value={detailsForm.primaryContactNumber} onChange={(e) => setDetailsForm((prev) => ({ ...prev, primaryContactNumber: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
                     </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Opening Time</label>
-                      <input type="text" value={detailsForm.openingTime} onChange={(e) => setDetailsForm((prev) => ({ ...prev, openingTime: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Closing Time</label>
-                      <input type="text" value={detailsForm.closingTime} onChange={(e) => setDetailsForm((prev) => ({ ...prev, closingTime: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                    <div className="md:col-span-2 pt-4 border-t border-slate-100">
+                      <h4 className="text-sm font-medium text-slate-900 mb-3 flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-slate-500" />
+                        Day-wise Outlet Timings
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => (
+                          <div key={day} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50/50">
+                            <div className="flex items-center gap-2 w-28">
+                              <input
+                                type="checkbox"
+                                checked={detailsForm.outletTimings?.[day]?.isOpen !== false}
+                                onChange={(e) => setDetailsForm(prev => ({
+                                  ...prev,
+                                  outletTimings: {
+                                    ...prev.outletTimings,
+                                    [day]: { ...prev.outletTimings?.[day], isOpen: e.target.checked }
+                                  }
+                                }))}
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                              />
+                              <span className="text-sm font-medium text-slate-700">{day}</span>
+                            </div>
+                            {detailsForm.outletTimings?.[day]?.isOpen !== false ? (
+                              <div className="flex flex-1 items-center gap-2">
+                                <input
+                                  type="time"
+                                  value={detailsForm.outletTimings?.[day]?.openingTime || "09:00"}
+                                  onChange={(e) => setDetailsForm(prev => ({
+                                    ...prev,
+                                    outletTimings: {
+                                      ...prev.outletTimings,
+                                      [day]: { ...prev.outletTimings?.[day], openingTime: e.target.value }
+                                    }
+                                  }))}
+                                  className="px-2 py-1.5 rounded-md border border-slate-300 text-xs w-24"
+                                />
+                                <span className="text-slate-400 text-xs">to</span>
+                                <input
+                                  type="time"
+                                  value={detailsForm.outletTimings?.[day]?.closingTime || "22:00"}
+                                  onChange={(e) => setDetailsForm(prev => ({
+                                    ...prev,
+                                    outletTimings: {
+                                      ...prev.outletTimings,
+                                      [day]: { ...prev.outletTimings?.[day], closingTime: e.target.value }
+                                    }
+                                  }))}
+                                  className="px-2 py-1.5 rounded-md border border-slate-300 text-xs w-24"
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex-1 text-sm text-red-500 font-medium px-2 py-1.5">Closed</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Estimated Delivery Time</label>
-                      <input type="text" value={detailsForm.estimatedDeliveryTime} onChange={(e) => setDetailsForm((prev) => ({ ...prev, estimatedDeliveryTime: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                      <input type="text" value={detailsForm.estimatedDeliveryTime} onChange={(e) => setDetailsForm((prev) => ({ ...prev, estimatedDeliveryTime: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" placeholder="e.g. 30-35 mins" />
                     </div>
-                    <div className="md:col-span-2 flex items-center gap-3">
-                      <input
-                        id="restaurant-status-active"
-                        type="checkbox"
-                        checked={detailsForm.isActive}
-                        onChange={(e) => setDetailsForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600"
-                      />
-                      <label htmlFor="restaurant-status-active" className="text-sm text-slate-700">
-                        Restaurant is active
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Delivery Time (minutes)</label>
+                      <input type="number" min="0" value={detailsForm.estimatedDeliveryTimeMinutes} onChange={(e) => setDetailsForm((prev) => ({ ...prev, estimatedDeliveryTimeMinutes: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" placeholder="e.g. 35" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs text-slate-500 mb-1">Cuisines (comma separated)</label>
+                      <input type="text" value={detailsForm.cuisinesText} onChange={(e) => setDetailsForm((prev) => ({ ...prev, cuisinesText: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" placeholder="North Indian, Chinese, Fast Food" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Offer Text</label>
+                      <input type="text" value={detailsForm.offer} onChange={(e) => setDetailsForm((prev) => ({ ...prev, offer: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Global Discount (%)</label>
+                      <input type="number" min="0" max="100" value={detailsForm.discount} onChange={(e) => setDetailsForm((prev) => ({ ...prev, discount: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Featured Dish</label>
+                      <input type="text" value={detailsForm.featuredDish} onChange={(e) => setDetailsForm((prev) => ({ ...prev, featuredDish: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Featured Price</label>
+                      <input type="number" min="0" value={detailsForm.featuredPrice} onChange={(e) => setDetailsForm((prev) => ({ ...prev, featuredPrice: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                    </div>
+                    <div className="md:col-span-2 flex flex-wrap items-center gap-6">
+                      <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          id="restaurant-status-active"
+                          type="checkbox"
+                          checked={detailsForm.isActive}
+                          onChange={(e) => setDetailsForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                        />
+                        Restaurant approved / active
                       </label>
+                      <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          id="restaurant-accepting-orders"
+                          type="checkbox"
+                          checked={detailsForm.isAcceptingOrders}
+                          onChange={(e) => setDetailsForm((prev) => ({ ...prev, isAcceptingOrders: e.target.checked }))}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                        />
+                        Accepting orders
+                      </label>
+                    </div>
+
+                    <div className="md:col-span-2 pt-4 border-t border-slate-100">
+                      <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-slate-500" />
+                        Location & Zone
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">Service Zone*</label>
+                          <select
+                            value={locationForm.zoneId || ""}
+                            onChange={(e) => setLocationForm((prev) => ({ ...prev, zoneId: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm"
+                          >
+                            <option value="">{zonesLoading ? "Loading zones..." : "Select a zone"}</option>
+                            {zones.map((z) => (
+                              <option key={z._id || z.id} value={z._id || z.id}>
+                                {z.name || z.zoneName || z.serviceLocation || "Zone"}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">Search location (Google)</label>
+                          <input
+                            ref={locationSearchInputRef}
+                            type="text"
+                            defaultValue={locationForm.formattedAddress || ""}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm"
+                            placeholder="Start typing and choose from dropdown..."
+                          />
+                          {locationEditError && <p className="text-xs text-red-600 mt-1">{locationEditError}</p>}
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">Address Line 1</label>
+                          <input type="text" value={locationForm.addressLine1 || locationForm.formattedAddress} onChange={(e) => setLocationForm((prev) => ({ ...prev, addressLine1: e.target.value, formattedAddress: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">Address Line 2</label>
+                          <input type="text" value={locationForm.addressLine2} onChange={(e) => setLocationForm((prev) => ({ ...prev, addressLine2: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Area</label>
+                          <input type="text" value={locationForm.area} onChange={(e) => setLocationForm((prev) => ({ ...prev, area: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">City</label>
+                          <input type="text" value={locationForm.city} onChange={(e) => setLocationForm((prev) => ({ ...prev, city: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">State</label>
+                          <input type="text" value={locationForm.state} onChange={(e) => setLocationForm((prev) => ({ ...prev, state: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Pincode</label>
+                          <input type="text" value={locationForm.pincode} onChange={(e) => setLocationForm((prev) => ({ ...prev, pincode: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Landmark</label>
+                          <input type="text" value={locationForm.landmark} onChange={(e) => setLocationForm((prev) => ({ ...prev, landmark: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Latitude</label>
+                          <input type="text" value={locationForm.latitude} onChange={(e) => setLocationForm((prev) => ({ ...prev, latitude: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Longitude</label>
+                          <input type="text" value={locationForm.longitude} onChange={(e) => setLocationForm((prev) => ({ ...prev, longitude: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-2 pt-4 border-t border-slate-100">
+                      <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-slate-500" />
+                        PAN / GST / FSSAI
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">PAN Number</label>
+                          <input type="text" value={detailsForm.panNumber} onChange={(e) => setDetailsForm((prev) => ({ ...prev, panNumber: e.target.value.toUpperCase() }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Name on PAN</label>
+                          <input type="text" value={detailsForm.nameOnPan} onChange={(e) => setDetailsForm((prev) => ({ ...prev, nameOnPan: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">PAN Document</label>
+                          {detailsForm.panImageUrl && !docFiles.panImage && (
+                            <a href={detailsForm.panImageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 block mb-1">View current PAN document</a>
+                          )}
+                          <input type="file" accept="image/*,.pdf" onChange={(e) => setDocFiles((prev) => ({ ...prev, panImage: e.target.files?.[0] || null }))} className="block w-full text-sm" />
+                        </div>
+                        <div className="md:col-span-2 flex items-center gap-2">
+                          <input id="gst-registered" type="checkbox" checked={detailsForm.gstRegistered} onChange={(e) => setDetailsForm((prev) => ({ ...prev, gstRegistered: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
+                          <label htmlFor="gst-registered" className="text-sm text-slate-700">GST Registered</label>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">GST Number</label>
+                          <input type="text" value={detailsForm.gstNumber} onChange={(e) => setDetailsForm((prev) => ({ ...prev, gstNumber: e.target.value.toUpperCase() }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">GST Legal Name</label>
+                          <input type="text" value={detailsForm.gstLegalName} onChange={(e) => setDetailsForm((prev) => ({ ...prev, gstLegalName: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">GST Address</label>
+                          <textarea value={detailsForm.gstAddress} onChange={(e) => setDetailsForm((prev) => ({ ...prev, gstAddress: e.target.value }))} rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">GST Document</label>
+                          {detailsForm.gstImageUrl && !docFiles.gstImage && (
+                            <a href={detailsForm.gstImageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 block mb-1">View current GST document</a>
+                          )}
+                          <input type="file" accept="image/*,.pdf" onChange={(e) => setDocFiles((prev) => ({ ...prev, gstImage: e.target.files?.[0] || null }))} className="block w-full text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">FSSAI Number</label>
+                          <input type="text" value={detailsForm.fssaiNumber} onChange={(e) => setDetailsForm((prev) => ({ ...prev, fssaiNumber: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">FSSAI Expiry</label>
+                          <input type="date" value={detailsForm.fssaiExpiry} onChange={(e) => setDetailsForm((prev) => ({ ...prev, fssaiExpiry: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">FSSAI Document</label>
+                          {detailsForm.fssaiImageUrl && !docFiles.fssaiImage && (
+                            <a href={detailsForm.fssaiImageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 block mb-1">View current FSSAI document</a>
+                          )}
+                          <input type="file" accept="image/*,.pdf" onChange={(e) => setDocFiles((prev) => ({ ...prev, fssaiImage: e.target.files?.[0] || null }))} className="block w-full text-sm" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-2 pt-4 border-t border-slate-100">
+                      <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-slate-500" />
+                        Bank & UPI Details
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Account Holder Name</label>
+                          <input type="text" value={detailsForm.accountHolderName} onChange={(e) => setDetailsForm((prev) => ({ ...prev, accountHolderName: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Account Type</label>
+                          <select value={detailsForm.accountType} onChange={(e) => setDetailsForm((prev) => ({ ...prev, accountType: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                            <option value="savings">Savings</option>
+                            <option value="current">Current</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Account Number</label>
+                          <input type="text" value={detailsForm.accountNumber} onChange={(e) => setDetailsForm((prev) => ({ ...prev, accountNumber: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">IFSC Code</label>
+                          <input type="text" value={detailsForm.ifscCode} onChange={(e) => setDetailsForm((prev) => ({ ...prev, ifscCode: e.target.value.toUpperCase() }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">UPI ID</label>
+                          <input type="text" value={detailsForm.upiId} onChange={(e) => setDetailsForm((prev) => ({ ...prev, upiId: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" placeholder="name@upi" />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2331,7 +2826,7 @@ export default function RestaurantsList() {
                     </div>
                   )}
 
-                  {isEditingLocation && (
+                  {isEditingLocation && !isEditingDetails && (
                     <div className="pt-6 border-t border-slate-200">
                       <h4 className="text-lg font-semibold text-slate-900 mb-4">Location Editor</h4>
                       <div className="space-y-3 border border-indigo-100 bg-indigo-50/40 rounded-xl p-4">

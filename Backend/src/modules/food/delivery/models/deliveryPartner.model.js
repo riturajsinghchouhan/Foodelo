@@ -68,10 +68,22 @@ const deliveryPartnerSchema = new mongoose.Schema(
         aadharPhoto: {
             type: String
         },
+        aadharFrontPhoto: {
+            type: String
+        },
+        aadharBackPhoto: {
+            type: String
+        },
         panPhoto: {
             type: String
         },
-        drivingLicensePhoto: {
+        drivingLicenseFrontPhoto: {
+            type: String
+        },
+        drivingLicenseBackPhoto: {
+            type: String
+        },
+        rcPhoto: {
             type: String
         },
         status: {
@@ -93,6 +105,9 @@ const deliveryPartnerSchema = new mongoose.Schema(
             enum: ['online', 'offline'],
             default: 'offline'
         },
+        shiftStartPic: { type: String },
+        shiftStartTime: { type: Date },
+        shiftStartAddress: { type: String },
         lastLocation: {
             type: { type: String, enum: ['Point'] },
             coordinates: { type: [Number] }

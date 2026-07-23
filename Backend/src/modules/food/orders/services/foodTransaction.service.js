@@ -1,5 +1,6 @@
 import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { FoodRestaurantCommission } from '../../admin/models/restaurantCommission.model.js';
+import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import mongoose from 'mongoose';
 
 const RESTAURANT_COMMISSION_CACHE_MS = 60 * 1000;
@@ -7,107 +8,141 @@ let restaurantCommissionRulesCache = null;
 let restaurantCommissionRulesLoadedAt = 0;
 
 async function getActiveRestaurantCommissionRules() {
-  const now = Date.now();
-  if (
-    restaurantCommissionRulesCache &&
-    now - restaurantCommissionRulesLoadedAt < RESTAURANT_COMMISSION_CACHE_MS
-  ) {
-    return restaurantCommissionRulesCache;
-  }
+    const now = Date.now();
+    if (
+        restaurantCommissionRulesCache &&
+        now - restaurantCommissionRulesLoadedAt < RESTAURANT_COMMISSION_CACHE_MS
+    ) {
+        return restaurantCommissionRulesCache;
+    }
 
-  const list = await FoodRestaurantCommission.find({
-    status: { $ne: false },
-  }).lean();
-  restaurantCommissionRulesCache = list || [];
-  restaurantCommissionRulesLoadedAt = now;
-  return restaurantCommissionRulesCache;
+    const list = await FoodRestaurantCommission.find({
+        status: { $ne: false },
+    }).lean();
+    restaurantCommissionRulesCache = list || [];
+    restaurantCommissionRulesLoadedAt = now;
+    return restaurantCommissionRulesCache;
 }
 
 export function computeRestaurantCommissionAmount(baseAmount, rule) {
-  const safeBase = Math.max(0, Number(baseAmount) || 0);
-  if (!Number.isFinite(safeBase) || safeBase < 0) return 0;
+    const safeBase = Math.max(0, Number(baseAmount) || 0);
+    if (!Number.isFinite(safeBase) || safeBase < 0) return 0;
 
-  const commissionType = rule?.defaultCommission?.type || 'percentage';
-  const commissionValue = Math.max(
-    0,
-    Number(rule?.defaultCommission?.value ?? 0) || 0
-  );
+    const commissionType = rule?.defaultCommission?.type || 'percentage';
+    const commissionValue = Math.max(
+        0,
+        Number(rule?.defaultCommission?.value ?? 0) || 0
+    );
 
-  let commissionAmount = 0;
-  if (commissionType === 'percentage') {
-    commissionAmount = safeBase * (commissionValue / 100);
-  } else if (commissionType === 'amount') {
-    commissionAmount = commissionValue;
-  }
+    let commissionAmount = 0;
+    if (commissionType === 'percentage') {
+        commissionAmount = safeBase * (commissionValue / 100);
+    } else if (commissionType === 'amount') {
+        commissionAmount = commissionValue;
+    }
 
-  // Round to 2 decimals and clamp to [0, base]
-  commissionAmount = Math.round((commissionAmount || 0) * 100) / 100;
-  commissionAmount = Math.max(0, Math.min(commissionAmount, safeBase));
+    // Round to 2 decimals and clamp to [0, base]
+    commissionAmount = Math.round((commissionAmount || 0) * 100) / 100;
+    commissionAmount = Math.max(0, Math.min(commissionAmount, safeBase));
 
-  return { commissionAmount, commissionType, commissionValue, baseAmount: safeBase };
+    return { commissionAmount, commissionType, commissionValue, baseAmount: safeBase };
 }
 
 export async function getRestaurantCommissionSnapshot(orderDoc) {
-  const baseAmount = Number(orderDoc?.pricing?.subtotal ?? 0) || 0;
-  const restaurantIdRaw =
-    orderDoc?.restaurantId?._id ?? orderDoc?.restaurantId ?? null;
+    const baseAmount = Number(orderDoc?.pricing?.subtotal ?? 0) || 0;
+    const restaurantIdRaw =
+        orderDoc?.restaurantId?._id ?? orderDoc?.restaurantId ?? null;
 
-  if (!restaurantIdRaw) {
-    return {
-      commissionAmount: 0,
-      commissionType: 'percentage',
-      commissionValue: 0,
-      baseAmount,
+    if (!restaurantIdRaw) {
+        return {
+            commissionAmount: 0,
+            commissionType: 'percentage',
+            commissionValue: 0,
+            baseAmount,
+            gstOnItem: 0,
+            gstOnCommission: 0,
+            paymentGatewayFee: 0,
+            tcs: 0,
+        };
+    }
+
+    const rules = await getActiveRestaurantCommissionRules();
+    const rule =
+        rules.find((r) => String(r.restaurantId) === String(restaurantIdRaw)) ||
+        // Fallback: accept legacy docs where restaurantId may be stored under `restaurant` / `restaurant_id`
+        rules.find((r) => String(r.restaurant || r.restaurant_id || '') === String(restaurantIdRaw)) ||
+        null;
+
+    if (!rule) {
+        // If no specific rule, try to use global default
+        const globalSettings = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean() || {};
+        if (globalSettings.globalRestaurantCommission > 0) {
+            rule = {
+                defaultCommission: {
+                    type: 'percentage',
+                    value: globalSettings.globalRestaurantCommission
+                }
+            };
+        }
+    }
+
+    const result = rule ? computeRestaurantCommissionAmount(baseAmount, rule) : {
+        commissionAmount: 0,
+        commissionType: 'percentage',
+        commissionValue: 0,
+        baseAmount,
     };
-  }
 
-  const rules = await getActiveRestaurantCommissionRules();
-  const rule =
-    rules.find((r) => String(r.restaurantId) === String(restaurantIdRaw)) ||
-    // Fallback: accept legacy docs where restaurantId may be stored under `restaurant` / `restaurant_id`
-    rules.find((r) => String(r.restaurant || r.restaurant_id || '') === String(restaurantIdRaw)) ||
-    null;
+    const globalSettings = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean() || {};
 
-  if (!rule) {
-    return {
-      commissionAmount: 0,
-      commissionType: 'percentage',
-      commissionValue: 0,
-      baseAmount,
-    };
-  }
+    const applyTaxes = globalSettings.applyGlobalTaxes !== false;
 
-  return computeRestaurantCommissionAmount(baseAmount, rule);
+    const gstOnItemRate = applyTaxes ? (Number(globalSettings.globalGstOnItem) || 0) : 0;
+    const gstOnCommission = applyTaxes ? (Number(globalSettings.globalGstOnCommission) || 0) : 0;
+    const pgFee = applyTaxes ? (Number(globalSettings.globalPaymentGatewayFee) || 0) : 0;
+    const tcs = applyTaxes ? (Number(globalSettings.globalTcs) || 0) : 0;
+
+    const totalPaid = Number(orderDoc?.pricing?.total) || 0;
+
+    result.gstOnItem = Math.round(baseAmount * (gstOnItemRate / 100) * 100) / 100;
+    result.gstOnCommission = Math.round(result.commissionAmount * (gstOnCommission / 100) * 100) / 100;
+    result.paymentGatewayFee = Math.round(totalPaid * (pgFee / 100) * 100) / 100;
+    result.tcs = Math.round(baseAmount * (tcs / 100) * 100) / 100;
+
+    return result;
 }
 
 /**
  * Creates an initial 'pending' transaction when an order is created.
  */
 export async function createInitialTransaction(order) {
-    const { commissionAmount } = await getRestaurantCommissionSnapshot(order);
-  const toNonNegativeNumber = (value) => Math.max(0, Number(value) || 0);
-  const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
-    
+    const commissionSnapshot = await getRestaurantCommissionSnapshot(order);
+
     // Split logic
-    const totalCustomerPaid = toNonNegativeNumber(order.pricing?.total);
-    const riderShare = toNonNegativeNumber(order.riderEarning);
-    // Prefer commission already computed & stored on the order (source of truth for this order),
-    // fallback to rule snapshot for older orders.
+    const totalCustomerPaid = order.pricing?.total || 0;
+    const riderShare = order.riderEarning || 0;
+
     const restaurantCommissionFromOrder = Number(order.pricing?.restaurantCommission);
     const restaurantCommission =
         Number.isFinite(restaurantCommissionFromOrder) && restaurantCommissionFromOrder > 0
             ? restaurantCommissionFromOrder
-            : (commissionAmount || 0);
-    const restaurantNet =
-      toNonNegativeNumber(order.pricing?.subtotal) +
-      toNonNegativeNumber(order.pricing?.packagingFee) -
-      toNonNegativeNumber(restaurantCommission);
-    const platformNetProfitRaw =
-      toNonNegativeNumber(order.pricing?.platformFee) +
-      toNonNegativeNumber(order.pricing?.deliveryFee) +
-      toNonNegativeNumber(restaurantCommission) -
-      riderShare;
-    const platformNetProfit = Math.max(0, round2(platformNetProfitRaw));
+            : (commissionSnapshot.commissionAmount || 0);
+
+    const gstOnItemFromOrder = Number(order.pricing?.gstOnItem);
+    const gstOnItem = Number.isFinite(gstOnItemFromOrder)
+        ? gstOnItemFromOrder
+        : (commissionSnapshot.gstOnItem || 0);
+
+    const gstOnCommission = commissionSnapshot.gstOnCommission || 0;
+    const paymentGatewayFee = commissionSnapshot.paymentGatewayFee || 0;
+    const tcs = commissionSnapshot.tcs || 0;
+
+    const restaurantNet = (order.pricing?.subtotal || 0) + (order.pricing?.packagingFee || 0) - restaurantCommission - gstOnItem - gstOnCommission - paymentGatewayFee - tcs;
+
+    const calculatedPlatformNetProfit = (order.pricing?.platformFee || 0) + (order.pricing?.deliveryFee || 0) + restaurantCommission + gstOnItem + paymentGatewayFee + tcs - riderShare;
+    const platformNetProfit = order.platformProfit !== undefined
+        ? order.platformProfit
+        : Math.max(0, calculatedPlatformNetProfit);
 
     const transaction = new FoodTransaction({
         orderId: order._id,
@@ -141,18 +176,22 @@ export async function createInitialTransaction(order) {
             packagingFee: Number(order.pricing?.packagingFee || 0) || 0,
             deliveryFee: Number(order.pricing?.deliveryFee || 0) || 0,
             platformFee: Number(order.pricing?.platformFee || 0) || 0,
-            restaurantCommission: toNonNegativeNumber(restaurantCommission),
+            restaurantCommission,
             discount: Number(order.pricing?.discount || 0) || 0,
             total: Number(order.pricing?.total || 0) || 0,
             currency: String(order.pricing?.currency || order.currency || 'INR'),
         },
         amounts: {
             totalCustomerPaid,
-            restaurantShare: Math.max(0, round2(restaurantNet)),
-            restaurantCommission: toNonNegativeNumber(restaurantCommission),
+            restaurantShare: Math.max(0, restaurantNet),
+            restaurantCommission,
+            gstOnItem,
+            gstOnCommission,
+            paymentGatewayFee,
+            tcs,
             riderShare,
             platformNetProfit,
-            taxAmount: toNonNegativeNumber(order.pricing?.tax)
+            taxAmount: order.pricing?.tax || 0
         },
         gateway: {
             razorpayOrderId: order.payment?.razorpay?.orderId,
@@ -191,7 +230,7 @@ export async function updateTransactionStatus(orderId, kind, details = {}) {
     if (details.status) transaction.status = details.status;
     if (details.razorpayPaymentId) transaction.gateway.razorpayPaymentId = details.razorpayPaymentId;
     if (details.razorpaySignature) transaction.gateway.razorpaySignature = details.razorpaySignature;
-    
+
     // Sync payment method if provided (e.g. switching from cash to QR)
     if (details.paymentMethod) {
         transaction.paymentMethod = details.paymentMethod;
@@ -214,7 +253,7 @@ export async function updateTransactionStatus(orderId, kind, details = {}) {
             const updateFields = {};
             if (details.paymentMethod) updateFields['payment.method'] = details.paymentMethod;
             if (details.status === 'captured') updateFields['payment.status'] = 'paid';
-            
+
             await mongoose.model('FoodOrder').updateOne(
                 { _id: orderId },
                 { $set: updateFields }

@@ -17,6 +17,7 @@ import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.mod
 import { FoodFeeSettings } from '../models/feeSettings.model.js';
 import { FeedbackExperience } from '../models/feedbackExperience.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
+import { FoodAdmin } from '../../../../core/admin/admin.model.js';
 import { FoodRefreshToken } from '../../../../core/refreshTokens/refreshToken.model.js';
 import { FoodDeliveryCashLimit } from '../models/deliveryCashLimit.model.js';
 import { FoodDeliveryEmergencyHelp } from '../models/deliveryEmergencyHelp.model.js';
@@ -27,6 +28,7 @@ import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
 import { FoodSupportTicket } from '../../user/models/supportTicket.model.js';
 import { FoodRestaurantSupportTicket } from '../../restaurant/models/supportTicket.model.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
+import { getOutletTimingsForRestaurant } from '../../restaurant/services/outletTimings.service.js';
 import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import { FoodRestaurantWithdrawal } from '../../restaurant/models/foodRestaurantWithdrawal.model.js';
 import { FoodDeliveryWithdrawal } from '../../delivery/models/foodDeliveryWithdrawal.model.js';
@@ -111,9 +113,6 @@ const validateOpeningClosingTimes = (openingTime, closingTime) => {
     if (open === null || close === null) return;
     if (open === close) {
         throw new ValidationError('Opening time and closing time cannot be same');
-    }
-    if (close < open) {
-        throw new ValidationError('Closing time cannot be less than opening time');
     }
 };
 
@@ -277,20 +276,28 @@ export async function updateRestaurantComplaint(id, updateData) {
 }
 
 export async function getRestaurants(query) {
-    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 1000);
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 50000);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
     const status = query.status;
     const filter = {};
-    if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+    if (status === 'live_and_banned') {
+        filter.$or = [
+            { status: 'approved' },
+            { status: 'rejected', rejectionReason: 'Disabled by admin' }
+        ];
+    } else if (status && ['pending', 'approved', 'rejected'].includes(status)) {
         filter.status = status;
+    }
+    if (query.zoneId) {
+        filter.zoneId = query.zoneId;
     }
     const [restaurants, total] = await Promise.all([
         FoodRestaurant.find(filter)
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .select('restaurantName location area city profileImage coverImages menuImages menuPdf status ownerName ownerPhone zoneId')
+            .select('restaurantName location area city profileImage coverImages menuImages menuPdf status ownerName ownerPhone zoneId zoneRank rating discount itemDiscounts discountRules openingTime closingTime deliveryTimings onboarding openDays estimatedDeliveryTime isActive')
             .populate('zoneId', 'name zoneName')
             .lean(),
         FoodRestaurant.countDocuments(filter)
@@ -313,7 +320,7 @@ export async function getRestaurantMenuPdfDownloadUrl(restaurantId) {
     return { url };
 }
 
-const CANCELLED_ORDER_STATUSES = ['cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin'];
+const CANCELLED_ORDER_STATUSES = ['cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin', 'dead'];
 const PENDING_ORDER_STATUSES = ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 const DASHBOARD_PENDING_ORDER_STATUSES = ['created', 'confirmed'];
 const DASHBOARD_PROCESSING_ORDER_STATUSES = ['preparing', 'ready_for_pickup'];
@@ -785,7 +792,7 @@ export async function getTransactionReport(query = {}) {
     // We will query the FoodTransaction table directly as it is the ledger
     const transactionRows = await FoodTransaction.find(match)
         .populate('orderId')
-        .populate('userId', 'name')
+        .populate('userId', 'name phone')
         .populate('restaurantId', 'restaurantName')
         .sort({ createdAt: -1 })
         .lean();
@@ -811,21 +818,42 @@ export async function getTransactionReport(query = {}) {
             pricing.platformFee !== undefined && pricing.platformFee !== null
                 ? Number(pricing.platformFee || 0) || 0
                 : platformFeeDerived;
+
+        const deliveryFeeUser = Number(pricing.deliveryFee || 0);
+        const deliveryCostAdmin = Number(tx.amounts?.riderShare) || Number(order.riderEarning) || 30;
+        const deliveryGstAdmin = deliveryCostAdmin * 0.18;
+
         return {
             id: tx._id,
             orderId: tx.orderReadableId || order.orderId || 'N/A',
             restaurant: tx.restaurantId?.restaurantName || 'N/A',
             customerName: tx.userId?.name || 'Guest',
+            customerPhone: tx.userId?.phone || order?.phone || 'N/A',
             totalItemAmount: subtotal,
             itemDiscount: pricing.discount || 0,
-            couponDiscount: 0, // Placeholder if you add coupon logic
+            couponDiscount: Number(pricing.couponDiscount || 0),
             referralDiscount: 0, // Placeholder
+            discountAmount: pricing.discount || 0,
             discountedAmount: Math.max(0, (pricing.subtotal || 0) - (pricing.discount || 0)),
             vatTax: tx.amounts?.taxAmount || pricing.tax || 0,
             deliveryCharge: pricing.deliveryFee || 0,
             platformFee,
             orderAmount: tx.amounts?.totalCustomerPaid || pricing.total || 0,
-            status: tx.status
+            status: tx.status,
+            adminEarningBreakdown: {
+                deliveryProfit: deliveryFeeUser - deliveryCostAdmin - deliveryGstAdmin,
+                platformFee: platformFee,
+                packagingFee: packagingFee,
+                restaurantCommission: Number(pricing.restaurantCommission || 0),
+                gstOnItem: Number(pricing.gstOnItem || 0),
+                gstOnCommission: Number(pricing.gstOnCommission || 0),
+                paymentGatewayFee: Number(pricing.paymentGatewayFee || 0),
+                tcs: Number(pricing.tcs || 0),
+                totalAdminReceivable: Number(pricing.totalAdminReceivable || 0),
+                deliveryCostToAdmin: deliveryCostAdmin,
+                deliveryGstToAdmin: deliveryGstAdmin,
+                gstCollectedFromUser: Number(pricing.tax || 0)
+            }
         };
     });
 
@@ -835,15 +863,41 @@ export async function getTransactionReport(query = {}) {
     let restaurantEarning = 0;
     let deliverymanEarning = 0;
 
+    let adminEarningBreakdown = {
+        deliveryProfit: 0,
+        platformFee: 0,
+        packagingFee: 0,
+        restaurantCommission: 0,
+        gstOnCommission: 0,
+        paymentGatewayFee: 0,
+        tcs: 0
+    };
+
     for (const tx of transactionRows) {
         // Calculate Summary
-        if (tx.status === 'captured' || tx.status === 'settled' || (tx.orderId && tx.orderId.orderStatus === 'delivered')) {
+        if ((tx.status === 'captured' || tx.status === 'settled') && (tx.orderId && tx.orderId.orderStatus === 'delivered')) {
             completedTransaction += tx.amounts?.totalCustomerPaid || 0;
             adminEarning += tx.amounts?.platformNetProfit || 0;
             restaurantEarning += tx.amounts?.restaurantShare || 0;
             deliverymanEarning += tx.amounts?.riderShare || 0;
+
+            // Breakdown
+            const order = tx.orderId || {};
+            const pricing = order.pricing || {};
+            
+            const deliveryFeeUser = Number(pricing.deliveryFee || 0);
+            const deliveryCostAdmin = Number(tx.amounts?.riderShare) || Number(order.riderEarning) || 30;
+            const deliveryGstAdmin = deliveryCostAdmin * 0.18;
+            
+            adminEarningBreakdown.deliveryProfit += (deliveryFeeUser - deliveryCostAdmin - deliveryGstAdmin);
+            adminEarningBreakdown.platformFee += Number(pricing.platformFee || 0);
+            adminEarningBreakdown.packagingFee += Number(pricing.packagingFee || 0);
+            adminEarningBreakdown.restaurantCommission += Number(pricing.restaurantCommission || 0);
+            adminEarningBreakdown.gstOnCommission += Number(pricing.gstOnCommission || 0);
+            adminEarningBreakdown.paymentGatewayFee += Number(pricing.paymentGatewayFee || 0);
+            adminEarningBreakdown.tcs += Number(pricing.tcs || 0);
         }
-        if (tx.status === 'refunded' || (tx.orderId && tx.orderId.orderStatus === 'cancelled_by_admin')) {
+        if (tx.status === 'refunded' || (tx.orderId && (tx.orderId.orderStatus === 'cancelled_by_admin' || tx.orderId.orderStatus === 'dead'))) {
             // Count number of refunded transactions according to old logic or sum them
             refundedTransaction += tx.amounts?.totalCustomerPaid || 0;
         }
@@ -853,6 +907,7 @@ export async function getTransactionReport(query = {}) {
         completedTransaction,
         refundedTransaction, // Returning amount instead of count for consistency, frontend might expect count though
         adminEarning,
+        adminEarningBreakdown,
         restaurantEarning,
         deliverymanEarning,
     };
@@ -980,6 +1035,7 @@ export async function getRestaurantReport(query = {}) {
     const orderCreatedAtFilter = parseTimeRange(query.time);
     const orderMatch = {
         restaurantId: { $in: restaurantIds },
+        orderStatus: 'delivered',
         $or: [
             { "payment.method": { $in: ["cash", "wallet"] } },
             { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
@@ -1182,7 +1238,7 @@ export async function getCustomers(query = {}) {
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
 
-    const filter = { role: 'USER' };
+    const filter = { role: { $in: ['USER', 'user', null, ''] } };
 
     if (query.status) {
         if (String(query.status) === 'active') filter.isActive = true;
@@ -1221,7 +1277,7 @@ export async function getCustomers(query = {}) {
             .sort(sort)
             .skip(skip)
             .limit(limit)
-            .select('name email phone countryCode isVerified isActive createdAt profileImage')
+            .select('name email phone countryCode isVerified isActive createdAt profileImage addresses')
             .lean(),
         FoodUser.countDocuments(filter)
     ]);
@@ -1235,12 +1291,19 @@ export async function getCustomers(query = {}) {
     const userIds = docs.map((u) => u._id).filter(Boolean);
     const orderStats = userIds.length > 0
         ? await FoodOrder.aggregate([
-            { $match: { userId: { $in: userIds } } },
+            { $match: { userId: { $in: userIds }, orderStatus: { $nin: ['created', 'cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin', 'dead'] } } },
+            {
+                $group: {
+                    _id: '$orderId',
+                    userId: { $first: '$userId' },
+                    totalAmount: { $first: { $ifNull: ['$pricing.total', 0] } }
+                }
+            },
             {
                 $group: {
                     _id: '$userId',
                     totalOrder: { $sum: 1 },
-                    totalOrderAmount: { $sum: { $ifNull: ['$pricing.total', 0] } }
+                    totalOrderAmount: { $sum: '$totalAmount' }
                 }
             }
         ])
@@ -1255,6 +1318,22 @@ export async function getCustomers(query = {}) {
             }
         ])
     );
+
+    // Fetch wallet balances for these users
+    let walletMap = new Map();
+    try {
+        const { FoodUserWallet } = await import('../../user/models/userWallet.model.js');
+        if (userIds.length > 0) {
+            const wallets = await FoodUserWallet.find({ userId: { $in: userIds } })
+                .select('userId balance')
+                .lean();
+            walletMap = new Map(
+                wallets.map(w => [String(w.userId), Number(w.balance || 0)])
+            );
+        }
+    } catch (err) {
+        // Fallback gracefully if model fails to load
+    }
 
     let customers = docs.map((u) => {
         const stats = orderStatsMap.get(String(u._id)) || { totalOrder: 0, totalOrderAmount: 0 };
@@ -1271,8 +1350,10 @@ export async function getCustomers(query = {}) {
         isVerified: u.isVerified === true,
         totalOrder: stats.totalOrder,
         totalOrderAmount: stats.totalOrderAmount,
+        walletBalance: walletMap.get(String(u._id)) || 0,
         joiningDate: u.createdAt,
-        createdAt: u.createdAt
+        createdAt: u.createdAt,
+        addresses: u.addresses || []
         });
     });
 
@@ -1290,16 +1371,35 @@ export async function getCustomerById(id) {
     if (!u) return null;
     const customerObjectId = new mongoose.Types.ObjectId(id);
     const orderStats = await FoodOrder.aggregate([
-        { $match: { userId: customerObjectId } },
+        { $match: { userId: customerObjectId, orderStatus: { $nin: ['created', 'cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin', 'dead'] } } },
+        {
+            $group: {
+                _id: '$orderId',
+                userId: { $first: '$userId' },
+                totalAmount: { $first: { $ifNull: ['$pricing.total', 0] } }
+            }
+        },
         {
             $group: {
                 _id: '$userId',
                 totalOrders: { $sum: 1 },
-                totalOrderAmount: { $sum: { $ifNull: ['$pricing.total', 0] } }
+                totalOrderAmount: { $sum: '$totalAmount' }
             }
         }
     ]);
     const stats = orderStats?.[0] || {};
+
+    let walletBalance = 0;
+    try {
+        const { FoodUserWallet } = await import('../../user/models/userWallet.model.js');
+        const wallet = await FoodUserWallet.findOne({ userId: customerObjectId }).select('balance').lean();
+        if (wallet) {
+            walletBalance = Number(wallet.balance || 0);
+        }
+    } catch (err) {
+        // Fallback gracefully
+    }
+
     const sanitizeUrl = (s) => {
         if (!s) return '';
         const str = String(s).trim();
@@ -1319,9 +1419,13 @@ export async function getCustomerById(id) {
         totalOrders: Number(stats.totalOrders || 0),
         totalOrder: Number(stats.totalOrders || 0),
         totalOrderAmount: Number(stats.totalOrderAmount || 0),
+        walletBalance: walletBalance,
         joiningDate: u.createdAt,
         createdAt: u.createdAt,
-        updatedAt: u.updatedAt
+        updatedAt: u.updatedAt,
+        addresses: u.addresses || [],
+        gender: u.gender || '',
+        dateOfBirth: u.dateOfBirth || null
     };
 }
 
@@ -1596,7 +1700,20 @@ export async function getRestaurantCommissionBootstrap() {
         hasCommissionSetup: commissionByRestaurantId.has(String(r._id))
     }));
 
-    return { commissions: commissionsData.commissions || [], restaurants };
+    const feeSettings = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean() || {};
+
+    return { 
+        commissions: commissionsData.commissions || [], 
+        restaurants,
+        globalSettings: {
+            globalRestaurantCommission: feeSettings.globalRestaurantCommission || 0,
+            globalGstOnItem: feeSettings.globalGstOnItem || 0,
+            globalGstOnCommission: feeSettings.globalGstOnCommission || 0,
+            globalPaymentGatewayFee: feeSettings.globalPaymentGatewayFee || 0,
+            globalTcs: feeSettings.globalTcs || 0,
+            applyGlobalTaxes: feeSettings.applyGlobalTaxes !== false
+        }
+    };
 }
 
 export async function getRestaurantCommissionById(id) {
@@ -1644,6 +1761,31 @@ export async function deleteRestaurantCommission(id) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
     const deleted = await FoodRestaurantCommission.findByIdAndDelete(id).lean();
     return deleted ? { id } : null;
+}
+
+export async function updateGlobalRestaurantCommissionSettings(body) {
+    const { globalRestaurantCommission, globalGstOnItem, globalGstOnCommission, globalPaymentGatewayFee, globalTcs, applyGlobalTaxes } = body;
+    let settings = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 });
+    if (!settings) {
+        settings = new FoodFeeSettings();
+    }
+    
+    if (globalRestaurantCommission !== undefined) settings.globalRestaurantCommission = Number(globalRestaurantCommission);
+    if (globalGstOnItem !== undefined) settings.globalGstOnItem = Number(globalGstOnItem);
+    if (globalGstOnCommission !== undefined) settings.globalGstOnCommission = Number(globalGstOnCommission);
+    if (globalPaymentGatewayFee !== undefined) settings.globalPaymentGatewayFee = Number(globalPaymentGatewayFee);
+    if (globalTcs !== undefined) settings.globalTcs = Number(globalTcs);
+    if (applyGlobalTaxes !== undefined) settings.applyGlobalTaxes = Boolean(applyGlobalTaxes);
+    
+    await settings.save();
+    return {
+        globalRestaurantCommission: settings.globalRestaurantCommission,
+        globalGstOnItem: settings.globalGstOnItem,
+        globalGstOnCommission: settings.globalGstOnCommission,
+        globalPaymentGatewayFee: settings.globalPaymentGatewayFee,
+        globalTcs: settings.globalTcs,
+        applyGlobalTaxes: settings.applyGlobalTaxes
+    };
 }
 
 export async function toggleRestaurantCommissionStatus(id) {
@@ -1809,6 +1951,23 @@ export async function upsertFeeSettings(body) {
         if (body.gstRate === null) $unset.gstRate = 1;
         else if (body.gstRate !== undefined) $set.gstRate = body.gstRate;
 
+        if (body.gstOnDeliveryFee === null) $unset.gstOnDeliveryFee = 1;
+        else if (body.gstOnDeliveryFee !== undefined) $set.gstOnDeliveryFee = body.gstOnDeliveryFee;
+
+        if (body.gstOnPlatformFee === null) $unset.gstOnPlatformFee = 1;
+        else if (body.gstOnPlatformFee !== undefined) $set.gstOnPlatformFee = body.gstOnPlatformFee;
+
+        if (body.gstOnPackagingFee === null) $unset.gstOnPackagingFee = 1;
+        else if (body.gstOnPackagingFee !== undefined) $set.gstOnPackagingFee = body.gstOnPackagingFee;
+
+        if (body.deliveryBonusAmount === null) $unset.deliveryBonusAmount = 1;
+        else if (body.deliveryBonusAmount !== undefined) $set.deliveryBonusAmount = body.deliveryBonusAmount;
+
+        if (body.dispatchRadiusExpansionEnabled !== undefined) $set.dispatchRadiusExpansionEnabled = body.dispatchRadiusExpansionEnabled;
+
+        if (body.dispatchRadiusTiers === null) $unset.dispatchRadiusTiers = 1;
+        else if (body.dispatchRadiusTiers !== undefined) $set.dispatchRadiusTiers = body.dispatchRadiusTiers;
+
         if (body.isActive !== undefined) $set.isActive = body.isActive;
 
         const update = {};
@@ -1830,6 +1989,12 @@ export async function upsertFeeSettings(body) {
     if (body.platformFee !== undefined && body.platformFee !== null) payload.platformFee = body.platformFee;
     if (body.packagingFee !== undefined && body.packagingFee !== null) payload.packagingFee = body.packagingFee;
     if (body.gstRate !== undefined && body.gstRate !== null) payload.gstRate = body.gstRate;
+    if (body.gstOnDeliveryFee !== undefined && body.gstOnDeliveryFee !== null) payload.gstOnDeliveryFee = body.gstOnDeliveryFee;
+    if (body.gstOnPlatformFee !== undefined && body.gstOnPlatformFee !== null) payload.gstOnPlatformFee = body.gstOnPlatformFee;
+    if (body.gstOnPackagingFee !== undefined && body.gstOnPackagingFee !== null) payload.gstOnPackagingFee = body.gstOnPackagingFee;
+    if (body.deliveryBonusAmount !== undefined && body.deliveryBonusAmount !== null) payload.deliveryBonusAmount = body.deliveryBonusAmount;
+    if (body.dispatchRadiusExpansionEnabled !== undefined) payload.dispatchRadiusExpansionEnabled = body.dispatchRadiusExpansionEnabled;
+    if (body.dispatchRadiusTiers !== undefined && body.dispatchRadiusTiers !== null) payload.dispatchRadiusTiers = body.dispatchRadiusTiers;
 
     const created = await FoodFeeSettings.create(payload);
     return created.toObject();
@@ -2048,13 +2213,15 @@ export async function getDeliveryEmergencyHelp() {
         accidentHelpline: '',
         contactPolice: '',
         insurance: '',
+        teamLeader: '',
         isActive: true
     };
     return {
         medicalEmergency: data.medicalEmergency || '',
         accidentHelpline: data.accidentHelpline || '',
         contactPolice: data.contactPolice || '',
-        insurance: data.insurance || ''
+        insurance: data.insurance || '',
+        teamLeader: data.teamLeader || ''
     };
 }
 
@@ -2065,12 +2232,14 @@ export async function upsertDeliveryEmergencyHelp(body = {}) {
         if (body.accidentHelpline !== undefined) existing.accidentHelpline = String(body.accidentHelpline || '').trim();
         if (body.contactPolice !== undefined) existing.contactPolice = String(body.contactPolice || '').trim();
         if (body.insurance !== undefined) existing.insurance = String(body.insurance || '').trim();
+        if (body.teamLeader !== undefined) existing.teamLeader = String(body.teamLeader || '').trim();
         await existing.save();
         return {
             medicalEmergency: existing.medicalEmergency || '',
             accidentHelpline: existing.accidentHelpline || '',
             contactPolice: existing.contactPolice || '',
-            insurance: existing.insurance || ''
+            insurance: existing.insurance || '',
+            teamLeader: existing.teamLeader || ''
         };
     }
     const created = await FoodDeliveryEmergencyHelp.create({
@@ -2078,13 +2247,15 @@ export async function upsertDeliveryEmergencyHelp(body = {}) {
         accidentHelpline: String(body.accidentHelpline || '').trim(),
         contactPolice: String(body.contactPolice || '').trim(),
         insurance: String(body.insurance || '').trim(),
+        teamLeader: String(body.teamLeader || '').trim(),
         isActive: true
     });
     return {
         medicalEmergency: created.medicalEmergency || '',
         accidentHelpline: created.accidentHelpline || '',
         contactPolice: created.contactPolice || '',
-        insurance: created.insurance || ''
+        insurance: created.insurance || '',
+        teamLeader: created.teamLeader || ''
     };
 }
 
@@ -2146,10 +2317,36 @@ export async function getRestaurantReviews(query = {}) {
 
 export async function getRestaurantById(id) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
-    return FoodRestaurant.findById(id)
+    const rest = await FoodRestaurant.findById(id)
         .select('-__v')
         .populate('zoneId', 'name zoneName serviceLocation isActive')
         .lean();
+        
+    if (rest) {
+        try {
+            const { outletTimings } = await getOutletTimingsForRestaurant(id);
+            if (outletTimings) {
+                // Get today's day name to show correct today's timing
+                const todayIndex = new Date().getDay();
+                const daysMap = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const todayName = daysMap[todayIndex];
+                
+                const todayTiming = outletTimings[todayName];
+                if (todayTiming && todayTiming.isOpen) {
+                    rest.openingTime = todayTiming.openingTime;
+                    rest.closingTime = todayTiming.closingTime;
+                } else if (todayTiming && !todayTiming.isOpen) {
+                    rest.openingTime = "Closed";
+                    rest.closingTime = "Closed";
+                }
+                
+                rest.openDays = Object.keys(outletTimings).filter(day => outletTimings[day]?.isOpen);
+            }
+        } catch(e) {
+            console.error("Error fetching outlet timings for admin panel:", e);
+        }
+    }
+    return rest;
 }
 
 export async function getRestaurantAnalytics(restaurantId) {
@@ -2173,7 +2370,7 @@ export async function getRestaurantAnalytics(restaurantId) {
     const currentYear = now.getFullYear();
 
     const completedOrders = orders.filter(o => o.orderStatus === 'delivered');
-    const cancelledOrders = orders.filter(o => ['cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin'].includes(o.orderStatus));
+    const cancelledOrders = orders.filter(o => ['cancelled_by_user', 'cancelled_by_restaurant', 'cancelled_by_admin', 'dead'].includes(o.orderStatus));
 
     // Money metrics should come from the ledger (FoodTransaction), not FoodOrder.
     const completedTx = (txRows || []).filter((tx) => {
@@ -2301,14 +2498,19 @@ export async function updateRestaurantMenuById(id, menu) {
 }
 
 export async function getPendingRestaurants() {
-    const restaurants = await FoodRestaurant.find({ status: { $in: ['pending', 'rejected'] } })
+    const restaurants = await FoodRestaurant.find({ 
+        status: { $in: ['pending', 'rejected'] },
+        rejectionReason: { $ne: 'Disabled by admin' }
+    })
         .populate('zoneId', 'name zoneName')
+        .populate('previousZoneId', 'name zoneName')
         .sort({ createdAt: -1 })
         .lean();
     return restaurants.map((r, i) => ({
         ...r,
         sl: i + 1,
         zone: r.zoneId?.zoneName || r.zoneId?.name || null,
+        previousZone: r.previousZoneId?.zoneName || r.previousZoneId?.name || null,
     }));
 }
 
@@ -2366,6 +2568,22 @@ export async function updateRestaurantById(id, body = {}) {
         doc.openDays = body.openDays.map(d => toStr(d)).filter(Boolean);
     }
     if (body.offer !== undefined) doc.offer = toStr(body.offer);
+    
+    if (body.discount !== undefined) {
+        const disc = Number(body.discount);
+        if (Number.isFinite(disc) && disc >= 0 && disc <= 100) {
+            doc.discount = disc;
+        } else {
+            doc.discount = 0;
+        }
+    }
+
+    if (body.itemDiscounts !== undefined) {
+        doc.itemDiscounts = Array.isArray(body.itemDiscounts) ? body.itemDiscounts : [];
+    }
+    if (body.discountRules !== undefined) {
+        doc.discountRules = Array.isArray(body.discountRules) ? body.discountRules : [];
+    }
 
     if (body.estimatedDeliveryTime !== undefined) {
         doc.estimatedDeliveryTime = toStr(body.estimatedDeliveryTime);
@@ -2396,6 +2614,8 @@ export async function updateRestaurantById(id, body = {}) {
     if (body.ifscCode !== undefined) doc.ifscCode = toStr(body.ifscCode);
     if (body.accountHolderName !== undefined) doc.accountHolderName = toStr(body.accountHolderName);
     if (body.accountType !== undefined) doc.accountType = toStr(body.accountType);
+    if (body.upiId !== undefined) doc.upiId = toStr(body.upiId);
+    if (body.upiQrImage !== undefined) doc.upiQrImage = toStr(getUrl(body.upiQrImage)) || undefined;
 
     // Featured Info
     if (body.featuredDish !== undefined) doc.featuredDish = toStr(body.featuredDish);
@@ -2426,15 +2646,20 @@ export async function updateRestaurantStatus(id, body = {}) {
     const isActive = parseBooleanLike(raw, 'status');
     const status = isActive ? 'approved' : 'rejected';
 
+    const updateData = {
+        status,
+        rejectedAt: isActive ? undefined : new Date(),
+        rejectionReason: isActive ? '' : 'Disabled by admin'
+    };
+
+    if (isActive) {
+        updateData.approvedAt = new Date();
+    }
+
     return FoodRestaurant.findByIdAndUpdate(
         id,
         {
-            $set: {
-                status,
-                approvedAt: isActive ? new Date() : undefined,
-                rejectedAt: isActive ? undefined : new Date(),
-                rejectionReason: isActive ? undefined : 'Disabled by admin'
-            }
+            $set: updateData
         },
         { new: true, runValidators: false }
     ).lean();
@@ -2956,7 +3181,7 @@ export async function rejectRestaurantAddon(addonId, reason) {
 
 // ----- Foods (separate collection) -----
 export async function getFoods(query) {
-    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 1000);
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 50000);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
     const filter = {};
@@ -3038,7 +3263,7 @@ const resolveAdminFoodCategory = async ({ categoryId, categoryName, foodType, pu
     }
 
     if (categoryDoc?.foodTypeScope) {
-        if (pureVegRestaurant && String(categoryDoc.foodTypeScope || '') !== 'Veg') {
+        if (pureVegRestaurant && String(categoryDoc.foodTypeScope || '') === 'Non-Veg') {
             throw new ValidationError('Pure veg restaurants can only use veg categories');
         }
         if (!categoryAllowsFoodType(categoryDoc.foodTypeScope, foodType)) {
@@ -3323,9 +3548,12 @@ export async function approveRestaurant(id) {
             $set: {
                 status: 'approved',
                 approvedAt: new Date(),
-                rejectedAt: undefined,
-                rejectionReason: undefined,
-                pendingUpdateReason: undefined
+            },
+            $unset: {
+                rejectedAt: "",
+                rejectionReason: "",
+                pendingUpdateReason: "",
+                previousZoneId: ""
             }
         },
         { new: true, runValidators: false }
@@ -3337,7 +3565,7 @@ export async function approveRestaurant(id) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
                 {
-                    title: 'Congratulations! Ã°Å¸Å½â€°',
+                    title: 'Congratulations! 🎉',
                     body: `Your restaurant "${updated.restaurantName}" has been approved. You can now start receiving orders!`,
                     image: updated.profileImage || 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -3363,7 +3591,10 @@ export async function rejectRestaurant(id, reason) {
                 rejectedAt: new Date(),
                 rejectionReason: typeof reason === 'string' ? reason.trim() : undefined,
                 approvedAt: null,
-                pendingUpdateReason: undefined
+            },
+            $unset: {
+                pendingUpdateReason: "",
+                previousZoneId: ""
             }
         },
         { new: true, runValidators: false }
@@ -3375,7 +3606,7 @@ export async function rejectRestaurant(id, reason) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated._id }],
                 {
-                    title: 'Update on Registration Ã°Å¸â€œâ€¹',
+                    title: 'Update on Registration 📋',
                     body: `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -3476,6 +3707,15 @@ export async function createAdminOffer(body) {
         throw new ValidationError('Coupon code already exists');
     }
 
+    const offerEnd = body.endDate ? new Date(body.endDate) : null;
+    let offerStatus = 'active';
+    if (offerEnd && !Number.isNaN(offerEnd.getTime())) {
+        offerEnd.setUTCHours(23, 59, 59, 999);
+        if (Date.now() > offerEnd.getTime()) {
+            offerStatus = 'inactive';
+        }
+    }
+
     const doc = await FoodOffer.create({
         couponCode: body.couponCode,
         discountType: body.discountType,
@@ -3490,7 +3730,7 @@ export async function createAdminOffer(body) {
         startDate: body.startDate,
         isFirstOrderOnly: body.isFirstOrderOnly ?? false,
         endDate: body.endDate,
-        status: body.endDate && new Date(body.endDate).getTime() <= Date.now() ? 'inactive' : 'active',
+        status: offerStatus,
         showInCart: true
     });
 
@@ -3500,7 +3740,7 @@ export async function createAdminOffer(body) {
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: doc.restaurantId }],
                 {
-                    title: 'New Campaign Invitation! Ã°Å¸â€œÂ¢',
+                    title: 'New Campaign Invitation! 📢',
                     body: `You have been invited to join a new campaign: "${doc.couponCode}". Check it out now!`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -3705,6 +3945,32 @@ export async function updateDeliverySupportTicket(id, body = {}) {
 }
 
 // ----- Delivery partners (approved list) -----
+export async function getAvailableDeliveryPartners(query) {
+    const filter = { status: 'approved', availabilityStatus: 'online' };
+    const list = await FoodDeliveryPartner.find(filter).lean();
+
+    const busyPartners = await FoodOrder.distinct('dispatch.deliveryPartnerId', {
+        'dispatch.status': 'accepted',
+        orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_pickup', 'picked_up', 'reached_drop'] }
+    });
+    const busyIds = busyPartners.map(id => String(id));
+
+    const availablePartners = list.filter(p => !busyIds.includes(String(p._id)));
+
+    return {
+        availablePartners: availablePartners.map(doc => ({
+            _id: doc._id,
+            name: doc.name || '',
+            phone: doc.phone || '',
+            vehicleType: doc.vehicleType || '',
+            profilePhoto: doc.profilePhoto || null,
+            lastLat: doc.lastLat,
+            lastLng: doc.lastLng,
+            city: doc.city,
+            area: doc.address || doc.state || ''
+        }))
+    };
+}
 export async function getDeliveryPartners(query) {
     const { page = 1, limit = 1000, search } = query;
     const filter = { status: 'approved' };
@@ -3874,7 +4140,7 @@ export async function addDeliveryPartnerBonus(body, adminUser) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: body.deliveryPartnerId },
             {
-                title: 'Bonus Credited! Ã°Å¸Å½Å ',
+                title: 'Bonus Credited! 🎁',
                 body: `You have received a bonus of \u20B9${body.amount}. ${body.reference || 'Great job!'}`,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
@@ -4231,7 +4497,7 @@ export async function creditEarningAddonHistory(historyId, notes) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: doc.deliveryPartnerId },
             {
-                title: 'Incentive Credited! Ã°Å¸Å½Â¯',
+                title: 'Incentive Credited! 🎯',
                 body: `Your incentive for "${doc.offerId?.title || 'Earning Addon'}" has been approved and moved to your pocket.`,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
@@ -4263,7 +4529,7 @@ export async function cancelEarningAddonHistory(historyId, reason) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: doc.deliveryPartnerId },
             {
-                title: 'Incentive Update Ã°Å¸â€œâ€¹',
+                title: 'Incentive Update 📋',
                 body: `Your incentive request for "${doc.offerId?.title || 'Earning Addon'}" was not approved. Reason: ${doc.cancelReason || 'Ineligible'}`,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
@@ -4280,7 +4546,7 @@ export async function cancelEarningAddonHistory(historyId, reason) {
     return doc.toObject();
 }
 
-export async function checkEarningAddonCompletions(deliveryPartnerId, _force = false) {
+export async function checkEarningAddonCompletions(deliveryPartnerId, _force = false, autoCredit = false) {
     const now = new Date();
     
     // Only search for active offers that are currently running.
@@ -4324,7 +4590,7 @@ export async function checkEarningAddonCompletions(deliveryPartnerId, _force = f
 
             if (orderCount >= (offer.requiredOrders || 1)) {
                 // Requirement met!
-                await FoodEarningAddonHistory.create({
+                const historyDoc = await FoodEarningAddonHistory.create({
                     offerId: offer._id,
                     deliveryPartnerId: pId,
                     ordersCompleted: orderCount,
@@ -4338,6 +4604,10 @@ export async function checkEarningAddonCompletions(deliveryPartnerId, _force = f
                 // Update current redemptions in addon
                 await FoodEarningAddon.findByIdAndUpdate(offer._id, { $inc: { currentRedemptions: 1 } });
                 
+                if (autoCredit) {
+                    await creditEarningAddonHistory(historyDoc._id, "Auto-credited upon completion");
+                }
+
                 globalCompletions++;
             }
         }
@@ -4357,13 +4627,26 @@ export async function getDeliveryPartnerById(id) {
         status: partner.status === 'rejected' ? 'blocked' : partner.status,
         profileImage: partner.profilePhoto ? { url: partner.profilePhoto } : null,
         documents: {
-            aadhar: (partner.aadharPhoto || partner.aadharNumber)
-                ? { number: partner.aadharNumber || null, document: partner.aadharPhoto || null }
+            aadhar: (partner.aadharPhoto || partner.aadharFrontPhoto || partner.aadharBackPhoto || partner.aadharNumber)
+                ? { 
+                    number: partner.aadharNumber || null, 
+                    document: partner.aadharFrontPhoto || partner.aadharPhoto || null,
+                    front: partner.aadharFrontPhoto || partner.aadharPhoto || null,
+                    back: partner.aadharBackPhoto || null
+                  }
                 : null,
             pan: (partner.panPhoto || partner.panNumber)
                 ? { number: partner.panNumber || null, document: partner.panPhoto || null }
                 : null,
-            drivingLicense: partner.drivingLicensePhoto ? { document: partner.drivingLicensePhoto } : null,
+            drivingLicense: (partner.drivingLicensePhoto || partner.drivingLicenseFrontPhoto || partner.drivingLicenseBackPhoto || partner.drivingLicenseNumber) 
+                ? { 
+                    number: partner.drivingLicenseNumber || null,
+                    document: partner.drivingLicenseFrontPhoto || partner.drivingLicensePhoto || null,
+                    front: partner.drivingLicenseFrontPhoto || partner.drivingLicensePhoto || null,
+                    back: partner.drivingLicenseBackPhoto || null
+                  } 
+                : null,
+            vehicleRC: partner.rcPhoto ? { document: partner.rcPhoto } : null,
             bankDetails:
                 partner.bankAccountHolderName || partner.bankAccountNumber || partner.bankIfscCode || partner.bankName
                     ? {
@@ -4469,7 +4752,7 @@ export async function approveDeliveryPartner(id) {
         await notifyOwnerSafely(
             { ownerType: 'DELIVERY_PARTNER', ownerId: partner._id },
             {
-                title: 'Welcome Aboard! Ã°Å¸Å¡Â²',
+                title: 'Welcome Aboard! 🚲',
                 body: `Your delivery partner application has been approved. You can now go online and start earning!`,
                 image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                 data: {
@@ -4506,6 +4789,10 @@ export async function approveDeliveryPartner(id) {
                         FoodDeliveryPartner.updateOne({ _id: referrer._id }, { $inc: { referralCount: 1 } }),
                         addDeliveryPartnerBonus(
                             { deliveryPartnerId: String(referrer._id), amount: reward, reference: 'Referral bonus' },
+                            null
+                        ),
+                        addDeliveryPartnerBonus(
+                            { deliveryPartnerId: String(partner._id), amount: reward, reference: 'Signup via referral bonus' },
                             null
                         )
                     ]);
@@ -4550,7 +4837,7 @@ export async function rejectDeliveryPartner(id, reason) {
             await notifyOwnerSafely(
                 { ownerType: 'DELIVERY_PARTNER', ownerId: updated._id },
                 {
-                    title: 'Onboarding Update Ã°Å¸â€œâ€¹',
+                    title: 'Onboarding Update 📋',
                     body: `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`,
                     image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
                     data: {
@@ -4562,6 +4849,49 @@ export async function rejectDeliveryPartner(id, reason) {
             );
         } catch (e) {
             console.error('Failed to send delivery partner rejection notification:', e);
+        }
+    }
+    return updated;
+}
+
+export async function deleteDeliveryPartner(id) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const updated = await FoodDeliveryPartner.findByIdAndUpdate(
+        id,
+        {
+            $set: {
+                status: 'rejected',
+                rejectedAt: new Date(),
+                rejectionReason: 'Account deactivated by admin',
+                approvedAt: null,
+                fcmTokens: [],
+                fcmTokenMobile: []
+            }
+        },
+        { new: true }
+    ).lean();
+
+    if (updated) {
+        // Clear refresh tokens to force logout
+        const { FoodRefreshToken } = await import('../../../../core/refreshTokens/refreshToken.model.js');
+        await FoodRefreshToken.deleteMany({ userId: id });
+
+        try {
+            const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
+            await notifyOwnerSafely(
+                { ownerType: 'DELIVERY_PARTNER', ownerId: updated._id },
+                {
+                    title: 'Account Deactivated 🚫',
+                    body: `Your delivery partner account has been deactivated by the admin.`,
+                    image: 'https://i.ibb.co/3m2Yh7r/Appzeto-Brand-Image.png',
+                    data: {
+                        type: 'account_deactivated',
+                        partnerId: String(updated._id)
+                    }
+                }
+            );
+        } catch (e) {
+            console.error('Failed to send delivery partner deactivation notification:', e);
         }
     }
     return updated;
@@ -4898,7 +5228,7 @@ export async function getDeliveryWallets(query = {}) {
         const totalBonus = Number(bonusAgg?.[0]?.total) || 0;
         const totalWithdrawn = Number(withdrawalAgg?.[0]?.totalWithdrawn) || 0;
         const pendingWithdrawals = Number(withdrawalAgg?.[0]?.pendingWithdrawals) || 0;
-        const pocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
+        const pocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals) - cashInHand);
 
         return {
             walletId: wallet?._id,
@@ -5029,5 +5359,117 @@ export async function getSidebarBadges() {
         console.error('Error fetching sidebar badges:', error);
         return {};
     }
+}
+
+export async function updateRestaurantZoneRank(restaurantId, rank) {
+    if (!restaurantId || !mongoose.Types.ObjectId.isValid(restaurantId)) {
+        throw new ValidationError('Invalid restaurant ID');
+    }
+    
+    const parsedRank = rank === null || rank === '' ? null : parseInt(rank, 10);
+    
+    if (parsedRank !== null && (isNaN(parsedRank) || parsedRank < 1 || parsedRank > 5)) {
+        throw new ValidationError('Rank must be between 1 and 5');
+    }
+
+    const restaurant = await FoodRestaurant.findById(restaurantId);
+    if (!restaurant) {
+        throw new ValidationError('Restaurant not found');
+    }
+
+    // If assigning a rank, ensure no other restaurant in the same zone has this rank
+    if (parsedRank !== null && restaurant.zoneId) {
+        await FoodRestaurant.updateMany(
+            { zoneId: restaurant.zoneId, zoneRank: parsedRank, _id: { $ne: restaurantId } },
+            { $set: { zoneRank: null } }
+        );
+    }
+
+    restaurant.zoneRank = parsedRank;
+    await restaurant.save();
+
+    return restaurant;
+}
+
+// ----- Sub Admins -----
+export async function getSubAdmins(query) {
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 1000);
+    const page = Math.max(parseInt(query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
+
+    const filter = { role: 'SUB_ADMIN' };
+    if (query.search) {
+        const searchRegex = { $regex: query.search, $options: 'i' };
+        filter.$or = [{ name: searchRegex }, { email: searchRegex }];
+    }
+
+    const [subAdmins, total] = await Promise.all([
+        FoodAdmin.find(filter)
+            .select('-password')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        FoodAdmin.countDocuments(filter)
+    ]);
+
+    return { subAdmins, total, page, limit };
+}
+
+export async function createSubAdmin(data) {
+    if (!data.email || !data.password || !data.name) {
+        throw new ValidationError('Email, password, and name are required');
+    }
+
+    const normalizedEmail = data.email.trim().toLowerCase();
+    const existing = await FoodAdmin.findOne({ email: normalizedEmail }).lean();
+    if (existing) {
+        throw new ValidationError('An admin with this email already exists');
+    }
+
+    const newSubAdmin = await FoodAdmin.create({
+        email: normalizedEmail,
+        password: data.password,
+        visiblePassword: data.password,
+        name: data.name,
+        phone: data.phone || '',
+        role: 'SUB_ADMIN',
+        accessibleModules: Array.isArray(data.accessibleModules) ? data.accessibleModules : []
+    });
+
+    const result = newSubAdmin.toObject();
+    delete result.password;
+    return result;
+}
+
+export async function updateSubAdmin(id, data) {
+    const subAdmin = await FoodAdmin.findOne({ _id: id, role: 'SUB_ADMIN' });
+    if (!subAdmin) {
+        return null;
+    }
+
+    if (data.name !== undefined) subAdmin.name = data.name;
+    if (data.phone !== undefined) subAdmin.phone = data.phone;
+    if (data.accessibleModules !== undefined && Array.isArray(data.accessibleModules)) {
+        subAdmin.accessibleModules = data.accessibleModules;
+    }
+    if (data.isActive !== undefined) {
+        subAdmin.isActive = data.isActive;
+    }
+    if (data.password) {
+        subAdmin.password = data.password;
+        subAdmin.visiblePassword = data.password;
+    }
+
+    await subAdmin.save();
+
+    const result = subAdmin.toObject();
+    delete result.password;
+    return result;
+}
+
+export async function deleteSubAdmin(id) {
+    const deleted = await FoodAdmin.findOneAndDelete({ _id: id, role: 'SUB_ADMIN' });
+    return deleted !== null;
 }
 

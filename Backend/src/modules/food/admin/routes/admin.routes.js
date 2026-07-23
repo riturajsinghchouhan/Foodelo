@@ -9,22 +9,30 @@ import * as notificationBroadcastController from '../controllers/notificationBro
 import * as diningAdminController from '../../dining/controllers/diningAdmin.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { getAdminPageController, upsertAdminPageController } from '../controllers/pageContent.controller.js';
+import * as liveMonitorController from '../controllers/liveMonitor.controller.js';
+import * as appIntroAdController from '../controllers/appIntroAd.controller.js';
 import { upload } from '../../../../middleware/upload.js';
+import menuBulkRoutes from './menuBulk.routes.js';
 
 const router = express.Router();
+
+router.use('/menu', menuBulkRoutes);
 
 // ----- Public Business Settings (No Admin Required) -----
 router.get('/business-settings/public', businessSettingsController.getBusinessSettings);
 
-const requireAdmin = (req, _res, next) => {
-    const user = req.user;
-    if (!user || user.role !== 'ADMIN') {
-        return next(new AuthError('Admin access required'));
-    }
-    return next();
-};
+// ----- Public Fee Settings (No Admin Required) -----
+router.get('/fee-settings/public', adminController.getFeeSettings);
+
+import { requireAdmin, requireSuperAdmin } from '../../../../core/auth/auth.middleware.js';
 
 router.use(requireAdmin);
+
+// ----- Sub Admins -----
+router.get('/sub-admins', requireSuperAdmin, adminController.getSubAdmins);
+router.post('/sub-admins', requireSuperAdmin, adminController.createSubAdmin);
+router.put('/sub-admins/:id', requireSuperAdmin, adminController.updateSubAdmin);
+router.delete('/sub-admins/:id', requireSuperAdmin, adminController.deleteSubAdmin);
 
 // ----- Broadcast Notifications -----
 router.post('/notifications/broadcast', notificationBroadcastController.createBroadcastNotificationController);
@@ -35,6 +43,8 @@ router.delete('/notifications/broadcast/:id', notificationBroadcastController.de
 router.get('/customers', adminController.getCustomers);
 router.get('/customers/:id', adminController.getCustomerById);
 router.patch('/customers/:id/status', adminController.updateCustomerStatus);
+router.post('/customers/:id/wallet-topup', adminController.topupCustomerWallet);
+router.post('/customers/:id/wallet-deduct', adminController.deductCustomerWallet);
 
 // ----- Safety / Emergency Reports -----
 router.get('/safety-emergency-reports', adminController.getSafetyEmergencyReports);
@@ -68,13 +78,16 @@ router.post('/restaurants', adminController.createRestaurant);
 router.patch('/restaurants/:id', adminController.updateRestaurantById);
 router.patch('/restaurants/:id/status', adminController.updateRestaurantStatus);
 router.patch('/restaurants/:id/location', adminController.updateRestaurantLocation);
+router.patch('/restaurants/:id/outlet-timings', adminController.updateRestaurantOutletTimings);
 router.patch('/restaurants/:id/menu', adminController.updateRestaurantMenuById);
 router.patch('/restaurants/:id/approve', adminController.approveRestaurant);
 router.patch('/restaurants/:id/reject', adminController.rejectRestaurant);
+router.patch('/restaurants/:id/zone-rank', adminController.updateRestaurantZoneRank);
 router.delete('/restaurants/:id', adminController.deleteRestaurant);
 
 // ----- Restaurant Commission -----
 router.get('/restaurant-commissions/bootstrap', adminController.getRestaurantCommissionBootstrap);
+router.post('/restaurant-commissions/global', adminController.updateGlobalRestaurantCommissionSettings);
 router.get('/restaurant-commissions', adminController.getRestaurantCommissions);
 router.post('/restaurant-commissions', adminController.createRestaurantCommission);
 router.get('/restaurant-commissions/:id', adminController.getRestaurantCommissionById);
@@ -131,9 +144,11 @@ router.put('/referral-settings', adminController.createOrUpdateReferralSettings)
 // ----- Business Settings -----
 router.get('/business-settings/public', businessSettingsController.getBusinessSettings); // Public endpoint
 router.get('/business-settings', businessSettingsController.getBusinessSettings);
+router.patch('/business-settings/toggles', businessSettingsController.updateBusinessToggles);
 router.patch('/business-settings', upload.fields([
     { name: 'logo', maxCount: 1 },
-    { name: 'favicon', maxCount: 1 }
+    { name: 'favicon', maxCount: 1 },
+    { name: 'termsAndConditionsPdf', maxCount: 1 }
 ]), businessSettingsController.updateBusinessSettings);
 
 // ----- Delivery Cash Limit -----
@@ -153,6 +168,7 @@ router.get('/delivery/cash-limit-settlements', adminController.getCashLimitSettl
 
 // ----- Delivery partners & general -----
 router.get('/delivery/join-requests', adminController.getDeliveryJoinRequests);
+router.get('/delivery/available-partners', adminController.getAvailableDeliveryPartners);
 router.get('/delivery/wallets', adminController.getDeliveryWallets);
 router.get('/delivery/bonus-transactions', adminController.getDeliveryPartnerBonusTransactions);
 router.get('/delivery/earnings', adminController.getDeliveryEarnings);
@@ -180,6 +196,8 @@ router.get('/delivery/partners', adminController.getDeliveryPartners);
 router.get('/delivery/:id', adminController.getDeliveryPartnerById);
 router.patch('/delivery/:id/approve', adminController.approveDeliveryPartner);
 router.patch('/delivery/:id/reject', adminController.rejectDeliveryPartner);
+router.patch('/delivery/:id/availability', adminController.updateDeliveryPartnerAvailabilityAdmin);
+router.delete('/delivery/:id', adminController.deleteDeliveryPartner);
 
 // ----- Zones -----
 router.get('/zones', adminController.getZones);
@@ -202,7 +220,10 @@ router.patch('/dining/requests/:id/reject', diningAdminController.rejectDiningRe
 // ----- Orders -----
 router.get('/orders', orderController.listOrdersAdminController);
 router.get('/orders/:orderId', orderController.getOrderByIdAdminController);
+router.patch('/orders/:orderId/status', orderController.updateOrderStatusAdminController);
 router.delete('/orders/:orderId', orderController.deleteOrderAdminController);
+router.post('/orders/:orderId/assign-delivery', orderController.assignDeliveryPartnerController);
+router.post('/orders/:orderId/resend-notification', orderController.resendDeliveryNotificationAdminController);
 
 // ----- CMS Pages (About + legal) -----
 router.get('/pages-social-media/:key', getAdminPageController);
@@ -210,5 +231,16 @@ router.put('/pages-social-media/:key', upsertAdminPageController);
 
 router.get('/sidebar-badges', adminController.getSidebarBadges);
 router.get('/notifications/fssai-expired', adminController.getExpiredFssaiNotifications);
+
+// ----- Live Monitor -----
+router.get('/live-monitor/status', liveMonitorController.getLiveMonitorStatus);
+
+// ----- App Intro & Ads -----
+router.get('/app-intro-ads', appIntroAdController.getAppIntroAds);
+router.post('/app-intro-ads', upload.fields([{ name: 'media', maxCount: 1 }]), appIntroAdController.createAppIntroAd);
+router.patch('/app-intro-ads/order', appIntroAdController.updateAppIntroAdsOrder);
+router.patch('/app-intro-ads/:id', upload.fields([{ name: 'media', maxCount: 1 }]), appIntroAdController.updateAppIntroAd);
+router.patch('/app-intro-ads/:id/toggle', appIntroAdController.toggleAppIntroAdStatus);
+router.delete('/app-intro-ads/:id', appIntroAdController.deleteAppIntroAd);
 
 export default router;

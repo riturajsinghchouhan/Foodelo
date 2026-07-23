@@ -31,8 +31,10 @@ export const normalizeImageUrl = (imageUrl, backendOrigin = "") => {
       }
       if (appProtocol === "https:" && parsed.protocol === "http:") parsed.protocol = "https:";
       const finalUrl = parsed.toString();
-      const hasSigned = /[?&](X-Amz-|Signature=|Expires=|AWSAccessKeyId=|GoogleAccessId=|token=|sig=|se=|sp=|sv=)/i.test(finalUrl);
-      return hasSigned ? finalUrl : encodeURI(finalUrl);
+      // Prevent double encoding of Firebase URLs which already contain %2F
+      if (finalUrl.includes('firebasestorage.googleapis.com')) return finalUrl;
+      const hasSigned = /[?&](X-Amz-|Signature=|Expires=|AWSAccessKeyId=|GoogleAccessId=|token=|sig=|se=|sp=|sv=|alt=)/i.test(finalUrl);
+      return hasSigned ? finalUrl : finalUrl.replace(/ /g, '%20');
     } catch {
       return normalized;
     }
@@ -52,6 +54,10 @@ export const extractImages = (source, backendOrigin = "") => {
   const normalize = (val) => {
     if (!val) return "";
     if (typeof val === "string") return normalizeImageUrl(val, backendOrigin);
+    if (Array.isArray(val)) {
+      if (val.length === 0) return "";
+      return normalize(val[0]);
+    }
     if (typeof val === "object") {
       const src = val.url || val.secure_url || val.imageUrl || val.image || val.src || "";
       return typeof src === "string" ? normalizeImageUrl(src, backendOrigin) : "";
@@ -78,7 +84,11 @@ export const calculateDistance = (lat1, lng1, lat2, lng2) => {
       Math.sin(dLng / 2) *
       Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  
+  // Apply a routing multiplier (tortuosity factor) to approximate actual driving distance
+  // from the straight-line Haversine distance. 1.35 is standard for urban grids.
+  const ROUTING_MULTIPLIER = 1.35;
+  return (R * c) * ROUTING_MULTIPLIER;
 };
 
 /**

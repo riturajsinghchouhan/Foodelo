@@ -14,10 +14,13 @@ export default function BusinessSetup() {
   const [saving, setSaving] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
   const [faviconPreview, setFaviconPreview] = useState(null);
+  const [termsPdfUrl, setTermsPdfUrl] = useState(null);
   const [logoFile, setLogoFile] = useState(null);
   const [faviconFile, setFaviconFile] = useState(null);
+  const [termsPdfFile, setTermsPdfFile] = useState(null);
   const logoInputRef = useRef(null);
   const faviconInputRef = useRef(null);
+  const termsPdfInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
     companyName: "",
@@ -31,6 +34,8 @@ export default function BusinessSetup() {
     supportEmail: "",
     supportPhone: "",
     supportHours: "",
+    fssai: "",
+    gstin: "",
   });
 
   // Fetch business settings on mount
@@ -57,6 +62,8 @@ export default function BusinessSetup() {
           supportEmail: settings.supportEmail || "",
           supportPhone: settings.supportPhone || "",
           supportHours: settings.supportHours || "",
+          fssai: settings.fssai || "",
+          gstin: settings.gstin || "",
         });
 
         // Set logo and favicon previews if they exist
@@ -65,6 +72,9 @@ export default function BusinessSetup() {
         }
         if (settings.favicon?.url) {
           setFaviconPreview(settings.favicon.url);
+        }
+        if (settings.termsAndConditionsPdf?.url) {
+          setTermsPdfUrl(settings.termsAndConditionsPdf.url);
         }
       }
     } catch (error) {
@@ -98,8 +108,17 @@ export default function BusinessSetup() {
         toast.error("Email is required");
         return;
       }
-      if (!EMAIL_REGEX.test(formData.email.trim())) {
+      
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(formData.email.trim())) {
         toast.error("Please enter a valid email address");
+        return;
+      }
+      
+      const emailDomain = formData.email.trim().split('@')[1]?.toLowerCase();
+      const invalidDomains = ['gnali.com', 'gmai.com', 'gamil.com', 'gmail.con', 'gmail.comm', 'yahoo.comm', 'yahoo.con', 'hotmal.com', 'hotmail.con'];
+      if (invalidDomains.includes(emailDomain) || emailDomain?.endsWith('.comm')) {
+        toast.error("Invalid email domain. Please check for typos (e.g., gnali.com, .comm).");
         return;
       }
 
@@ -107,14 +126,48 @@ export default function BusinessSetup() {
         toast.error("Phone number is required");
         return;
       }
-      const phoneRegex = /^\d{7,15}$/;
-      if (!phoneRegex.test(formData.phoneNumber.trim())) {
-        toast.error("Please enter a valid phone number (7-15 digits)");
+      if (!/^\d{10}$/.test(formData.phoneNumber.trim())) {
+        toast.error("Phone number must be exactly 10 digits");
         return;
       }
 
-      if (formData.pincode.trim() && !/^\d{4,10}$/.test(formData.pincode.trim())) {
+      if (!formData.state.trim()) {
+        toast.error("State is required");
+        return;
+      }
+
+      if (!formData.pincode.trim()) {
+        toast.error("Pincode is required");
+        return;
+      }
+      if (!/^\d{4,10}$/.test(formData.pincode.trim())) {
         toast.error("Please enter a valid pincode (4-10 digits)");
+        return;
+      }
+      
+      if (formData.supportEmail?.trim()) {
+        const sEmail = formData.supportEmail.trim();
+        if (!emailRegex.test(sEmail)) {
+          toast.error("Please enter a valid support email address");
+          return;
+        }
+        const sDomain = sEmail.split('@')[1]?.toLowerCase();
+        if (invalidDomains.includes(sDomain) || sDomain?.endsWith('.comm')) {
+          toast.error("Invalid support email domain. Please check for typos.");
+          return;
+        }
+      }
+      
+      if (formData.supportPhone?.trim()) {
+        const sPhone = formData.supportPhone.trim().replace(/\D/g, "");
+        if (!/^\d{10}$/.test(sPhone)) {
+          toast.error("Support phone number must be exactly 10 digits");
+          return;
+        }
+      }
+      
+      if (!logoPreview && !logoFile) {
+        toast.error("Company logo picture is required. Please upload a logo.");
         return;
       }
 
@@ -133,6 +186,8 @@ export default function BusinessSetup() {
         supportEmail: formData.supportEmail?.trim(),
         supportPhone: formData.supportPhone?.trim(),
         supportHours: formData.supportHours?.trim(),
+        fssai: formData.fssai?.trim(),
+        gstin: formData.gstin?.trim(),
       };
 
       // Prepare files
@@ -142,6 +197,9 @@ export default function BusinessSetup() {
       }
       if (faviconFile) {
         files.favicon = faviconFile;
+      }
+      if (termsPdfFile) {
+        files.termsAndConditionsPdf = termsPdfFile;
       }
 
       const response = await adminAPI.updateBusinessSettings(dataToSend, files);
@@ -159,6 +217,10 @@ export default function BusinessSetup() {
         if (updatedSettings.favicon?.url) {
           setFaviconPreview(updatedSettings.favicon.url);
           setFaviconFile(null);
+        }
+        if (updatedSettings.termsAndConditionsPdf?.url) {
+          setTermsPdfUrl(updatedSettings.termsAndConditionsPdf.url);
+          setTermsPdfFile(null);
         }
       }
 
@@ -178,11 +240,15 @@ export default function BusinessSetup() {
     fetchBusinessSettings();
     setLogoFile(null);
     setFaviconFile(null);
+    setTermsPdfFile(null);
     if (logoInputRef.current) {
       logoInputRef.current.value = "";
     }
     if (faviconInputRef.current) {
       faviconInputRef.current.value = "";
+    }
+    if (termsPdfInputRef.current) {
+      termsPdfInputRef.current.value = "";
     }
     toast.info("Form reset to saved values");
   };
@@ -292,7 +358,7 @@ export default function BusinessSetup() {
                     type="text"
                     placeholder="Enter Your Phone Number"
                     value={formData.phoneNumber}
-                    maxLength={15}
+                    maxLength={10}
                     onChange={(e) => {
                       const val = e.target.value.replace(/\D/g, "");
                       handleInputChange("phoneNumber", val);
@@ -318,7 +384,7 @@ export default function BusinessSetup() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  State
+                  State <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -332,7 +398,7 @@ export default function BusinessSetup() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Pincode
+                  Pincode <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -343,6 +409,34 @@ export default function BusinessSetup() {
                     const val = e.target.value.replace(/\D/g, "");
                     handleInputChange("pincode", val);
                   }}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  FSSAI License
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter FSSAI License Number"
+                  value={formData.fssai}
+                  maxLength={14}
+                  onChange={(e) => handleInputChange("fssai", e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  GSTIN
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter GSTIN Number"
+                  value={formData.gstin}
+                  maxLength={15}
+                  onChange={(e) => handleInputChange("gstin", e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -368,9 +462,13 @@ export default function BusinessSetup() {
                     </label>
                     <input
                       type="text"
-                      placeholder="+91 1234567890"
+                      placeholder="e.g. 1234567890"
                       value={formData.supportPhone || ""}
-                      onChange={(e) => handleInputChange("supportPhone", e.target.value)}
+                      maxLength={10}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        handleInputChange("supportPhone", val);
+                      }}
                       className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
@@ -390,8 +488,8 @@ export default function BusinessSetup() {
               </div>
             </div>
 
-            {/* Logo & favicon upload */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Logo, favicon & T&C PDF upload */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">Logo</label>
                 <input
@@ -522,6 +620,81 @@ export default function BusinessSetup() {
                     <div className="text-center">
                       <Upload className="w-5 h-5 text-slate-400 mx-auto mb-1" />
                       <p className="text-xs text-slate-400">Click to upload favicon</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">T&C PDF (For Restaurant Onboarding)</label>
+                <input
+                  ref={termsPdfInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+
+                    if (file.type !== "application/pdf") {
+                      toast.error("Invalid file type. Please upload a PDF.");
+                      return;
+                    }
+
+                    const maxSize = 10 * 1024 * 1024; // 10MB
+                    if (file.size > maxSize) {
+                      toast.error("File size exceeds 10MB limit.");
+                      return;
+                    }
+
+                    setTermsPdfFile(file);
+                  }}
+                  className="hidden"
+                />
+                <div
+                  onClick={() => termsPdfInputRef.current?.click()}
+                  className="border border-dashed border-slate-300 rounded-lg bg-slate-50/60 h-28 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors relative overflow-hidden p-2"
+                >
+                  {termsPdfFile || termsPdfUrl ? (
+                    <div className="flex flex-col items-center justify-center w-full h-full text-center px-4">
+                      <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mb-2">
+                        <span className="text-red-500 font-bold text-[10px]">PDF</span>
+                      </div>
+                      <p className="text-[10px] text-slate-700 font-medium truncate w-full px-2">
+                        {termsPdfFile ? termsPdfFile.name : "Current T&C Document"}
+                      </p>
+                      {termsPdfUrl && !termsPdfFile && (
+                         <a 
+                           href={termsPdfUrl} 
+                           target="_blank" 
+                           rel="noreferrer" 
+                           onClick={(e) => e.stopPropagation()}
+                           className="text-[10px] text-blue-600 hover:underline mt-1 relative z-10"
+                         >
+                           View Document
+                         </a>
+                      )}
+                      
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (termsPdfFile) {
+                            setTermsPdfFile(null);
+                            if (termsPdfInputRef.current) {
+                              termsPdfInputRef.current.value = "";
+                            }
+                          } else {
+                            termsPdfInputRef.current?.click();
+                          }
+                        }}
+                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors z-10"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <Upload className="w-5 h-5 text-slate-400 mx-auto mb-1" />
+                      <p className="text-xs text-slate-400">Click to upload T&C PDF</p>
                     </div>
                   )}
                 </div>
