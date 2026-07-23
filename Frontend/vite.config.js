@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -6,6 +7,19 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+=======
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+const foodSrc = path.resolve(__dirname, './src/modules/Food')
+const servicesApi = path.resolve(__dirname, './src/services/api')
+>>>>>>> 179950c0913b20fddfe792806b7cd8e24fd2cbcd
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
